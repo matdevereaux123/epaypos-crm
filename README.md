@@ -29,6 +29,8 @@ database/
   02_encryption.sql     Column-level encryption for SSN/DOB/DL/banking, run
                          right after 01, before any real data goes in
   03_auth_link.sql      Trigger linking Supabase Auth logins to the users table
+  04_rls.sql             Row-Level Security policies for every table, matching
+                          roles.perms dynamically — run after Auth is set up
 supabase/
   functions/invite-user/  Edge Function that sends real portal invite emails
 emails/
@@ -56,9 +58,43 @@ emails/
 11. Confirm encryption is actually working (insert a test SSN, check it's unreadable in the table, check `reveal_lead_ssn()` respects permissions)
 12. Write Row-Level Security policies for every table, matching `roles.perms` — since custom roles can be created from Settings, these need to check permissions dynamically rather than being hardcoded per role
 
-### Phase 4 — Swap the data layer
+### Phase 4 — Swap the data layer ✅ done
 13. Go collection by collection, replacing `app/index.html`'s `loadX()`/`saveX()` functions with real Supabase calls. Test each collection before moving to the next.
 14. Move document uploads to Supabase Storage
+
+**Progress:** every collection is converted and tested — Auth, Users,
+Partners, Leads, Applications, Cold Leads, Notes (partner/lead/call),
+Lending Leads (+ its notes), Leads' document attachments, the public
+referral landing page (`?ref=slug`), CSV bulk import, the AI Lead
+Scraper's "push to partners/Cold Leads" flow, custom Roles management,
+Newsletters/NL Templates, Connected Calendars/Calendar Events, and
+Instantly Contacts. Only Integrations (Settings → Integrations connection
+config — Wix, Instantly, AI Scraper, Google Calendar, Outbound Email) is
+still localStorage-only, and that's expected to stay that way until each
+integration actually goes live in Phase 6 — there's no real distinction
+yet between "saved config" and "connected."
+
+**New since the original build:** a **Team Structure** tab (under
+Overview) for organizing Agents/EPAY Resellers by office — a freeform
+drag-anywhere canvas with connector lines showing the recruiting hierarchy
+(`partners.parent_partner_id`), a Board view for quick office assignment,
+and residual %/equipment fields on each Agent/Reseller. Backed by new
+`offices` table and `partners.canvas_x/canvas_y/residual_percentage/
+free_equipment_placement/purchased_equipment` columns — see
+`database/08_team_structure.sql` through `10_canvas_and_residuals.sql`.
+
+Also new: a **Collections** toggle on the Account detail drawer ("In
+collections — unit/system needs to be returned"), with an optional note,
+and a **Collections report** under Reports — same period-navigation UI as
+the Subscription report, but a genuine rolling 30-day window instead of a
+fixed billing cycle. Available on both brands. Backed by
+`leads.in_collections/collections_marked_at/collections_marked_by/
+collections_note` — see `database/13_collections.sql`.
+
+**Known gaps inside already-converted collections** (each flagged in code
+where it applies):
+- The "purge demo data" utility is deliberately NOT wired to real deletes —
+  too destructive to enable without a separate explicit decision.
 
 ### Phase 5 — Go live
 15. Deploy to real hosting

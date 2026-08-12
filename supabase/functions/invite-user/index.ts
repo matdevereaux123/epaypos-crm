@@ -17,14 +17,36 @@
 // them on a "set your password" page in the app (see Step 4 below) — once
 // they set one, the auth-link trigger from supabase_auth_link.sql connects
 // their new login to their existing users row automatically.
+//
+// CORS: this is called directly from the browser (app/index.html), so it
+// needs to handle the browser's preflight OPTIONS request and send back
+// Access-Control-Allow-Origin on every response — without this, the browser
+// blocks the request before it ever reaches the code above and supabase-js
+// just reports a generic "Failed to send a request to the Edge Function".
 // ---------------------------------------------------------------------------
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+function jsonResponse(body: unknown, status: number) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
 Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
+
   const { userId } = await req.json();
   if (!userId) {
-    return new Response(JSON.stringify({ error: 'userId is required' }), { status: 400 });
+    return jsonResponse({ error: 'userId is required' }, 400);
   }
 
   // Client scoped to the CALLER's own auth token — used only to check who's
@@ -38,7 +60,7 @@ Deno.serve(async (req) => {
 
   const { data: { user: caller } } = await callerClient.auth.getUser();
   if (!caller) {
-    return new Response(JSON.stringify({ error: 'Not authenticated' }), { status: 401 });
+    return jsonResponse({ error: 'Not authenticated' }, 401);
   }
 
   const { data: callerRow } = await callerClient
@@ -49,7 +71,7 @@ Deno.serve(async (req) => {
 
   const canManageUsers = callerRow?.roles?.perms?.manageUsers === true;
   if (!canManageUsers) {
-    return new Response(JSON.stringify({ error: 'Not authorized to send invites' }), { status: 403 });
+    return jsonResponse({ error: 'Not authorized to send invites' }, 403);
   }
 
   // Admin client — the service role key only ever lives here, server-side.
@@ -65,7 +87,7 @@ Deno.serve(async (req) => {
     .single();
 
   if (targetErr || !targetUser) {
-    return new Response(JSON.stringify({ error: 'User not found' }), { status: 404 });
+    return jsonResponse({ error: 'User not found' }, 404);
   }
 
   const { error: inviteErr } = await adminClient.auth.admin.inviteUserByEmail(
@@ -74,7 +96,7 @@ Deno.serve(async (req) => {
   );
 
   if (inviteErr) {
-    return new Response(JSON.stringify({ error: inviteErr.message }), { status: 500 });
+    return jsonResponse({ error: inviteErr.message }, 500);
   }
 
   await adminClient
@@ -82,5 +104,5 @@ Deno.serve(async (req) => {
     .update({ invite_sent: true, invite_sent_at: new Date().toISOString().slice(0, 10) })
     .eq('id', userId);
 
-  return new Response(JSON.stringify({ success: true }), { status: 200 });
+  return jsonResponse({ success: true }, 200);
 });

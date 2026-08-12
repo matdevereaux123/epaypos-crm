@@ -54,9 +54,13 @@ alter table leads
   add column drivers_license    bytea,
   add column business_tax_id    bytea;
 
+-- drop the jsonb default first — Postgres can't cast a jsonb default
+-- literal to bytea automatically when changing the column type.
+alter table leads alter column banking drop default;
 alter table leads
   alter column banking type bytea using null; -- see note below on banking
 
+alter table partners alter column banking drop default;
 alter table partners
   alter column banking type bytea using null;
 
@@ -76,11 +80,13 @@ alter table partners
 -- elevated privilege to read the Vault secret, regardless of who calls
 -- them — which is exactly why the permission check inside matters.
 -- ---------------------------------------------------------------------------
+-- search_path includes `extensions` because current Supabase projects
+-- install pgcrypto there by default, not in `public`.
 create or replace function encrypt_sensitive(plain text)
 returns bytea
 language sql
 security definer
-set search_path = public, vault
+set search_path = public, extensions, vault
 as $$
   select pgp_sym_encrypt(
     plain,
@@ -92,7 +98,7 @@ create or replace function decrypt_sensitive(cipher bytea)
 returns text
 language sql
 security definer
-set search_path = public, vault
+set search_path = public, extensions, vault
 as $$
   select pgp_sym_decrypt(
     cipher,
@@ -192,14 +198,47 @@ begin
 end;
 $$;
 
--- Repeat the same pattern (reveal_lead_drivers_license, reveal_lead_tax_id,
--- etc.) for the other encrypted columns — same shape, different column.
+create or replace function reveal_lead_drivers_license(p_lead_id uuid)
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_result text;
+begin
+  if not current_user_can_view_sensitive() then
+    raise exception 'Not authorized to view this field';
+  end if;
+  select decrypt_sensitive(drivers_license) into v_result from leads where id = p_lead_id;
+  return v_result;
+end;
+$$;
+
+create or replace function reveal_lead_tax_id(p_lead_id uuid)
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_result text;
+begin
+  if not current_user_can_view_sensitive() then
+    raise exception 'Not authorized to view this field';
+  end if;
+  select decrypt_sensitive(business_tax_id) into v_result from leads where id = p_lead_id;
+  return v_result;
+end;
+$$;
 
 -- Only authenticated users can call the reveal functions at all; the
 -- permission check inside decides what they actually get back.
 grant execute on function reveal_lead_ssn(uuid) to authenticated;
 grant execute on function reveal_lead_banking(uuid) to authenticated;
 grant execute on function reveal_partner_banking(uuid) to authenticated;
+grant execute on function reveal_lead_drivers_license(uuid) to authenticated;
+grant execute on function reveal_lead_tax_id(uuid) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- STEP 5 — Writing encrypted values (from the app, e.g. saving the SSN
@@ -223,6 +262,91 @@ begin
 end;
 $$;
 grant execute on function set_lead_ssn(uuid, text) to authenticated;
+
+create or replace function set_lead_banking(p_lead_id uuid, p_banking text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if coalesce((select (r.perms->>'editBanking')::boolean
+               from users u join roles r on r.key = u.role
+               where u.auth_id = auth.uid()), false) is not true then
+    raise exception 'Not authorized to edit this field';
+  end if;
+  update leads set banking = encrypt_sensitive(p_banking) where id = p_lead_id;
+end;
+$$;
+grant execute on function set_lead_banking(uuid, text) to authenticated;
+
+create or replace function set_lead_drivers_license(p_lead_id uuid, p_value text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if coalesce((select (r.perms->>'editBanking')::boolean
+               from users u join roles r on r.key = u.role
+               where u.auth_id = auth.uid()), false) is not true then
+    raise exception 'Not authorized to edit this field';
+  end if;
+  update leads set drivers_license = encrypt_sensitive(p_value) where id = p_lead_id;
+end;
+$$;
+grant execute on function set_lead_drivers_license(uuid, text) to authenticated;
+
+create or replace function set_lead_tax_id(p_lead_id uuid, p_value text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if coalesce((select (r.perms->>'editBanking')::boolean
+               from users u join roles r on r.key = u.role
+               where u.auth_id = auth.uid()), false) is not true then
+    raise exception 'Not authorized to edit this field';
+  end if;
+  update leads set business_tax_id = encrypt_sensitive(p_value) where id = p_lead_id;
+end;
+$$;
+grant execute on function set_lead_tax_id(uuid, text) to authenticated;
+
+-- Partner banking needs its own version of this check (not the flat
+-- editBanking=true used above) because portal logins have editBanking:'own'
+-- and are allowed to maintain their OWN payout banking — same "own record"
+-- logic reveal_partner_banking already uses above.
+create or replace function set_partner_banking(p_partner_id uuid, p_banking text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_is_own boolean;
+  v_edit_banking text;
+begin
+  select (r.perms->>'editBanking')
+    into v_edit_banking
+    from users u join roles r on r.key = u.role
+    where u.auth_id = auth.uid();
+
+  select exists (
+    select 1 from partners p
+    join users u on lower(u.email) = lower(p.email)
+    where p.id = p_partner_id and u.auth_id = auth.uid()
+  ) into v_is_own;
+
+  if not (v_edit_banking = 'true' or (v_edit_banking = 'own' and v_is_own)) then
+    raise exception 'Not authorized to edit this field';
+  end if;
+
+  update partners set banking = encrypt_sensitive(p_banking) where id = p_partner_id;
+end;
+$$;
+grant execute on function set_partner_banking(uuid, text) to authenticated;
 
 -- =============================================================================
 -- What the app actually calls, once this is wired up:
