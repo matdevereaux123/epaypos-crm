@@ -68,6 +68,19 @@
   #login-screen .login-mark img.logo-epay{width:124px;}
   #login-screen .login-mark img.logo-atm{width:152px;}
   #login-screen .login-mark{margin-bottom:28px;}
+  .pw-wrap{position:relative;}
+  .pw-wrap input{padding-right:62px;}
+  .pw-toggle{
+    position:absolute;right:6px;top:50%;transform:translateY(-50%);
+    background:none;border:none;padding:5px 8px;border-radius:6px;
+    font-size:11.5px;font-weight:600;letter-spacing:.3px;color:var(--slate-500);
+  }
+  .pw-toggle:hover{color:var(--brand-accent-2);background:#EEF3FB;}
+  .caps-hint{margin-top:6px;font-size:11.5px;font-weight:500;color:#B7791F;}
+  .field input.invalid{border-color:var(--red);background:#FEF7F7;}
+  .login-alt{text-align:center;margin:16px 0 0;font-size:12.5px;color:var(--slate-500);}
+  .login-alt a{color:var(--brand-accent-2);font-weight:600;text-decoration:none;}
+  .login-alt a:hover{text-decoration:underline;}
   .login-mark .wordmark{font-family:'Space Grotesk';font-weight:700;font-size:19px;letter-spacing:0.5px;color:var(--navy-700);}
   .login-mark .wordmark small{display:block;font-family:'Inter';font-weight:600;font-size:9.5px;letter-spacing:2.2px;color:var(--brand-accent-2);margin-top:2px;}
   .login-card h1{font-size:20px;margin:0 0 4px;font-weight:600;color:var(--navy-700);}
@@ -840,16 +853,40 @@
   <div class="login-card">
     <div class="login-mark" id="loginMarkWrap"></div>
 
-    <form id="loginFormEl">
+    <form id="loginFormEl" novalidate>
       <h1>Log in</h1>
       <p class="sub">Use the email and password for your portal account.</p>
       <div id="loginError" class="form-error" style="display:none;margin-bottom:14px;padding:10px 12px;background:#FDECEC;border:1px solid #F3C6C6;border-radius:8px;color:var(--red);font-size:13px;"></div>
-      <div class="field"><label>Email</label><input id="loginEmail" type="email" autocomplete="username" required></div>
-      <div class="field"><label>Password</label><input id="loginPassword" type="password" autocomplete="current-password" required></div>
+      <div class="field">
+        <label for="loginEmail">Email</label>
+        <input id="loginEmail" type="email" autocomplete="username" required>
+      </div>
+      <div class="field">
+        <label for="loginPassword">Password</label>
+        <div class="pw-wrap">
+          <input id="loginPassword" type="password" autocomplete="current-password" required>
+          <button type="button" class="pw-toggle" id="pwToggle" aria-label="Show password">Show</button>
+        </div>
+        <div class="caps-hint" id="capsHint" style="display:none;">Caps Lock is on</div>
+      </div>
       <button id="loginSubmitBtn" type="submit" class="btn btn-accent" style="width:100%;">Log in</button>
+      <p class="login-alt"><a href="#" id="forgotLink">Forgot your password?</a></p>
     </form>
 
-    <form id="setPasswordFormEl" style="display:none;">
+    <form id="forgotFormEl" novalidate style="display:none;">
+      <h1>Reset your password</h1>
+      <p class="sub">Enter your account email and we'll send you a link to set a new one.</p>
+      <div id="forgotError" class="form-error" style="display:none;margin-bottom:14px;padding:10px 12px;background:#FDECEC;border:1px solid #F3C6C6;border-radius:8px;color:var(--red);font-size:13px;"></div>
+      <div id="forgotNotice" class="form-notice" style="display:none;margin-bottom:14px;padding:10px 12px;background:#EAF7F1;border:1px solid #BFE6D4;border-radius:8px;color:#14785A;font-size:13px;"></div>
+      <div class="field">
+        <label for="forgotEmail">Email</label>
+        <input id="forgotEmail" type="email" autocomplete="username" required>
+      </div>
+      <button id="forgotSubmitBtn" type="submit" class="btn btn-accent" style="width:100%;">Send reset link</button>
+      <p class="login-alt"><a href="#" id="backToLoginLink">Back to log in</a></p>
+    </form>
+
+    <form id="setPasswordFormEl" novalidate style="display:none;">
       <h1>Set your password</h1>
       <p class="sub">Choose a password for your portal account — this only needs to be done once.</p>
       <div id="setPasswordError" class="form-error" style="display:none;margin-bottom:14px;padding:10px 12px;background:#FDECEC;border:1px solid #F3C6C6;border-radius:8px;color:var(--red);font-size:13px;"></div>
@@ -3020,12 +3057,18 @@ function showLoginScreen(){
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('loginFormEl').style.display = 'block';
   document.getElementById('setPasswordFormEl').style.display = 'none';
+  const fg = document.getElementById('forgotFormEl');
+  if(fg) fg.style.display = 'none';
+  const le = document.getElementById('loginEmail');
+  if(le) setTimeout(function(){ if(!le.value) le.focus(); }, 30);
 }
 
 function showSetPasswordScreen(){
   document.getElementById('app-screen').style.display = 'none';
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('loginFormEl').style.display = 'none';
+  const fg2 = document.getElementById('forgotFormEl');
+  if(fg2) fg2.style.display = 'none';
   document.getElementById('setPasswordFormEl').style.display = 'block';
 }
 
@@ -3078,22 +3121,167 @@ async function enterAppAsAuthUser(authUser){
   enterApp();
 }
 
+/* =========================================================================
+   LOGIN UX
+   Supabase's raw auth errors are written for developers ("Invalid login
+   credentials", "Failed to fetch"), so they get translated here. Note that
+   a wrong email and a wrong password deliberately produce the SAME message
+   — telling them apart would let anyone probe which addresses have accounts.
+   ========================================================================= */
+function friendlyAuthError(error){
+  const msg = (error && error.message ? error.message : '').toLowerCase();
+  const status = error && error.status;
+  if(status === 429 || msg.includes('too many') || msg.includes('rate limit')){
+    return "Too many attempts. Please wait a minute and try again.";
+  }
+  if(msg.includes('failed to fetch') || msg.includes('networkerror') || msg.includes('load failed')){
+    return "Can't reach the server. Check your internet connection and try again.";
+  }
+  if(msg.includes('not confirmed')){
+    return "This account hasn't been activated yet. Open your invite email and set a password first.";
+  }
+  if(msg.includes('invalid login credentials') || msg.includes('invalid credentials') || msg.includes('user not found')){
+    return "Incorrect email or password. Please try again.";
+  }
+  return "Something went wrong signing you in. Please try again.";
+}
+
+function showFormError(elId, message){
+  const el = document.getElementById(elId);
+  el.textContent = message;
+  el.style.display = 'block';
+}
+function clearFormError(elId){
+  document.getElementById(elId).style.display = 'none';
+}
+
+// Clearing the error as soon as they start correcting it, rather than
+// leaving a stale "incorrect password" sitting above a field they've fixed.
+['loginEmail','loginPassword'].forEach(function(id){
+  const el = document.getElementById(id);
+  el.addEventListener('input', function(){
+    clearFormError('loginError');
+    document.getElementById('loginEmail').classList.remove('invalid');
+    document.getElementById('loginPassword').classList.remove('invalid');
+  });
+});
+
+// Caps Lock is the single most common cause of "my password stopped working"
+document.getElementById('loginPassword').addEventListener('keyup', function(ev){
+  const on = ev.getModifierState && ev.getModifierState('CapsLock');
+  document.getElementById('capsHint').style.display = on ? 'block' : 'none';
+});
+document.getElementById('loginPassword').addEventListener('blur', function(){
+  document.getElementById('capsHint').style.display = 'none';
+});
+
+document.getElementById('pwToggle').addEventListener('click', function(){
+  const input = document.getElementById('loginPassword');
+  const showing = input.type === 'text';
+  input.type = showing ? 'password' : 'text';
+  this.textContent = showing ? 'Show' : 'Hide';
+  this.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+  input.focus();
+});
+
 document.getElementById('loginFormEl').addEventListener('submit', async function(e){
   e.preventDefault();
-  const email = document.getElementById('loginEmail').value.trim();
-  const password = document.getElementById('loginPassword').value;
-  const errEl = document.getElementById('loginError');
-  errEl.style.display = 'none';
+  const emailEl = document.getElementById('loginEmail');
+  const pwEl = document.getElementById('loginPassword');
+  const email = emailEl.value.trim();
+  const password = pwEl.value;
+  clearFormError('loginError');
+  emailEl.classList.remove('invalid');
+  pwEl.classList.remove('invalid');
+
+  // Checked here rather than relying on the browser bubble, so every
+  // message on this screen looks and reads the same way.
+  if(!email){
+    emailEl.classList.add('invalid'); emailEl.focus();
+    return showFormError('loginError', 'Enter your email address.');
+  }
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+    emailEl.classList.add('invalid'); emailEl.focus();
+    return showFormError('loginError', 'That doesn\u2019t look like a valid email address.');
+  }
+  if(!password){
+    pwEl.classList.add('invalid'); pwEl.focus();
+    return showFormError('loginError', 'Enter your password.');
+  }
+
   const btn = document.getElementById('loginSubmitBtn');
-  btn.disabled = true; btn.textContent = 'Logging in...';
+  btn.disabled = true; btn.textContent = 'Logging in\u2026';
   const { data, error } = await supa.auth.signInWithPassword({ email, password });
   btn.disabled = false; btn.textContent = 'Log in';
   if(error){
-    errEl.textContent = error.message;
-    errEl.style.display = 'block';
-    return;
+    emailEl.classList.add('invalid');
+    pwEl.classList.add('invalid');
+    pwEl.value = '';
+    pwEl.focus();
+    document.getElementById('capsHint').style.display = 'none';
+    return showFormError('loginError', friendlyAuthError(error));
   }
+  pwEl.value = '';
   await enterAppAsAuthUser(data.user);
+});
+
+/* ---------------------------------------------------------------------------
+   Forgot password. The receiving half of this already existed — initAuth()
+   catches a type=recovery link and shows the set-password screen — there was
+   just no way to ask for one. redirectTo must also be listed under
+   Authentication -> URL Configuration -> Redirect URLs in Supabase, or the
+   link 404s on click.
+   --------------------------------------------------------------------------- */
+function showForgotScreen(){
+  document.getElementById('app-screen').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('loginFormEl').style.display = 'none';
+  document.getElementById('setPasswordFormEl').style.display = 'none';
+  document.getElementById('forgotFormEl').style.display = 'block';
+  clearFormError('forgotError');
+  clearFormError('forgotNotice');
+  const f = document.getElementById('forgotEmail');
+  f.value = document.getElementById('loginEmail').value.trim();
+  setTimeout(function(){ f.focus(); }, 30);
+}
+
+document.getElementById('forgotLink').addEventListener('click', function(e){
+  e.preventDefault();
+  showForgotScreen();
+});
+document.getElementById('backToLoginLink').addEventListener('click', function(e){
+  e.preventDefault();
+  showLoginScreen();
+});
+document.getElementById('forgotEmail').addEventListener('input', function(){
+  clearFormError('forgotError');
+  this.classList.remove('invalid');
+});
+
+document.getElementById('forgotFormEl').addEventListener('submit', async function(e){
+  e.preventDefault();
+  const el = document.getElementById('forgotEmail');
+  const email = el.value.trim();
+  clearFormError('forgotError');
+  clearFormError('forgotNotice');
+  el.classList.remove('invalid');
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+    el.classList.add('invalid'); el.focus();
+    return showFormError('forgotError', 'Enter a valid email address.');
+  }
+  const btn = document.getElementById('forgotSubmitBtn');
+  btn.disabled = true; btn.textContent = 'Sending\u2026';
+  const { error } = await supa.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin
+  });
+  btn.disabled = false; btn.textContent = 'Send reset link';
+  if(error && (error.status === 429 || (error.message || '').toLowerCase().includes('too many'))){
+    return showFormError('forgotError', 'Too many requests. Please wait a minute and try again.');
+  }
+  // Same confirmation whether or not the address exists — otherwise this
+  // form becomes a way to enumerate who has an account.
+  showFormError('forgotNotice', 'If an account exists for ' + email + ', a reset link is on its way. Check your inbox and spam folder.');
+  el.value = '';
 });
 
 document.getElementById('setPasswordFormEl').addEventListener('submit', async function(e){
