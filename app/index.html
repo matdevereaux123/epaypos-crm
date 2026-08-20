@@ -65,6 +65,9 @@
   .login-mark img.full-logo{height:auto;}
   .login-mark img.logo-atm{width:124px;}
   .login-mark img.logo-epay{width:100px;}
+  #login-screen .login-mark img.logo-epay{width:170px;}
+  #login-screen .login-mark img.logo-atm{width:210px;}
+  #login-screen .login-mark{margin-bottom:32px;}
   .login-mark .wordmark{font-family:'Space Grotesk';font-weight:700;font-size:19px;letter-spacing:0.5px;color:var(--navy-700);}
   .login-mark .wordmark small{display:block;font-family:'Inter';font-weight:600;font-size:9.5px;letter-spacing:2.2px;color:var(--brand-accent-2);margin-top:2px;}
   .login-card h1{font-size:20px;margin:0 0 4px;font-weight:600;color:var(--navy-700);}
@@ -835,9 +838,7 @@
 <!-- ================= LOGIN ================= -->
 <div id="login-screen" style="display:none;">
   <div class="login-card">
-    <div class="login-mark">
-      <div class="wordmark">EPAY POS<small>CONTROL CENTER</small></div>
-    </div>
+    <div class="login-mark" id="loginMarkWrap"></div>
 
     <form id="loginFormEl">
       <h1>Log in</h1>
@@ -2769,6 +2770,7 @@ function markSVG(brand){
   return `<img src="data:image/png;base64,${EPAY_LOGO_B64}" alt="EPAY POS - Control Center" class="full-logo logo-epay">`;
 }
 document.getElementById('sidebarMarkWrap').innerHTML = markSVG('epay');
+document.getElementById('loginMarkWrap').innerHTML = markSVG('epay');
 
 function renderBrandSwitch(){
   const switchEl = document.getElementById('sidebarBrandSwitch');
