@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="EPAY POS Control Center">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#142850"/>
+      <stop offset="1" stop-color="#0B1B38"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5FE3FF"/>
+      <stop offset="1" stop-color="#00D5FF"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded tile in the app's navy (CSS vars navy-900 and navy-700) -->
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+
+  <!-- "E" monogram: stem plus three arms, all one gradient so the
+       overlapping rounded rects merge into a single solid glyph -->
+  <g fill="url(#mark)">
+    <rect x="170" y="140" width="46"  height="232" rx="23"/>
+    <rect x="170" y="140" width="176" height="46"  rx="23"/>
+    <rect x="170" y="233" width="140" height="46"  rx="23"/>
+    <rect x="170" y="326" width="176" height="46"  rx="23"/>
+  </g>
+</svg>
