@@ -81,6 +81,48 @@
   .login-alt{text-align:center;margin:16px 0 0;font-size:12.5px;color:var(--slate-500);}
   .login-alt a{color:var(--brand-accent-2);font-weight:600;text-decoration:none;}
   .login-alt a:hover{text-decoration:underline;}
+
+  /* Toast confirmations. The app otherwise uses alert() for this, which
+     blocks the page and reads as an error even on success. */
+  .toast-wrap{
+    position:fixed;right:20px;bottom:20px;z-index:9999;
+    display:flex;flex-direction:column;gap:10px;
+    pointer-events:none;max-width:min(380px,calc(100vw - 40px));
+  }
+  .toast{
+    display:flex;align-items:flex-start;gap:10px;
+    padding:13px 15px;border-radius:10px;
+    background:var(--card);border:1px solid var(--line);
+    box-shadow:0 8px 26px rgba(11,27,56,.16);
+    font-size:13.5px;line-height:1.45;color:var(--navy-700);
+    pointer-events:auto;
+    /* Plainly visible with no entrance animation. An animated reveal is
+       only decoration, and every variant of it starts from opacity:0 —
+       which means anything that stops the animation running (background
+       tab, throttling) leaves a confirmation the user never sees. The exit
+       fade below is safe because its resting state is already visible. */
+    opacity:1;transform:translateY(0);
+  }
+  .toast.out{
+    opacity:0;transform:translateY(10px);
+    transition:opacity .2s ease,transform .2s ease;
+    animation:none;
+  }
+  @media (prefers-reduced-motion:reduce){
+    .toast.out{transition:none;}
+  }
+  .toast .toast-dot{
+    width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:5px;
+    background:var(--slate-500);
+  }
+  .toast.success .toast-dot{background:var(--green);}
+  .toast.error   .toast-dot{background:var(--red);}
+  .toast .toast-msg{flex:1;}
+  .toast .toast-x{
+    background:none;border:none;padding:0 2px;margin:-2px -4px 0 0;
+    color:var(--slate-300);font-size:15px;line-height:1;flex-shrink:0;
+  }
+  .toast .toast-x:hover{color:var(--slate-500);}
   .login-mark .wordmark{font-family:'Space Grotesk';font-weight:700;font-size:19px;letter-spacing:0.5px;color:var(--navy-700);}
   .login-mark .wordmark small{display:block;font-family:'Inter';font-weight:600;font-size:9.5px;letter-spacing:2.2px;color:var(--brand-accent-2);margin-top:2px;}
   .login-card h1{font-size:20px;margin:0 0 4px;font-weight:600;color:var(--navy-700);}
@@ -3155,6 +3197,41 @@ function clearFormError(elId){
   document.getElementById(elId).style.display = 'none';
 }
 
+/* -----------------------------------------------------------------------
+   showToast(message, type)
+   type: 'success' | 'error' | 'info' (default 'info')
+   Non-blocking confirmation for actions that otherwise complete silently.
+   ----------------------------------------------------------------------- */
+function showToast(message, type){
+  let wrap = document.getElementById('toastWrap');
+  if(!wrap){
+    wrap = document.createElement('div');
+    wrap.id = 'toastWrap';
+    wrap.className = 'toast-wrap';
+    wrap.setAttribute('role','status');
+    wrap.setAttribute('aria-live','polite');
+    document.body.appendChild(wrap);
+  }
+  const t = document.createElement('div');
+  t.className = 'toast ' + (type || 'info');
+  const dot = document.createElement('span'); dot.className = 'toast-dot';
+  const msg = document.createElement('span'); msg.className = 'toast-msg'; msg.textContent = message;
+  const x = document.createElement('button');
+  x.type = 'button'; x.className = 'toast-x'; x.setAttribute('aria-label','Dismiss'); x.textContent = '\u00d7';
+  t.appendChild(dot); t.appendChild(msg); t.appendChild(x);
+  wrap.appendChild(t);
+  let done = false;
+  function dismiss(){
+    if(done) return;
+    done = true;
+    t.classList.add('out');
+    setTimeout(function(){ if(t.parentNode) t.parentNode.removeChild(t); }, 220);
+  }
+  x.addEventListener('click', dismiss);
+  setTimeout(dismiss, type === 'error' ? 7000 : 5000);
+  return dismiss;
+}
+
 // Clearing the error as soon as they start correcting it, rather than
 // leaving a stale "incorrect password" sitting above a field they've fixed.
 ['loginEmail','loginPassword'].forEach(function(id){
@@ -3275,12 +3352,33 @@ document.getElementById('forgotFormEl').addEventListener('submit', async functio
     redirectTo: window.location.origin
   });
   btn.disabled = false; btn.textContent = 'Send reset link';
-  if(error && (error.status === 429 || (error.message || '').toLowerCase().includes('too many'))){
-    return showFormError('forgotError', 'Too many requests. Please wait a minute and try again.');
+
+  // Supabase deliberately returns success for an address that has no
+  // account, so anything that DOES come back as an error is a real
+  // transport/config failure (SMTP down, redirect not allow-listed, rate
+  // limit) and must be surfaced — showing "on its way" over the top of one
+  // of those is how a broken reset flow goes unnoticed.
+  if(error){
+    const msg = (error.message || '').toLowerCase();
+    let text;
+    if(error.status === 429 || msg.includes('too many') || msg.includes('rate limit')){
+      text = 'Too many requests. Please wait a minute and try again.';
+    } else if(msg.includes('failed to fetch') || msg.includes('networkerror') || msg.includes('load failed')){
+      text = "Can't reach the server. Check your internet connection and try again.";
+    } else if(msg.includes('redirect')){
+      text = "That reset link couldn't be created — this site's address isn't allow-listed in Supabase yet. Tell an admin.";
+    } else {
+      text = "We couldn't send the reset email just now. Please try again, or contact an admin if it keeps happening.";
+    }
+    showFormError('forgotError', text);
+    showToast(text, 'error');
+    return;
   }
+
   // Same confirmation whether or not the address exists — otherwise this
   // form becomes a way to enumerate who has an account.
   showFormError('forgotNotice', 'If an account exists for ' + email + ', a reset link is on its way. Check your inbox and spam folder.');
+  showToast('Reset link sent to ' + email, 'success');
   el.value = '';
 });
 
