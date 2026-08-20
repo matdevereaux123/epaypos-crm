@@ -1,0 +1,11 @@
+# Netlify build settings.
+#
+# This repo is not just the site — it also carries database/, supabase/
+# and emails/, none of which should be publicly downloadable. Publishing
+# `app` rather than the repo root serves the CRM at the site root AND
+# keeps everything outside app/ off the public site.
+#
+# There is no build step: app/index.html is the entire application.
+
+[build]
+  publish = "app"
