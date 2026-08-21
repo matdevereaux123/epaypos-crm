@@ -38,7 +38,12 @@
     --brand-accent-2:#0E9F7A;
   }
   *{box-sizing:border-box;}
-  body{margin:0;font-family:'Inter',sans-serif;background:var(--bg);color:var(--navy-900);}
+  /* `clip` rather than `hidden` on purpose: overflow-x:hidden turns the
+     element into a scroll container, which silently breaks the two
+     position:sticky elements in this app (the sidebar and the panel header).
+     overflow-x:clip stops sideways drift without that side effect. */
+  html{overflow-x:clip;}
+  body{margin:0;font-family:'Inter',sans-serif;background:var(--bg);color:var(--navy-900);overflow-x:clip;max-width:100%;}
   h1,h2,h3,.display{font-family:'Space Grotesk',sans-serif;}
   .mono{font-family:'IBM Plex Mono',monospace;}
   button{font-family:inherit;cursor:pointer;}
@@ -845,7 +850,7 @@
     .stat-card .value{ font-size:20px; }
 
     table{ min-width:640px; } /* holds its shape so .panel scrolls it instead of squishing columns illegible */
-    .drawer{ width:100vw; max-width:100vw; }
+    .drawer{ width:100%; max-width:100%; } /* not 100vw - that includes the scrollbar and overflows by its width */
 
     .ai-search-grid{ grid-template-columns:1fr; }
     .comparison-table, .products-row{ overflow-x:auto; }
@@ -2960,7 +2965,10 @@ function enterApp(){
   applyRolePermissions();
   setBrand(currentBrand);
   populatePreviewAsSelect();
-  showView('dashboard');
+  // Honour the hash so refreshing keeps you on the tab you were looking at;
+  // anything unrecognised (including a leftover #access_token from a recovery
+  // link) falls back to the dashboard.
+  showView(viewFromHash() || 'dashboard');
 }
 
 /* =========================================================================
@@ -3105,6 +3113,10 @@ applySidebarCollapsed(savedSidebarPref !== null ? savedSidebarPref === 'true' : 
    ========================================================================= */
 
 function showLoginScreen(){
+  // Drop any leftover view hash so a logged-out URL isn't pointing at a tab.
+  if(history.state && history.state.app){
+    history.replaceState({}, '', window.location.pathname + window.location.search);
+  }
   document.getElementById('app-screen').style.display = 'none';
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('loginFormEl').style.display = 'block';
@@ -3683,7 +3695,32 @@ const viewTitles = {
   dashboard:'Dashboard', referrals:'Referral Partners', agents:'Agents', map:'Partner Map',
   leads:'Leads', deals:'Deals', followups:'Follow-Ups', settings:'Settings'
 };
-function showView(view){
+/* -----------------------------------------------------------------------
+   VIEW HISTORY
+   Every tab used to render without touching history, so the browser's back
+   button left the app entirely instead of going back a screen. showView()
+   now records the view in the URL hash. Called with fromHistory=true from
+   the popstate handler so replaying a history entry doesn't push a new one.
+   ----------------------------------------------------------------------- */
+function isKnownView(v){
+  return !!(v && /^[a-z]+$/.test(v) && document.getElementById('view-' + v));
+}
+
+function viewFromHash(){
+  const v = (window.location.hash || '').replace(/^#/, '');
+  return isKnownView(v) ? v : null;
+}
+
+window.addEventListener('popstate', function(ev){
+  // Only meaningful once the app itself is on screen — on the login or
+  // referral screens the back button should behave normally.
+  const appScreen = document.getElementById('app-screen');
+  if(!appScreen || appScreen.style.display === 'none') return;
+  const view = (ev.state && ev.state.view) || viewFromHash() || 'dashboard';
+  showView(view, true);
+});
+
+function showView(view, fromHistory){
   // Hard gate, checked on every navigation (not just at login/role-switch) —
   // this is what actually stops a non-admin from landing on these views if
   // showView() is ever called directly rather than through the hidden nav item.
@@ -3725,6 +3762,19 @@ function showView(view){
   if(view === 'calendar') renderCalendar();
   if(view === 'liverecall') renderLiveRecall();
   if(view === 'teamstructure') renderTeamStructure();
+
+  // Recorded after the gates above, so history holds the view actually shown
+  // rather than the one that was asked for.
+  if(!fromHistory){
+    const st = { app: true, view: view };
+    if(history.state && history.state.app){
+      if(history.state.view !== view) history.pushState(st, '', '#' + view);
+    } else {
+      // First view after login replaces the login entry rather than adding
+      // one, so a single back press doesn't just land on a blank login URL.
+      history.replaceState(st, '', '#' + view);
+    }
+  }
 }
 document.querySelectorAll('.nav-item[data-view]').forEach(btn=>{
   btn.addEventListener('click', ()=> showView(btn.dataset.view));
