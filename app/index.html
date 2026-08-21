@@ -85,6 +85,15 @@
   .login-alt{text-align:center;margin:16px 0 0;font-size:12.5px;color:var(--slate-500);}
   .login-alt a{color:var(--brand-accent-2);font-weight:600;text-decoration:none;}
   .login-alt a:hover{text-decoration:underline;}
+  .sent-mark{
+    width:52px;height:52px;border-radius:50%;margin:0 auto 18px;
+    display:flex;align-items:center;justify-content:center;
+    background:#EAF7F1;color:var(--green);
+  }
+  .sent-mark svg{width:24px;height:24px;}
+  #forgotSentScreen{text-align:center;}
+  #forgotSentScreen h1{font-size:20px;margin:0 0 8px;font-weight:600;color:var(--navy-700);}
+  #forgotSentScreen .sub{margin:0 0 20px;font-size:13px;color:var(--slate-500);line-height:1.55;}
 
   /* Toast confirmations. The app otherwise uses alert() for this, which
      blocks the page and reads as an error even on success. */
@@ -390,6 +399,15 @@
   .search-input{padding:8px 12px;border-radius:7px;border:1px solid var(--line);font-size:13px;width:220px;}
 
   table{width:100%;border-collapse:collapse;font-size:13.5px;}
+  /* With ~500 partners the referrals table builds ~9,000 DOM nodes, and the
+     layout pass for those costs more than the render itself (measured 128ms
+     of layout against 50ms of script). content-visibility lets the browser
+     skip layout for rows that are off-screen. contain-intrinsic-size gives it
+     a height estimate so the scrollbar doesn't jump around as rows resolve.
+     Find-in-page still reaches this content in current browsers; printing
+     does not, hence the override below. */
+  .panel tbody tr{content-visibility:auto;contain-intrinsic-size:auto 44px;}
+  @media print{ .panel tbody tr{content-visibility:visible;} }
   thead th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--slate-500);padding:10px 20px;border-bottom:1px solid var(--line);background:#FAFCFF;}
   tbody td{padding:13px 20px;border-bottom:1px solid var(--line);vertical-align:middle;}
   tbody tr:last-child td{border-bottom:none;}
@@ -931,6 +949,22 @@
       <button id="forgotSubmitBtn" type="submit" class="btn btn-accent" style="width:100%;">Send reset link</button>
       <p class="login-alt"><a href="#" id="backToLoginLink">Back to log in</a></p>
     </form>
+
+    <div id="forgotSentScreen" style="display:none;">
+      <div class="sent-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 6h16v12H4z"/><path d="m4 7 8 6 8-6"/>
+        </svg>
+      </div>
+      <h1>Check your email</h1>
+      <p class="sub">
+        If an account exists for <strong id="forgotSentAddress"></strong>, a link to set a
+        new password is on its way. It can take a minute to arrive — check your spam folder too.
+      </p>
+      <p class="sub" style="margin-top:-10px;">The link expires in one hour.</p>
+      <button type="button" id="forgotSentBackBtn" class="btn btn-accent" style="width:100%;">Back to log in</button>
+      <p class="login-alt">Didn't get it? <a href="#" id="forgotResendLink">Send it again</a></p>
+    </div>
 
     <form id="setPasswordFormEl" novalidate style="display:none;">
       <h1>Set your password</h1>
@@ -3123,6 +3157,8 @@ function showLoginScreen(){
   document.getElementById('setPasswordFormEl').style.display = 'none';
   const fg = document.getElementById('forgotFormEl');
   if(fg) fg.style.display = 'none';
+  const fs = document.getElementById('forgotSentScreen');
+  if(fs) fs.style.display = 'none';
   const le = document.getElementById('loginEmail');
   if(le) setTimeout(function(){ if(!le.value) le.focus(); }, 30);
 }
@@ -3133,6 +3169,8 @@ function showSetPasswordScreen(){
   document.getElementById('loginFormEl').style.display = 'none';
   const fg2 = document.getElementById('forgotFormEl');
   if(fg2) fg2.style.display = 'none';
+  const fs2 = document.getElementById('forgotSentScreen');
+  if(fs2) fs2.style.display = 'none';
   document.getElementById('setPasswordFormEl').style.display = 'block';
 }
 
@@ -3480,6 +3518,7 @@ function showForgotScreen(){
   document.getElementById('loginFormEl').style.display = 'none';
   document.getElementById('setPasswordFormEl').style.display = 'none';
   document.getElementById('forgotFormEl').style.display = 'block';
+  document.getElementById('forgotSentScreen').style.display = 'none';
   clearFormError('forgotError');
   clearFormError('forgotNotice');
   const f = document.getElementById('forgotEmail');
@@ -3540,11 +3579,38 @@ document.getElementById('forgotFormEl').addEventListener('submit', async functio
     return;
   }
 
-  // Same confirmation whether or not the address exists — otherwise this
-  // form becomes a way to enumerate who has an account.
-  showFormError('forgotNotice', 'If an account exists for ' + email + ', a reset link is on its way. Check your inbox and spam folder.');
+  // Wording stays neutral whether or not the address exists — otherwise this
+  // screen becomes a way to enumerate who has an account.
+  lastResetEmail = email;
+  document.getElementById('forgotSentAddress').textContent = email;
+  document.getElementById('forgotFormEl').style.display = 'none';
+  document.getElementById('forgotSentScreen').style.display = 'block';
   showToast('Reset link sent to ' + email, 'success');
   el.value = '';
+});
+
+let lastResetEmail = '';
+
+document.getElementById('forgotSentBackBtn').addEventListener('click', function(){
+  showLoginScreen();
+});
+
+document.getElementById('forgotResendLink').addEventListener('click', async function(e){
+  e.preventDefault();
+  if(!lastResetEmail) return showForgotScreen();
+  const link = this;
+  link.textContent = 'Sending\u2026';
+  const { error } = await supa.auth.resetPasswordForEmail(lastResetEmail, {
+    redirectTo: window.location.origin
+  });
+  link.textContent = 'Send it again';
+  if(error){
+    const msg = (error.status === 429 || (error.message||'').toLowerCase().includes('too many'))
+      ? 'Too many requests. Please wait a minute before trying again.'
+      : "We couldn't resend it just now. Please try again shortly.";
+    return showToast(msg, 'error');
+  }
+  showToast('Sent again to ' + lastResetEmail, 'success');
 });
 
 document.getElementById('setPasswordFormEl').addEventListener('submit', async function(e){
