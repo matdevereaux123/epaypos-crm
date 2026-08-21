@@ -408,6 +408,19 @@
      does not, hence the override below. */
   .panel tbody tr{content-visibility:auto;contain-intrinsic-size:auto 44px;}
   @media print{ .panel tbody tr{content-visibility:visible;} }
+  .pager{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    padding:12px 20px;border-top:1px solid var(--line);flex-wrap:wrap;
+  }
+  .pager-count{font-size:12.5px;color:var(--slate-500);}
+  .pager-controls{display:flex;align-items:center;gap:8px;}
+  .pager-page{font-size:12.5px;color:var(--slate-500);min-width:96px;text-align:center;}
+  .pager-btn{
+    padding:6px 12px;border-radius:7px;border:1px solid var(--line);
+    background:var(--card);color:var(--navy-700);font-size:12.5px;font-weight:600;
+  }
+  .pager-btn:hover:not(:disabled){border-color:var(--brand-accent-2);color:var(--brand-accent-2);}
+  .pager-btn:disabled{opacity:.45;cursor:not-allowed;}
   thead th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--slate-500);padding:10px 20px;border-bottom:1px solid var(--line);background:#FAFCFF;}
   tbody td{padding:13px 20px;border-bottom:1px solid var(--line);vertical-align:middle;}
   tbody tr:last-child td{border-bottom:none;}
@@ -3762,6 +3775,79 @@ const viewTitles = {
   leads:'Leads', deals:'Deals', followups:'Follow-Ups', settings:'Settings'
 };
 /* -----------------------------------------------------------------------
+   TABLE PAGINATION
+   These tables rendered every matching row at once. At ~500 partners the
+   referrals table alone built ~9,000 DOM nodes, and the browser's layout
+   pass for those cost more than the render did. Rendering a page at a time
+   keeps both flat as the data grows.
+
+   The pager element is created next to its table on first render, so this
+   needs no markup changes. paginateRows() resets to page 1 whenever the row
+   count changes, which covers searching, filtering and records being added
+   without every caller having to remember to do it.
+   ----------------------------------------------------------------------- */
+const PAGE_SIZE = 50;
+const pagerState = {};
+const pagerTotals = {};
+const pagerRerender = {};
+
+function paginateRows(key, rows){
+  const total = rows.length;
+  if(pagerTotals[key] !== total){
+    pagerState[key] = 1;
+    pagerTotals[key] = total;
+  }
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  let page = pagerState[key] || 1;
+  if(page > pages) page = pages;
+  pagerState[key] = page;
+  const start = (page - 1) * PAGE_SIZE;
+  return { rows: rows.slice(start, start + PAGE_SIZE), page: page, pages: pages, total: total, start: start };
+}
+
+function renderPager(key, meta, rerender){
+  pagerRerender[key] = rerender;
+  const tbody = document.getElementById(key + 'TableBody');
+  if(!tbody) return;
+  const table = tbody.closest('table');
+  if(!table) return;
+
+  let bar = document.getElementById(key + 'Pager');
+  if(!bar){
+    bar = document.createElement('div');
+    bar.id = key + 'Pager';
+    bar.className = 'pager';
+    table.parentNode.insertBefore(bar, table.nextSibling);
+  }
+
+  // A single page needs no controls at all.
+  if(meta.total <= PAGE_SIZE){ bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+
+  const from = meta.start + 1;
+  const to = Math.min(meta.start + PAGE_SIZE, meta.total);
+  bar.innerHTML =
+    '<span class="pager-count">' + from + '\u2013' + to + ' of ' + meta.total + '</span>' +
+    '<span class="pager-controls">' +
+      '<button type="button" class="pager-btn" data-pg="prev"' + (meta.page === 1 ? ' disabled' : '') + '>Previous</button>' +
+      '<span class="pager-page">Page ' + meta.page + ' of ' + meta.pages + '</span>' +
+      '<button type="button" class="pager-btn" data-pg="next"' + (meta.page === meta.pages ? ' disabled' : '') + '>Next</button>' +
+    '</span>';
+
+  bar.querySelectorAll('button[data-pg]').forEach(function(b){
+    b.addEventListener('click', function(){
+      pagerState[key] = this.dataset.pg === 'prev'
+        ? Math.max(1, meta.page - 1)
+        : Math.min(meta.pages, meta.page + 1);
+      const fn = pagerRerender[key];
+      if(fn) fn();
+      const t = document.getElementById(key + 'TableBody');
+      if(t && t.closest('.panel')) t.closest('.panel').scrollIntoView({ block:'start', behavior:'smooth' });
+    });
+  });
+}
+
+/* -----------------------------------------------------------------------
    VIEW HISTORY
    Every tab used to render without touching history, so the browser's back
    button left the app entirely instead of going back a screen. showView()
@@ -4128,7 +4214,9 @@ function renderReferralTable(filterText){
   }
   document.getElementById('referralEmptyState').style.display = 'none';
 
-  document.getElementById('referralTableBody').innerHTML = rows.map(p => {
+  const __pg_referral = paginateRows('referral', rows);
+      renderPager('referral', __pg_referral, function(){ renderReferralTable(); });
+      document.getElementById('referralTableBody').innerHTML = __pg_referral.rows.map(p => {
     const activity = partnerActivityStatus(p);
     const rate = linkConversionRate(p);
     let followupCell = '—';
@@ -5040,7 +5128,9 @@ function renderAgentsTable(filterText){
   }
   document.getElementById('agentsEmptyState').style.display = 'none';
 
-  document.getElementById('agentsTableBody').innerHTML = rows.map(p => {
+  const __pg_agents = paginateRows('agents', rows);
+      renderPager('agents', __pg_agents, function(){ renderAgentsTable(); });
+      document.getElementById('agentsTableBody').innerHTML = __pg_agents.rows.map(p => {
     const activity = partnerActivityStatus(p);
     return `
     <tr onclick="openReferralDetail('${p.id}')">
@@ -5070,7 +5160,9 @@ function renderResellersTable(filterText){
   }
   document.getElementById('resellersEmptyState').style.display = 'none';
 
-  document.getElementById('resellersTableBody').innerHTML = rows.map(p => {
+  const __pg_resellers = paginateRows('resellers', rows);
+      renderPager('resellers', __pg_resellers, function(){ renderResellersTable(); });
+      document.getElementById('resellersTableBody').innerHTML = __pg_resellers.rows.map(p => {
     const activity = partnerActivityStatus(p);
     return `
     <tr onclick="openReferralDetail('${p.id}')">
@@ -7720,7 +7812,9 @@ function renderAccountsTable(filterText){
   }
   document.getElementById('accountsEmptyState').style.display = 'none';
 
-  document.getElementById('accountsTableBody').innerHTML = rows.map(a => {
+  const __pg_accounts = paginateRows('accounts', rows);
+      renderPager('accounts', __pg_accounts, function(){ renderAccountsTable(); });
+      document.getElementById('accountsTableBody').innerHTML = __pg_accounts.rows.map(a => {
     const stage = stageInfo(a.stage);
     const phase = stage.phase ? PHASES.find(p => p.key === stage.phase) : null;
     const color = phase ? phase.color : (stage.color || '#2453C4');
@@ -7826,7 +7920,9 @@ function renderApplicationsTable(filterText){
   }
   document.getElementById('applicationsEmptyState').style.display = 'none';
 
-  document.getElementById('applicationsTableBody').innerHTML = rows.map(a => {
+  const __pg_applications = paginateRows('applications', rows);
+      renderPager('applications', __pg_applications, function(){ renderApplicationsTable(); });
+      document.getElementById('applicationsTableBody').innerHTML = __pg_applications.rows.map(a => {
     const linkedAccount = a.linked_account_id ? LEADS.find(l => l.id === a.linked_account_id) : null;
     let linkCell;
     if(linkedAccount){
@@ -8206,7 +8302,9 @@ function renderColdLeadsTable(filterText){
   }
   document.getElementById('coldLeadsEmptyState').style.display = 'none';
 
-  document.getElementById('coldLeadsTableBody').innerHTML = rows.map(c => {
+  const __pg_coldLeads = paginateRows('coldLeads', rows);
+      renderPager('coldLeads', __pg_coldLeads, function(){ renderColdLeadsTable(); });
+      document.getElementById('coldLeadsTableBody').innerHTML = __pg_coldLeads.rows.map(c => {
     const temp = temperatureInfo(c.temperature);
     const fu = coldLeadFollowupStatus(c);
     const method = FOLLOWUP_METHODS[c.follow_up_method || 'none'];
@@ -10030,7 +10128,9 @@ function renderSubscriptionReport(){
   }
   document.getElementById('repEmptyState').style.display = 'none';
 
-  document.getElementById('repTableBody').innerHTML = items.map(i => `
+  const __pg_rep = paginateRows('rep', items);
+      renderPager('rep', __pg_rep, function(){ renderSubscriptionReport(); });
+      document.getElementById('repTableBody').innerHTML = __pg_rep.rows.map(i => `
     <tr onclick="openSubscriptionQuickView('${i.leadId}')">
       <td class="name-cell">${i.business_name}</td>
       <td><span class="pill ${i.converted ? 'pill-status-active' : 'pill-referral'}">${i.converted ? 'Account' : 'Lead'}</span></td>
@@ -10134,7 +10234,9 @@ function renderCollectionsReport(){
   }
   document.getElementById('colEmptyState').style.display = 'none';
 
-  document.getElementById('colTableBody').innerHTML = items.map(i => `
+  const __pg_col = paginateRows('col', items);
+      renderPager('col', __pg_col, function(){ renderCollectionsReport(); });
+      document.getElementById('colTableBody').innerHTML = __pg_col.rows.map(i => `
     <tr onclick="showView('accounts'); openLeadDetail('${i.leadId}');">
       <td class="name-cell">${i.business_name}</td>
       <td><span class="pill ${i.in_collections ? 'pill-status-overdue' : 'pill-status-active'}">${i.in_collections ? 'In collections' : 'Resolved'}</span></td>
