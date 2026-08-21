@@ -4,6 +4,21 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>EPAY POS Control Center</title>
+<script>
+/* Applied before the stylesheet renders so there is no flash of the light
+   theme on load. Falls back to the OS setting when nothing has been chosen,
+   and follows the OS live until an explicit choice is made. */
+(function(){
+  try {
+    var saved = localStorage.getItem('epay-theme');
+    var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    var theme = saved || (prefersDark ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', theme);
+  } catch(e){
+    document.documentElement.setAttribute('data-theme', 'light');
+  }
+})();
+</script>
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="icon" href="/favicon-16.png" sizes="16x16" type="image/png">
@@ -32,6 +47,64 @@
     --radius:12px;
     --brand-accent:var(--cyan-500);
     --brand-accent-2:var(--indigo-500);
+
+    /* Surfaces, borders and status colours that used to be written as
+       literals throughout the stylesheet. Naming them is what makes a dark
+       theme possible: the dark block below only has to redefine these. */
+    --surface-2:#F8FAFD;
+    --surface-3:#FAFCFF;
+    --hover:#F1F5FC;
+    --accent-soft:#EAF2FF;
+    --line-strong:#C3D2EA;
+    --ok-text:#0F8A5F;   --ok-bg:#E4F9F1;   --ok-border:#BFE6D4;
+    --warn-text:#B4720B; --warn-bg:#FFF8EC; --warn-border:#F3D9A8;
+    --err-text:#C23A3F;  --err-bg:#FDECEC;  --err-border:#F3C6C6;
+    --info-text:#2453C4; --info-bg:#EAF1FD; --info-border:#D8E4F7;
+
+    /* An email preview shows what a recipient will get in their own mail
+       client, so it stays light in both themes and never follows these. */
+    --email-navy:#0B1B38;
+    --email-bg:#F4F7FB;
+    --email-card:#FFFFFF;
+    --email-heading:#142850;
+    --email-body:#22406F;
+    --email-muted:#5B6B8C;
+
+    color-scheme:light;
+  }
+
+  /* =====================================================================
+     DARK THEME
+     Applied by data-theme="dark" on <html>. Only tokens are redefined —
+     no component rule is duplicated, which is the whole reason the
+     literals above were named first.
+     ===================================================================== */
+  html[data-theme="dark"]{
+    --navy-900:#E9EEF7;
+    --navy-700:#DCE5F2;
+    --navy-500:#A8B6CD;
+    --slate-500:#94A2B9;
+    --slate-300:#5E6C85;
+
+    --bg:#0B1220;
+    --card:#141D2E;
+    --line:#27334A;
+    --surface-2:#101828;
+    --surface-3:#182235;
+    --hover:#1D2840;
+    --accent-soft:#17294B;
+    --line-strong:#35435D;
+
+    --ok-text:#4ADE9E;   --ok-bg:#10301F;   --ok-border:#1E5238;
+    --warn-text:#F1B94D; --warn-bg:#2E2412; --warn-border:#57411A;
+    --err-text:#FF8085;  --err-bg:#33191C;  --err-border:#5C2A2E;
+    --info-text:#84A6FF; --info-bg:#16233E; --info-border:#2A3B62;
+
+    --green:#2FD9A6;
+    --red:#FF6B70;
+    --amber:#F5A623;
+
+    color-scheme:dark;
   }
   [data-brand="atm"]{
     --brand-accent:#2FD9A6;
@@ -53,12 +126,12 @@
   /* ---------- LOGIN ---------- */
   #login-screen{
     min-height:100vh;display:flex;align-items:center;justify-content:center;
-    background:#FFFFFF;
+    background:var(--card);
     position:relative; overflow:hidden;
   }
   #login-screen .peaks{position:absolute;bottom:0;left:0;width:100%;opacity:.5;pointer-events:none;}
   .login-card{
-    position:relative;z-index:2;width:380px;background:#fff;
+    position:relative;z-index:2;width:380px;background:var(--card);
     border:1px solid var(--line);
     border-radius:16px;padding:40px 36px;color:var(--navy-700);
     box-shadow:0 30px 60px -20px rgba(20,40,80,0.14);
@@ -79,16 +152,16 @@
     background:none;border:none;padding:5px 8px;border-radius:6px;
     font-size:11.5px;font-weight:600;letter-spacing:.3px;color:var(--slate-500);
   }
-  .pw-toggle:hover{color:var(--brand-accent-2);background:#EEF3FB;}
-  .caps-hint{margin-top:6px;font-size:11.5px;font-weight:500;color:#B7791F;}
-  .field input.invalid{border-color:var(--red);background:#FEF7F7;}
+  .pw-toggle:hover{color:var(--brand-accent-2);background:var(--hover);}
+  .caps-hint{margin-top:6px;font-size:11.5px;font-weight:500;color:var(--warn-text);}
+  .field input.invalid{border-color:var(--red);background:var(--err-bg);}
   .login-alt{text-align:center;margin:16px 0 0;font-size:12.5px;color:var(--slate-500);}
   .login-alt a{color:var(--brand-accent-2);font-weight:600;text-decoration:none;}
   .login-alt a:hover{text-decoration:underline;}
   .sent-mark{
     width:52px;height:52px;border-radius:50%;margin:0 auto 18px;
     display:flex;align-items:center;justify-content:center;
-    background:#EAF7F1;color:var(--green);
+    background:var(--ok-bg);color:var(--green);
   }
   .sent-mark svg{width:24px;height:24px;}
   #forgotSentScreen{text-align:center;}
@@ -144,7 +217,7 @@
   .field label{display:block;font-size:11.5px;color:var(--slate-500);margin-bottom:6px;letter-spacing:.3px;text-transform:uppercase;}
   .field input, .field select{
     width:100%;padding:11px 12px;border-radius:8px;border:1px solid var(--line);
-    background:#F8FAFD;color:var(--navy-700);font-size:14px;outline:none;
+    background:var(--surface-2);color:var(--navy-700);font-size:14px;outline:none;
   }
   .field input:focus{border-color:var(--brand-accent-2);}
   .field input::placeholder{color:var(--slate-300);}
@@ -152,7 +225,7 @@
   /* ---------- MODERN SELECT (applies to every <select> app-wide) ---------- */
   select{
     appearance:none !important; -webkit-appearance:none !important; -moz-appearance:none !important;
-    background-color:#fff !important;
+    background-color:var(--card) !important;
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235B6B8C' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") !important;
     background-repeat:no-repeat !important;
     background-position:right 11px center !important;
@@ -167,16 +240,16 @@
     cursor:pointer !important;
     transition:border-color .15s ease, box-shadow .15s ease, background-color .15s ease !important;
   }
-  select:hover{border-color:var(--brand-accent-2) !important; background-color:#FAFCFF !important;}
+  select:hover{border-color:var(--brand-accent-2) !important; background-color:var(--surface-3) !important;}
   select:focus{outline:none !important; border-color:var(--brand-accent-2) !important; box-shadow:0 0 0 3px rgba(42,63,224,0.12) !important;}
   [data-brand="atm"] select:focus{box-shadow:0 0 0 3px rgba(14,159,122,0.14) !important;}
   select:disabled{opacity:.5 !important; cursor:default !important;}
-  select option{color:var(--navy-700); background:#fff;}
+  select option{color:var(--navy-700); background:var(--card);}
 
   .brand-toggle{display:flex;gap:8px;margin-bottom:22px;}
   .brand-toggle button{
     flex:1;padding:9px;border-radius:8px;border:1px solid var(--line);
-    background:#fff;color:var(--slate-500);font-size:12.5px;font-weight:600;letter-spacing:.3px;
+    background:var(--card);color:var(--slate-500);font-size:12.5px;font-weight:600;letter-spacing:.3px;
   }
   .brand-toggle button.active{background:var(--brand-accent-2);color:#fff;border-color:var(--brand-accent-2);}
   .btn-primary{
@@ -186,14 +259,14 @@
   }
   .btn-primary:hover{filter:brightness(1.08);}
   .login-note{margin-top:16px;font-size:11.5px;color:var(--slate-300);line-height:1.5;}
-  .error-text{color:#C23A3F;font-size:12px;margin:-6px 0 12px;}
+  .error-text{color:var(--err-text);font-size:12px;margin:-6px 0 12px;}
 
   /* ---------- APP SHELL ---------- */
   #app-screen{display:none;min-height:100vh;}
   .shell{display:grid;grid-template-columns:248px 1fr;min-height:100vh;transition:grid-template-columns .2s ease;}
   .shell.sidebar-collapsed{grid-template-columns:0 1fr;}
   .sidebar{
-    background:#fff;color:var(--navy-700);display:flex;flex-direction:column;
+    background:var(--card);color:var(--navy-700);display:flex;flex-direction:column;
     position:sticky;top:0;height:100vh;border-right:1px solid var(--line);
     width:248px;overflow:hidden;transition:width .2s ease, opacity .15s ease;
   }
@@ -206,7 +279,7 @@
   #sidebarBackdrop{display:none;}
   .sidebar-header{padding:18px 20px 14px;border-bottom:1px solid var(--line);}
   .sidebar-header .login-mark{margin-bottom:14px;}
-  .brand-switch{display:flex;background:#F1F5FC;border-radius:8px;padding:3px;font-size:11px;}
+  .brand-switch{display:flex;background:var(--hover);border-radius:8px;padding:3px;font-size:11px;}
   .brand-switch button{flex:1;padding:6px 4px;border:none;background:transparent;color:var(--navy-500);border-radius:6px;font-weight:600;letter-spacing:.2px;}
   .brand-switch button.active{background:var(--brand-accent-2);color:#fff;}
   nav.nav-main{flex:1;padding:14px 12px;overflow-y:auto;}
@@ -227,20 +300,20 @@
     white-space:nowrap;
   }
   .nav-item svg{width:16px;height:16px;flex-shrink:0;opacity:.85;stroke:var(--brand-accent-2);}
-  .nav-item:hover{background:#F1F5FC;color:var(--navy-700);}
-  .nav-item.active{background:#EAF2FF;color:var(--navy-700);box-shadow:inset 3px 0 0 var(--brand-accent-2);}
+  .nav-item:hover{background:var(--hover);color:var(--navy-700);}
+  .nav-item.active{background:var(--accent-soft);color:var(--navy-700);box-shadow:inset 3px 0 0 var(--brand-accent-2);}
   .nav-item.active svg{stroke:var(--brand-accent-2);}
-  .nav-item .soon{margin-left:auto;font-size:9px;background:#EAF2FF;color:var(--brand-accent-2);padding:2px 6px;border-radius:20px;letter-spacing:.4px;}
+  .nav-item .soon{margin-left:auto;font-size:9px;background:var(--accent-soft);color:var(--brand-accent-2);padding:2px 6px;border-radius:20px;letter-spacing:.4px;}
   .sidebar-footer{padding:14px 18px 18px;border-top:1px solid var(--line);font-size:12px;color:var(--slate-500);display:flex;justify-content:space-between;align-items:center;}
   .sidebar-footer button{background:none;border:none;color:var(--brand-accent-2);font-size:11.5px;text-decoration:underline;cursor:pointer;}
 
   .preview-as-wrap{position:relative;}
   .preview-as-trigger{
     width:100%;display:flex;align-items:center;gap:9px;padding:7px 9px;
-    background:#F8FAFD;border:1px solid var(--line);border-radius:9px;cursor:pointer;text-align:left;
+    background:var(--surface-2);border:1px solid var(--line);border-radius:9px;cursor:pointer;text-align:left;
     transition:border-color .15s ease, background .15s ease;
   }
-  .preview-as-trigger:hover{border-color:var(--brand-accent-2);background:#F1F5FC;}
+  .preview-as-trigger:hover{border-color:var(--brand-accent-2);background:var(--hover);}
   .preview-as-trigger.open{border-color:var(--brand-accent-2);box-shadow:0 0 0 3px rgba(42,63,224,0.1);}
   .preview-as-avatar{
     flex-shrink:0;width:26px;height:26px;border-radius:50%;
@@ -256,29 +329,35 @@
 
   .preview-as-menu{
     display:none;position:absolute;bottom:calc(100% + 6px);left:0;width:100%;
-    background:#fff;border:1px solid var(--line);border-radius:10px;
+    background:var(--card);border:1px solid var(--line);border-radius:10px;
     box-shadow:0 12px 28px -8px rgba(20,40,80,0.22);overflow:hidden;z-index:60;
     max-height:260px;overflow-y:auto;
   }
   .preview-as-menu.open{display:block;}
   .preview-as-option{
     display:flex;align-items:center;gap:9px;padding:9px 10px;cursor:pointer;
-    border-bottom:1px solid #F1F5FC;
+    border-bottom:1px solid var(--hover);
   }
   .preview-as-option:last-child{border-bottom:none;}
-  .preview-as-option:hover{background:#F8FAFD;}
-  .preview-as-option.selected{background:#EAF2FF;}
+  .preview-as-option:hover{background:var(--surface-2);}
+  .preview-as-option.selected{background:var(--accent-soft);}
   .preview-as-option .preview-as-avatar{width:24px;height:24px;font-size:10px;}
   .preview-as-option .opt-name{font-size:12.5px;font-weight:600;color:var(--navy-700);}
   .preview-as-option .opt-role{font-size:10.5px;margin-top:1px;}
 
 
-  .main{padding:0 34px 60px;}
+  /* min-width:0 is load-bearing. A grid item defaults to min-width:auto,
+     which means this column refuses to shrink below its content's min-content
+     width — so a wide table pushed the column past the viewport and the whole
+     page scrolled sideways. .panel already sets overflow-x:auto to scroll wide
+     tables inside themselves; it could never do it while the column it lives
+     in kept growing to fit them. */
+  .main{padding:0 34px 60px;min-width:0;}
 
   .topnav{
     display:flex;justify-content:space-between;align-items:center;height:56px;
     margin:0 -34px 24px;padding:0 34px;border-bottom:1px solid var(--line);
-    position:sticky;top:0;background:#fff;z-index:40;
+    position:sticky;top:0;background:var(--card);z-index:40;
   }
   #mirrorBanner{
     display:flex;align-items:center;gap:12px;background:linear-gradient(90deg,var(--brand-accent-2),var(--brand-accent));
@@ -300,7 +379,7 @@
     padding:11px 12px;font-size:12.5px;line-height:1.4;box-shadow:0 10px 28px -8px rgba(0,0,0,0.35);
     animation:toastIn .18s ease;
   }
-  .error-toast svg{width:15px;height:15px;flex-shrink:0;margin-top:1px;color:#F4A6AE;}
+  .error-toast svg{width:15px;height:15px;flex-shrink:0;margin-top:1px;color:var(--err-border);}
   .error-toast span{flex:1;}
   .error-toast button{
     background:none;border:none;color:rgba(255,255,255,0.6);font-size:15px;line-height:1;cursor:pointer;
@@ -311,18 +390,18 @@
 
   .sidebar-toggle-btn{
     display:flex;align-items:center;justify-content:center;width:34px;height:34px;
-    border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--navy-500);cursor:pointer;
+    border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--navy-500);cursor:pointer;
   }
   .sidebar-toggle-btn:hover{border-color:var(--brand-accent-2);color:var(--brand-accent-2);}
-  .sidebar-toggle-btn.active{background:#EAF2FF;border-color:var(--brand-accent-2);color:var(--brand-accent-2);}
+  .sidebar-toggle-btn.active{background:var(--accent-soft);border-color:var(--brand-accent-2);color:var(--brand-accent-2);}
   .sidebar-toggle-btn svg{width:18px;height:18px;}
   .profile-menu-wrap{position:relative;}
   .profile-btn{
     display:flex;align-items:center;gap:9px;padding:5px 10px 5px 5px;
-    background:#fff;border:1px solid var(--line);border-radius:24px;cursor:pointer;
+    background:var(--card);border:1px solid var(--line);border-radius:24px;cursor:pointer;
     transition:border-color .15s ease, background .15s ease;
   }
-  .profile-btn:hover{border-color:var(--brand-accent-2);background:#F8FAFD;}
+  .profile-btn:hover{border-color:var(--brand-accent-2);background:var(--surface-2);}
   .profile-btn.open{border-color:var(--brand-accent-2);box-shadow:0 0 0 3px rgba(42,63,224,0.1);}
   .profile-btn-info{display:flex;flex-direction:column;gap:1px;text-align:left;}
   .profile-btn-name{font-size:12.5px;font-weight:600;color:var(--navy-700);line-height:1.2;}
@@ -332,7 +411,7 @@
 
   .profile-dropdown{
     display:none;position:absolute;top:calc(100% + 8px);right:0;width:250px;
-    background:#fff;border:1px solid var(--line);border-radius:12px;
+    background:var(--card);border:1px solid var(--line);border-radius:12px;
     box-shadow:0 14px 32px -10px rgba(20,40,80,0.24);z-index:60;padding:10px;
   }
   .profile-dropdown.open{display:block;}
@@ -346,7 +425,7 @@
   .topbar{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;flex-wrap:wrap;gap:14px;}
   .topbar h1{font-size:23px;margin:0 0 4px;}
   .topbar .subtext{color:var(--slate-500);font-size:13.5px;margin:0;}
-  .btn{padding:10px 16px;border-radius:8px;border:1px solid var(--line);background:#fff;font-size:13.5px;font-weight:600;color:var(--navy-700);}
+  .btn{padding:10px 16px;border-radius:8px;border:1px solid var(--line);background:var(--card);font-size:13.5px;font-weight:600;color:var(--navy-700);}
   .btn:hover{border-color:var(--brand-accent-2);}
   .btn-accent{background:linear-gradient(90deg,var(--brand-accent-2),var(--brand-accent));color:#fff;border:none;}
   .btn-accent:hover{filter:brightness(1.06);}
@@ -364,13 +443,13 @@
   .stat-card .label{font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--slate-500);margin-bottom:8px;}
   .stat-card .value{font-size:26px;font-weight:700;font-family:'Space Grotesk';}
   .stat-card .delta{font-size:12px;color:var(--green);margin-top:4px;}
-  .stat-card.attention{border-color:#F3C77A;background:#FFFBF3;}
-  .stat-card.attention .value{color:#B4720B;}
+  .stat-card.attention{border-color:var(--warn-border);background:var(--warn-bg);}
+  .stat-card.attention .value{color:var(--warn-text);}
 
   .quick-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;padding:18px 20px;}
   .quick-action-btn{
     display:flex;flex-direction:column;align-items:flex-start;gap:10px;padding:16px;
-    border:1px solid var(--line);border-radius:11px;background:#FAFCFF;cursor:pointer;text-align:left;
+    border:1px solid var(--line);border-radius:11px;background:var(--surface-3);cursor:pointer;text-align:left;
     transition:border-color .15s ease, box-shadow .15s ease, transform .1s ease;
   }
   .quick-action-btn:hover{border-color:var(--brand-accent-2);box-shadow:0 6px 16px -6px rgba(42,63,224,0.2);transform:translateY(-1px);}
@@ -423,26 +502,46 @@
   .pager-btn:disabled{opacity:.45;cursor:not-allowed;}
   .fu-search-create{border-top:1px solid var(--line);color:var(--brand-accent-2);font-weight:600;}
   .fu-search-create .frs-sub{color:var(--slate-500);font-weight:400;}
+  .theme-row{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    width:100%;padding:10px 14px;background:none;border:none;
+    font-size:13px;color:var(--navy-700);text-align:left;
+  }
+  .theme-row:hover{background:var(--hover);}
+  .theme-row-label{display:flex;align-items:center;gap:9px;}
+  .theme-icon{width:15px;height:15px;stroke:var(--slate-500);}
+  .theme-switch{
+    position:relative;width:34px;height:19px;border-radius:20px;
+    background:var(--line-strong);flex-shrink:0;transition:background .18s ease;
+  }
+  .theme-knob{
+    position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;
+    background:#fff;transition:transform .18s ease;
+  }
+  html[data-theme="dark"] .theme-switch{background:var(--brand-accent-2);}
+  html[data-theme="dark"] .theme-knob{transform:translateX(15px);}
+  html[data-theme="dark"] .theme-icon{stroke:var(--brand-accent);}
+
   .fu-create-plus{
     display:inline-flex;align-items:center;justify-content:center;
     width:16px;height:16px;border-radius:50%;margin-right:5px;
     background:var(--brand-accent-2);color:#fff;font-size:12px;line-height:1;
   }
-  thead th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--slate-500);padding:10px 20px;border-bottom:1px solid var(--line);background:#FAFCFF;}
+  thead th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--slate-500);padding:10px 20px;border-bottom:1px solid var(--line);background:var(--surface-3);}
   tbody td{padding:13px 20px;border-bottom:1px solid var(--line);vertical-align:middle;}
   tbody tr:last-child td{border-bottom:none;}
-  tbody tr:hover{background:#FAFCFF;cursor:pointer;}
+  tbody tr:hover{background:var(--surface-3);cursor:pointer;}
   .name-cell{font-weight:600;color:var(--navy-700);}
   .name-cell .sub{font-weight:400;color:var(--slate-500);font-size:12px;}
   .pill{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.2px;}
-  .pill-referral{background:#E7F0FF;color:#2453C4;}
-  .pill-agent-auth{background:#E4F9F1;color:#0F8A5F;}
-  .pill-agent-basic{background:#FFF3E0;color:#B4720B;}
-  .pill-status-active{background:#E4F9F1;color:#0F8A5F;}
-  .pill-status-overdue{background:#FDE7E7;color:#C23A3F;}
-  .pill-status-upcoming{background:#FFF3E0;color:#B4720B;}
+  .pill-referral{background:var(--accent-soft);color:var(--info-text);}
+  .pill-agent-auth{background:var(--ok-bg);color:var(--ok-text);}
+  .pill-agent-basic{background:var(--warn-bg);color:var(--warn-text);}
+  .pill-status-active{background:var(--ok-bg);color:var(--ok-text);}
+  .pill-status-overdue{background:var(--err-bg);color:var(--err-text);}
+  .pill-status-upcoming{background:var(--warn-bg);color:var(--warn-text);}
   .link-chip{
-    display:inline-flex;align-items:center;gap:8px;background:#F1F5FC;border:1px dashed #C3D2EA;
+    display:inline-flex;align-items:center;gap:8px;background:var(--hover);border:1px dashed var(--line-strong);
     border-radius:7px;padding:5px 10px;font-size:12px;color:var(--navy-500);
   }
   .link-chip button{border:none;background:none;color:var(--indigo-500);font-weight:600;font-size:11.5px;}
@@ -455,7 +554,7 @@
   .ai-search-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0 16px;}
   .ai-enrich-toggles{display:flex;flex-wrap:wrap;gap:8px;}
   .ai-cost-estimate{
-    margin-top:16px;padding:14px 16px;border:1px solid var(--line);border-radius:11px;background:#F8FAFD;
+    margin-top:16px;padding:14px 16px;border:1px solid var(--line);border-radius:11px;background:var(--surface-2);
     display:flex;flex-wrap:wrap;gap:20px;align-items:center;
   }
   .ai-cost-estimate .ace-stat{display:flex;flex-direction:column;gap:2px;}
@@ -469,7 +568,7 @@
   }
   .integration-row:last-child{border-bottom:none;}
   .integration-icon{
-    flex-shrink:0;width:38px;height:38px;border-radius:10px;background:#F1F5FC;color:var(--brand-accent-2);
+    flex-shrink:0;width:38px;height:38px;border-radius:10px;background:var(--hover);color:var(--brand-accent-2);
     display:flex;align-items:center;justify-content:center;
   }
   .integration-icon svg{width:19px;height:19px;}
@@ -477,8 +576,8 @@
   .integration-info .ii-name{font-size:13.5px;font-weight:700;color:var(--navy-700);display:flex;align-items:center;gap:8px;}
   .integration-info .ii-desc{font-size:12px;color:var(--slate-500);margin-top:2px;}
   .integration-status{font-size:10.5px;font-weight:700;padding:2px 9px;border-radius:20px;}
-  .integration-status.connected{background:#E4F9F1;color:#0F8A5F;}
-  .integration-status.not-connected{background:#F1F5FC;color:var(--slate-500);}
+  .integration-status.connected{background:var(--ok-bg);color:var(--ok-text);}
+  .integration-status.not-connected{background:var(--hover);color:var(--slate-500);}
 
   /* ---------- CALENDAR ---------- */
   .cal-toolbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px;}
@@ -491,8 +590,8 @@
     padding:6px;cursor:pointer;transition:background .12s ease;
   }
   .cal-day:nth-child(7n){border-right:none;}
-  .cal-day:hover{background:#FAFCFF;}
-  .cal-day.outside{background:#FAFBFD;color:var(--slate-300);}
+  .cal-day:hover{background:var(--surface-3);}
+  .cal-day.outside{background:var(--surface-3);color:var(--slate-300);}
   .cal-day.today .cal-day-num{background:var(--brand-accent-2);color:#fff;}
   .cal-day-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;font-size:12px;font-weight:600;color:var(--navy-700);}
   .cal-event-chip{
@@ -504,7 +603,7 @@
 
   .ai-enrich-chip{
     display:flex;align-items:center;gap:7px;padding:8px 12px;border:1px solid var(--line);border-radius:20px;
-    font-size:12.5px;color:var(--navy-700);cursor:pointer;background:#FAFCFF;
+    font-size:12.5px;color:var(--navy-700);cursor:pointer;background:var(--surface-3);
   }
   .ai-enrich-chip input{width:auto;accent-color:var(--brand-accent-2);}
   .ai-results-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;padding:18px 20px;}
@@ -519,39 +618,39 @@
   .ai-result-card .arc-social{display:flex;gap:8px;margin-top:10px;}
   .ai-result-card .arc-social a{
     display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:7px;
-    background:#F1F5FC;color:var(--brand-accent-2);
+    background:var(--hover);color:var(--brand-accent-2);
   }
   .ai-result-card .arc-social svg{width:14px;height:14px;}
   .ai-result-card .arc-notes{font-size:11px;color:var(--slate-300);margin-top:10px;font-style:italic;}
 
   /* ---------- LEADS PIPELINE ---------- */
-  .phase-toggle{display:flex;gap:6px;background:#F1F5FC;border:1px solid var(--line);border-radius:13px;padding:5px;width:fit-content;margin-bottom:18px;}
+  .phase-toggle{display:flex;gap:6px;background:var(--hover);border:1px solid var(--line);border-radius:13px;padding:5px;width:fit-content;margin-bottom:18px;}
   .phase-toggle button{
     display:flex;align-items:center;gap:9px;padding:10px 18px;border-radius:9px;border:none;
     background:transparent;font-size:13px;font-weight:600;color:var(--slate-500);cursor:pointer;
     transition:background .15s ease, color .15s ease;
   }
   .phase-toggle button:hover{color:var(--navy-700);}
-  .phase-toggle button.active{background:#fff;color:var(--navy-700);box-shadow:0 3px 10px -3px rgba(20,40,80,0.18);}
+  .phase-toggle button.active{background:var(--card);color:var(--navy-700);box-shadow:0 3px 10px -3px rgba(20,40,80,0.18);}
   .phase-toggle .phase-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
-  .phase-toggle .count-badge{font-size:10.5px;font-weight:700;padding:1px 8px;border-radius:20px;background:#E7ECF6;color:var(--slate-500);}
+  .phase-toggle .count-badge{font-size:10.5px;font-weight:700;padding:1px 8px;border-radius:20px;background:var(--line);color:var(--slate-500);}
   .phase-toggle button.active .count-badge{background:var(--brand-accent-2);color:#fff;}
 
-  .view-toggle{display:flex;gap:4px;background:#F1F5FC;border:1px solid var(--line);border-radius:10px;padding:4px;}
+  .view-toggle{display:flex;gap:4px;background:var(--hover);border:1px solid var(--line);border-radius:10px;padding:4px;}
   .view-toggle-btn{padding:7px 14px;border-radius:7px;border:none;background:transparent;font-size:12.5px;font-weight:600;color:var(--slate-500);cursor:pointer;transition:background .15s ease, color .15s ease;}
   .view-toggle-btn:hover{color:var(--navy-700);}
-  .view-toggle-btn.active{background:#fff;color:var(--navy-700);box-shadow:0 3px 10px -3px rgba(20,40,80,0.18);}
+  .view-toggle-btn.active{background:var(--card);color:var(--navy-700);box-shadow:0 3px 10px -3px rgba(20,40,80,0.18);}
 
   .office-board{display:flex;gap:14px;overflow-x:auto;padding-bottom:8px;align-items:start;}
-  .office-column{background:#F7F9FC;border:1px solid var(--line);border-radius:12px;min-width:270px;max-width:270px;display:flex;flex-direction:column;max-height:calc(100vh - 260px);flex-shrink:0;}
+  .office-column{background:var(--surface-3);border:1px solid var(--line);border-radius:12px;min-width:270px;max-width:270px;display:flex;flex-direction:column;max-height:calc(100vh - 260px);flex-shrink:0;}
   .office-head{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line);}
   .office-head .office-name{font-weight:600;font-size:13.5px;color:var(--navy-700);flex:1;}
-  .office-count{font-size:10.5px;font-weight:700;padding:1px 8px;margin-left:8px;border-radius:20px;background:#E7ECF6;color:var(--slate-500);}
+  .office-count{font-size:10.5px;font-weight:700;padding:1px 8px;margin-left:8px;border-radius:20px;background:var(--line);color:var(--slate-500);}
   .office-menu-btn{border:none;background:transparent;color:var(--slate-500);cursor:pointer;padding:4px;border-radius:6px;}
-  .office-menu-btn:hover{background:#E7ECF6;}
+  .office-menu-btn:hover{background:var(--line);}
   .office-body{padding:10px;overflow-y:auto;flex:1;min-height:80px;}
-  .office-body.drag-over{background:#EAF1FD;}
-  .team-card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;cursor:pointer;transition:box-shadow .15s ease;}
+  .office-body.drag-over{background:var(--info-bg);}
+  .team-card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;cursor:pointer;transition:box-shadow .15s ease;}
   .team-card:hover{box-shadow:0 4px 12px -4px rgba(20,40,80,0.18);}
   .team-card.dragging{opacity:.4;}
   .team-card .tc-top{display:flex;align-items:center;gap:9px;}
@@ -565,12 +664,12 @@
      (which is built for drop-target semantics, not free positioning).
      Connector lines are one SVG layer underneath, redrawn from each box's
      live position — they follow wherever a box gets dragged. */
-  .canvas-wrap{position:relative;overflow:auto;border:1px solid var(--line);border-radius:12px;background:#FAFBFD;height:calc(100vh - 300px);min-height:420px;}
+  .canvas-wrap{position:relative;overflow:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface-3);height:calc(100vh - 300px);min-height:420px;}
   .canvas-inner{position:relative;}
   .canvas-svg{position:absolute;top:0;left:0;pointer-events:none;overflow:visible;}
   .org-box{
     position:absolute;display:inline-flex;flex-direction:column;align-items:center;gap:4px;
-    background:#fff;border:1px solid var(--line);border-radius:10px;
+    background:var(--card);border:1px solid var(--line);border-radius:10px;
     padding:10px 14px;cursor:grab;width:150px;transition:box-shadow .15s ease;
     user-select:none;
   }
@@ -580,12 +679,12 @@
   .org-box-name{font-size:12.5px;font-weight:600;color:var(--navy-700);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
   .org-box-office{
     position:absolute;min-width:170px;width:auto;padding:14px 20px;border-width:2px;
-    border-color:var(--brand-accent-2);background:linear-gradient(180deg,#fff,#F7F9FC);
+    border-color:var(--brand-accent-2);background:linear-gradient(180deg,#fff,var(--surface-3));
   }
   .org-box-office .org-box-name{font-size:14px;}
   .org-box-link-btn{
     position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;
-    border:1px solid var(--line);background:#fff;font-size:10px;line-height:1;
+    border:1px solid var(--line);background:var(--card);font-size:10px;line-height:1;
     display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer;
     opacity:0;transition:opacity .1s ease;
   }
@@ -594,21 +693,21 @@
 
   .kanban-search{position:relative;max-width:280px;margin-bottom:18px;}
   .kanban-search svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:14px;height:14px;color:var(--slate-300);}
-  .kanban-search input{width:100%;padding:9px 12px 9px 32px;border-radius:9px;border:1px solid var(--line);font-size:12.5px;background:#fff;}
+  .kanban-search input{width:100%;padding:9px 12px 9px 32px;border-radius:9px;border:1px solid var(--line);font-size:12.5px;background:var(--card);}
 
   /* ---------- LIVE RECALL ---------- */
   .live-recall-search{position:relative;margin-bottom:22px;}
   .live-recall-search svg{position:absolute;left:18px;top:50%;transform:translateY(-50%);width:19px;height:19px;color:var(--slate-300);}
   .live-recall-search input{
     width:100%;padding:17px 20px 17px 50px;border-radius:14px;border:1.5px solid var(--line);
-    font-size:16px;background:#fff;box-shadow:0 4px 16px -8px rgba(20,40,80,0.1);transition:border-color .15s ease, box-shadow .15s ease;
+    font-size:16px;background:var(--card);box-shadow:0 4px 16px -8px rgba(20,40,80,0.1);transition:border-color .15s ease, box-shadow .15s ease;
   }
   .live-recall-search input:focus{outline:none;border-color:var(--brand-accent-2);box-shadow:0 4px 20px -6px rgba(42,63,224,0.22);}
   .lr-empty{text-align:center;padding:60px 20px;color:var(--slate-300);}
   .lr-empty svg{width:40px;height:40px;margin-bottom:14px;opacity:.5;}
   .lr-empty p{font-size:13.5px;}
   .lr-result-card{
-    display:flex;align-items:center;gap:14px;background:#fff;border:1px solid var(--line);border-radius:12px;
+    display:flex;align-items:center;gap:14px;background:var(--card);border:1px solid var(--line);border-radius:12px;
     padding:14px 16px;margin-bottom:10px;cursor:pointer;transition:box-shadow .15s ease, border-color .15s ease, transform .1s ease;
   }
   .lr-result-card:hover{box-shadow:0 8px 20px -10px rgba(20,40,80,0.2);border-color:var(--brand-accent-2);transform:translateY(-1px);}
@@ -623,17 +722,17 @@
 
   .fu-search-results{
     display:none;position:absolute;top:100%;left:0;right:0;margin-top:4px;z-index:20;
-    background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 28px -10px rgba(20,40,80,0.25);
+    background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 28px -10px rgba(20,40,80,0.25);
     max-height:240px;overflow-y:auto;
   }
   .fu-search-results.open{display:block;}
-  .fu-search-result{padding:10px 14px;cursor:pointer;font-size:13px;color:var(--navy-700);border-bottom:1px solid #F1F5FC;}
+  .fu-search-result{padding:10px 14px;cursor:pointer;font-size:13px;color:var(--navy-700);border-bottom:1px solid var(--hover);}
   .fu-search-result:last-child{border-bottom:none;}
-  .fu-search-result:hover{background:#F8FAFD;}
+  .fu-search-result:hover{background:var(--surface-2);}
   .fu-search-result .frs-sub{font-size:11px;color:var(--slate-500);margin-top:1px;}
   .fu-search-empty{padding:14px;font-size:12.5px;color:var(--slate-300);text-align:center;}
 
-  .lr-inline-card{background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden;}
+  .lr-inline-card{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;}
   .lr-inline-card .drawer-head{padding:22px 26px;border-bottom:1px solid var(--line);}
   .lr-inline-card .drawer-head h2{font-size:22px;}
   .lr-inline-card .drawer-close{display:none;}
@@ -662,31 +761,31 @@
 
   .phase-columns{display:grid;grid-template-columns:repeat(4, 1fr);gap:14px;align-items:start;}
   .stage-column{
-    border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff;
+    border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card);
     transition:box-shadow .15s ease;
   }
   .stage-column:hover{box-shadow:0 6px 16px -10px rgba(20,40,80,0.15);}
   .stage-head{
-    display:flex;align-items:flex-start;gap:8px;padding:12px;cursor:pointer;background:#FAFCFF;
+    display:flex;align-items:flex-start;gap:8px;padding:12px;cursor:pointer;background:var(--surface-3);
     border:none;border-bottom:1px solid var(--line);width:100%;text-align:left;
   }
-  .stage-head:hover{background:#F1F5FC;}
+  .stage-head:hover{background:var(--hover);}
   .stage-head .stage-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;margin-top:5px;}
   .stage-head .stage-name{font-size:12.5px;font-weight:700;color:var(--navy-700);white-space:normal;line-height:1.35;flex:1;}
-  .stage-head .stage-count{margin-left:auto;font-size:11px;color:var(--slate-500);background:#F1F5FC;border-radius:20px;padding:2px 9px;flex-shrink:0;}
+  .stage-head .stage-count{margin-left:auto;font-size:11px;color:var(--slate-500);background:var(--hover);border-radius:20px;padding:2px 9px;flex-shrink:0;}
   .stage-collapse-btn{border:none;background:none;color:var(--slate-300);flex-shrink:0;width:18px;height:18px;display:flex;align-items:center;justify-content:center;}
   .stage-collapse-btn svg{width:14px;height:14px;transition:transform .18s ease;}
   .stage-column.collapsed .stage-collapse-btn svg{transform:rotate(-90deg);}
   .stage-column.collapsed .stage-head{border-bottom:none;}
 
   .stage-body{
-    background:#F8FAFD;min-height:160px;
+    background:var(--surface-2);min-height:160px;
     padding:10px;display:flex;flex-direction:column;gap:9px;transition:background .12s ease;
   }
   .stage-column.collapsed .stage-body{display:none;}
-  .stage-body.drag-over{background:#EAF2FF;}
+  .stage-body.drag-over{background:var(--accent-soft);}
   .lead-card{
-    background:#fff;border:1px solid var(--line);border-radius:10px;
+    background:var(--card);border:1px solid var(--line);border-radius:10px;
     padding:11px 12px;cursor:grab;box-shadow:0 1px 3px rgba(20,40,80,0.05);
     transition:box-shadow .12s ease, transform .12s ease, border-color .12s ease;
   }
@@ -700,7 +799,7 @@
   .lead-card .lc-name{font-size:13px;font-weight:700;color:var(--navy-700);line-height:1.25;}
   .lead-card .lc-sub{font-size:11px;color:var(--slate-500);margin-top:1px;}
   .lead-card .lc-assignee{
-    flex-shrink:0;margin-left:auto;width:20px;height:20px;border-radius:50%;background:#F1F5FC;color:var(--brand-accent-2);
+    flex-shrink:0;margin-left:auto;width:20px;height:20px;border-radius:50%;background:var(--hover);color:var(--brand-accent-2);
     display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;font-family:'Space Grotesk';
     border:1.5px solid #fff;box-shadow:0 0 0 1px var(--line);
   }
@@ -709,14 +808,14 @@
     display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;
   }
   .lead-card .lc-badge svg{width:10px;height:10px;}
-  .lead-card .lc-badge.age{background:#F1F5FC;color:var(--slate-500);}
-  .lead-card .lc-badge.age.stale{background:#FDE7E7;color:#C23A3F;}
-  .lead-card .lc-badge.meeting{background:#E4F9F1;color:#0F8A5F;}
-  .lead-card .lc-badge.notes{background:#F1F5FC;color:var(--brand-accent-2);}
+  .lead-card .lc-badge.age{background:var(--hover);color:var(--slate-500);}
+  .lead-card .lc-badge.age.stale{background:var(--err-bg);color:var(--err-text);}
+  .lead-card .lc-badge.meeting{background:var(--ok-bg);color:var(--ok-text);}
+  .lead-card .lc-badge.notes{background:var(--hover);color:var(--brand-accent-2);}
   .lead-card .lc-footer{display:flex;justify-content:space-between;align-items:center;}
   .lead-card .lc-vol{font-size:11px;font-weight:600;color:var(--navy-500);}
   .lead-card .lc-advance{
-    border:none;background:#F1F5FC;color:var(--brand-accent-2);border-radius:7px;
+    border:none;background:var(--hover);color:var(--brand-accent-2);border-radius:7px;
     width:27px;height:27px;font-size:15px;font-weight:700;line-height:1;cursor:pointer;flex-shrink:0;
   }
   .lead-card .lc-advance:hover{background:var(--brand-accent-2);color:#fff;}
@@ -726,17 +825,17 @@
   .stage-stepper{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:18px;}
   .stage-chip{
     font-size:10.5px;font-weight:600;padding:5px 10px;border-radius:20px;
-    background:#F1F5FC;color:var(--slate-500);border:1px solid var(--line);
+    background:var(--hover);color:var(--slate-500);border:1px solid var(--line);
   }
   .stage-chip.current{background:var(--brand-accent-2);color:#fff;border-color:var(--brand-accent-2);}
-  .stage-chip.done{background:#E4F9F1;color:#0F8A5F;border-color:#E4F9F1;}
+  .stage-chip.done{background:var(--ok-bg);color:var(--ok-text);border-color:var(--ok-bg);}
 
   .stub-panel h3{color:var(--navy-700);margin-bottom:6px;}
 
   /* ---------- MODAL / DRAWER ---------- */
   .overlay{display:none;position:fixed;inset:0;background:rgba(11,27,56,0.45);z-index:50;align-items:stretch;justify-content:flex-end;}
   .overlay.open{display:flex;}
-  .drawer{width:440px;max-width:92vw;background:#fff;height:100%;overflow-y:auto;box-shadow:-14px 0 40px rgba(0,0,0,.15);}
+  .drawer{width:440px;max-width:92vw;background:var(--card);height:100%;overflow-y:auto;box-shadow:-14px 0 40px rgba(0,0,0,.15);}
   .drawer-head{padding:20px 24px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:flex-start;}
   .drawer-head h2{margin:0 0 3px;font-size:17px;}
   .drawer-close{border:none;background:none;font-size:20px;color:var(--slate-500);line-height:1;}
@@ -753,13 +852,13 @@
   .note-item .txt{font-size:13.5px;}
   .note-item .note-del{position:absolute;top:6px;right:0;border:none;background:none;color:var(--slate-300);font-size:11px;cursor:pointer;}
   .note-item .note-del:hover{color:var(--red);}
-  .detail-row{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #F0F3F9;font-size:13px;}
+  .detail-row{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px;}
   .detail-row .k{color:var(--slate-500);}
   .detail-row .v{font-weight:600;color:var(--navy-700);}
 
   .sensitive-row{
     display:flex;align-items:center;justify-content:space-between;gap:10px;
-    background:#F8FAFD;border:1px solid var(--line);border-radius:8px;padding:9px 11px;
+    background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:9px 11px;
   }
   .sensitive-value{font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--navy-700);letter-spacing:.3px;}
   .sensitive-eye-btn{
@@ -772,61 +871,61 @@
   .drawer-section{border:1px solid var(--line);border-radius:10px;margin-bottom:14px;overflow:hidden;}
   .drawer-section-toggle{
     display:flex;align-items:center;justify-content:space-between;width:100%;padding:11px 14px;
-    background:#F8FAFD;border:none;cursor:pointer;font-size:12.5px;font-weight:700;color:var(--navy-700);
+    background:var(--surface-2);border:none;cursor:pointer;font-size:12.5px;font-weight:700;color:var(--navy-700);
     text-transform:uppercase;letter-spacing:.3px;
   }
   .drawer-section-toggle .chevron{width:14px;height:14px;color:var(--slate-500);transition:transform .15s ease;}
   .drawer-section-toggle.open .chevron{transform:rotate(180deg);}
   .drawer-section-body{padding:14px;display:none;}
   .drawer-section-body.open{display:block;}
-  .stage-panel{background:#F1F5FC;border:1px solid #D8E4F7;border-radius:10px;padding:14px;margin-bottom:16px;}
+  .stage-panel{background:var(--hover);border:1px solid var(--line-strong);border-radius:10px;padding:14px;margin-bottom:16px;}
   .stage-panel h3{margin:0 0 4px;font-size:13.5px;color:var(--brand-accent-2);}
   .stage-panel .stage-panel-desc{font-size:11.5px;color:var(--slate-500);margin:0 0 12px;}
 
-  .email-preview{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#F4F7FB;}
-  .email-preview-header{background:var(--navy-900);padding:20px;text-align:center;}
+  .email-preview{border:1px solid var(--line-strong);border-radius:10px;overflow:hidden;background:var(--email-bg);}
+  .email-preview-header{background:var(--email-navy);padding:20px;text-align:center;}
   .email-preview-header img{height:36px;}
-  .email-preview-body{background:#fff;padding:26px 24px;}
-  .email-preview-body h2{font-size:17px;margin:0 0 14px;color:var(--navy-700);font-family:'Space Grotesk';}
-  .email-preview-body p{font-size:13.5px;line-height:1.6;color:var(--navy-500);margin:0 0 14px;}
+  .email-preview-body{background:var(--email-card);padding:26px 24px;}
+  .email-preview-body h2{font-size:17px;margin:0 0 14px;color:var(--email-heading);font-family:'Space Grotesk';}
+  .email-preview-body p{font-size:13.5px;line-height:1.6;color:var(--email-body);margin:0 0 14px;}
   .email-preview-cta{display:inline-block;background:linear-gradient(90deg,var(--brand-accent-2),var(--brand-accent));color:#fff;
     padding:12px 26px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13.5px;margin:6px 0 18px;}
-  .email-preview-footer{background:#F4F7FB;padding:16px 24px;font-size:11px;color:var(--slate-500);text-align:center;}
+  .email-preview-footer{background:var(--email-bg);padding:16px 24px;font-size:11px;color:var(--email-muted);text-align:center;}
 
   /* ---------- PUBLIC REFERRAL LANDING PAGE ---------- */
-  #landing-screen{min-height:100vh;background:linear-gradient(160deg,#F4F7FB 0%,#EAF2FF 100%);display:flex;align-items:center;justify-content:center;padding:40px 20px;}
+  #landing-screen{min-height:100vh;background:linear-gradient(160deg,var(--bg) 0%,var(--accent-soft) 100%);display:flex;align-items:center;justify-content:center;padding:40px 20px;}
   .landing-wrap{width:100%;max-width:480px;}
-  .landing-card{background:#fff;border-radius:20px;box-shadow:0 30px 60px -20px rgba(20,40,80,0.18);padding:36px 34px 30px;}
+  .landing-card{background:var(--card);border-radius:20px;box-shadow:0 30px 60px -20px rgba(20,40,80,0.18);padding:36px 34px 30px;}
   .landing-logo{text-align:center;margin-bottom:22px;}
   .landing-logo img{width:110px;height:auto;}
   .landing-h1{font-family:'Space Grotesk';font-size:21px;font-weight:700;color:var(--navy-700);margin:0 0 6px;text-align:center;}
   .landing-sub{font-size:13.5px;color:var(--slate-500);text-align:center;margin:0 0 26px;line-height:1.5;}
   .landing-field{margin-bottom:14px;}
   .landing-field label{display:block;font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;color:var(--slate-500);margin-bottom:6px;}
-  .landing-field input{width:100%;padding:12px 13px;border-radius:9px;border:1px solid var(--line);font-size:14px;background:#FAFCFF;}
-  .landing-field input:focus{border-color:var(--brand-accent-2);background:#fff;outline:none;}
-  .landing-field textarea{width:100%;padding:12px 13px;border-radius:9px;border:1px solid var(--line);font-size:14px;background:#FAFCFF;font-family:inherit;resize:vertical;min-height:70px;}
-  .landing-field textarea:focus{border-color:var(--brand-accent-2);background:#fff;outline:none;}
+  .landing-field input{width:100%;padding:12px 13px;border-radius:9px;border:1px solid var(--line);font-size:14px;background:var(--surface-3);}
+  .landing-field input:focus{border-color:var(--brand-accent-2);background:var(--card);outline:none;}
+  .landing-field textarea{width:100%;padding:12px 13px;border-radius:9px;border:1px solid var(--line);font-size:14px;background:var(--surface-3);font-family:inherit;resize:vertical;min-height:70px;}
+  .landing-field textarea:focus{border-color:var(--brand-accent-2);background:var(--card);outline:none;}
   .landing-submit{
     width:100%;padding:13px;border-radius:9px;border:none;margin-top:8px;
     background:linear-gradient(90deg,var(--brand-accent-2),var(--brand-accent));color:#fff;font-weight:700;font-size:14px;cursor:pointer;
   }
   .landing-submit:hover{filter:brightness(1.06);}
   .landing-referrer-badge{
-    display:flex;align-items:center;gap:8px;background:#F1F5FC;border-radius:20px;padding:7px 14px;
+    display:flex;align-items:center;gap:8px;background:var(--hover);border-radius:20px;padding:7px 14px;
     font-size:12px;color:var(--navy-500);width:fit-content;margin:0 auto 22px;
   }
   .landing-referrer-badge b{color:var(--navy-700);}
   .landing-success{text-align:center;padding:10px 0;}
   .landing-success .check-circle{
-    width:56px;height:56px;border-radius:50%;background:#E4F9F1;color:#0F8A5F;
+    width:56px;height:56px;border-radius:50%;background:var(--ok-bg);color:var(--ok-text);
     display:flex;align-items:center;justify-content:center;margin:0 auto 18px;
   }
   .landing-success .check-circle svg{width:28px;height:28px;}
   .landing-404{text-align:center;padding:20px 0;color:var(--slate-500);font-size:13.5px;}
 
   ::-webkit-scrollbar{width:9px;}
-  ::-webkit-scrollbar-thumb{background:#C7D2E4;border-radius:20px;}
+  ::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:20px;}
 
   /* =========================================================================
      RESPONSIVE — large monitors, laptops, iPads/tablets, phones.
@@ -940,7 +1039,7 @@
     <form id="loginFormEl" novalidate>
       <h1>Log in</h1>
       <p class="sub">Use the email and password for your portal account.</p>
-      <div id="loginError" class="form-error" style="display:none;margin-bottom:14px;padding:10px 12px;background:#FDECEC;border:1px solid #F3C6C6;border-radius:8px;color:var(--red);font-size:13px;"></div>
+      <div id="loginError" class="form-error" style="display:none;margin-bottom:14px;padding:10px 12px;background:var(--err-bg);border:1px solid var(--err-border);border-radius:8px;color:var(--red);font-size:13px;"></div>
       <div class="field">
         <label for="loginEmail">Email</label>
         <input id="loginEmail" type="email" autocomplete="username" required>
@@ -960,8 +1059,8 @@
     <form id="forgotFormEl" novalidate style="display:none;">
       <h1>Reset your password</h1>
       <p class="sub">Enter your account email and we'll send you a link to set a new one.</p>
-      <div id="forgotError" class="form-error" style="display:none;margin-bottom:14px;padding:10px 12px;background:#FDECEC;border:1px solid #F3C6C6;border-radius:8px;color:var(--red);font-size:13px;"></div>
-      <div id="forgotNotice" class="form-notice" style="display:none;margin-bottom:14px;padding:10px 12px;background:#EAF7F1;border:1px solid #BFE6D4;border-radius:8px;color:#14785A;font-size:13px;"></div>
+      <div id="forgotError" class="form-error" style="display:none;margin-bottom:14px;padding:10px 12px;background:var(--err-bg);border:1px solid var(--err-border);border-radius:8px;color:var(--red);font-size:13px;"></div>
+      <div id="forgotNotice" class="form-notice" style="display:none;margin-bottom:14px;padding:10px 12px;background:var(--ok-bg);border:1px solid var(--ok-border);border-radius:8px;color:var(--ok-text);font-size:13px;"></div>
       <div class="field">
         <label for="forgotEmail">Email</label>
         <input id="forgotEmail" type="email" autocomplete="username" required>
@@ -989,7 +1088,7 @@
     <form id="setPasswordFormEl" novalidate style="display:none;">
       <h1>Set your password</h1>
       <p class="sub">Choose a password for your portal account — this only needs to be done once.</p>
-      <div id="setPasswordError" class="form-error" style="display:none;margin-bottom:14px;padding:10px 12px;background:#FDECEC;border:1px solid #F3C6C6;border-radius:8px;color:var(--red);font-size:13px;"></div>
+      <div id="setPasswordError" class="form-error" style="display:none;margin-bottom:14px;padding:10px 12px;background:var(--err-bg);border:1px solid var(--err-border);border-radius:8px;color:var(--red);font-size:13px;"></div>
       <div class="field"><label>New password</label><input id="setPassword1" type="password" autocomplete="new-password" required minlength="8"></div>
       <div class="field"><label>Confirm password</label><input id="setPassword2" type="password" autocomplete="new-password" required minlength="8"></div>
       <button id="setPasswordSubmitBtn" type="submit" class="btn btn-accent" style="width:100%;">Set password &amp; log in</button>
@@ -1155,6 +1254,16 @@
             <div class="profile-dropdown-section-label">Preview as</div>
             <div id="previewAsMenu"></div>
             <div class="profile-dropdown-divider"></div>
+            <button type="button" class="theme-row" id="themeToggle" role="switch" aria-checked="false">
+              <span class="theme-row-label">
+                <svg class="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                </svg>
+                Night mode
+              </span>
+              <span class="theme-switch" aria-hidden="true"><span class="theme-knob"></span></span>
+            </button>
+            <div class="profile-dropdown-divider"></div>
             <div class="profile-dropdown-footer">
               <span id="sessionUserLabel">admin@epaypos.net</span>
               <button id="logoutBtn">Sign out</button>
@@ -1282,7 +1391,7 @@
           <input id="teamStructureSearch" placeholder="Find an agent or reseller...">
         </div>
         <div id="teamStructureBoard"></div>
-        <div id="linkModeBanner" style="display:none;margin-bottom:14px;padding:10px 14px;background:#EAF1FD;border:1px solid var(--brand-accent-2);border-radius:8px;font-size:13px;color:var(--navy-700);align-items:center;justify-content:space-between;gap:12px;">
+        <div id="linkModeBanner" style="display:none;margin-bottom:14px;padding:10px 14px;background:var(--info-bg);border:1px solid var(--brand-accent-2);border-radius:8px;font-size:13px;color:var(--navy-700);align-items:center;justify-content:space-between;gap:12px;">
           <span id="linkModeBannerText"></span>
           <button class="btn btn-xs" onclick="cancelLinkMode()">Cancel</button>
         </div>
@@ -1818,7 +1927,7 @@
           <div style="padding:18px 20px;">
             <div class="field"><label>Subject</label><input id="nlSubject" placeholder="e.g. What's new at EPAY POS this month"></div>
 
-            <div style="background:#F8FAFD;border:1px solid var(--line);border-radius:9px;padding:12px 14px;margin-bottom:14px;">
+            <div style="background:var(--surface-2);border:1px solid var(--line);border-radius:9px;padding:12px 14px;margin-bottom:14px;">
               <label style="display:block;font-size:11.5px;text-transform:uppercase;color:var(--slate-500);margin-bottom:8px;">Write with AI</label>
               <div class="field" style="margin-bottom:8px;"><input id="nlAiPrompt" placeholder="What's this email about? e.g. announcing free equipment upgrades for loyal customers"></div>
               <button class="btn btn-sm" id="nlAiGenerateBtn" type="button">✨ Draft with AI</button>
@@ -1926,8 +2035,8 @@
           </table>
         </div>
 
-        <div class="panel" style="border-color:#F3C7C7;">
-          <div class="panel-head" style="background:#FFF5F5;"><h2 style="color:var(--red);">Danger zone</h2></div>
+        <div class="panel" style="border-color:var(--err-border);">
+          <div class="panel-head" style="background:var(--err-bg);"><h2 style="color:var(--red);">Danger zone</h2></div>
           <div style="padding:18px 20px;display:flex;flex-direction:column;gap:12px;">
             <p style="font-size:12.5px;color:var(--slate-500);margin:0;">Bulk-purge entire lists at once. Each of these deletes permanently — there's no undo. You'll be asked to type a confirmation phrase before anything is removed.</p>
             <div class="integration-row" style="padding:0;border:none;">
@@ -2160,8 +2269,8 @@ const LS_LEADS_KEY = 'epay_crm_leads_v1';
 const LS_LEAD_NOTES_KEY = 'epay_crm_lead_notes_v1';
 
 const PHASES = [
-  { key:'inbound_boarding', label:'Inbound / Boarding', color:'#2453C4' },
-  { key:'post_boarding', label:'Post Boarding/Processing', color:'#0F8A5F' },
+  { key:'inbound_boarding', label:'Inbound / Boarding', color:'var(--info-text)' },
+  { key:'post_boarding', label:'Post Boarding/Processing', color:'var(--ok-text)' },
 ];
 const STAGES = [
   { key:'inbound_lead', label:'Inbound Lead', phase:'inbound_boarding' },
@@ -2186,13 +2295,13 @@ const STAGES = [
 // reaching the column, so a lead can sit in Installation mid-work without
 // disappearing from the board before it's actually done.
 const ATM_LEAD_STAGES = [
-  { key:'inbound_placement', label:'Inbound Placement Form/Lead', color:'#2453C4' },
-  { key:'on_hold_waiting', label:'On Hold/Waiting', color:'#B4720B' },
-  { key:'follow_up', label:'Follow Up', color:'#2453C4' },
+  { key:'inbound_placement', label:'Inbound Placement Form/Lead', color:'var(--info-text)' },
+  { key:'on_hold_waiting', label:'On Hold/Waiting', color:'var(--warn-text)' },
+  { key:'follow_up', label:'Follow Up', color:'var(--info-text)' },
   { key:'finding_loader', label:'Finding Loader (if applicable)', color:'#7C3AED' },
   { key:'create_tid', label:'Create TID/Program', color:'#0E9F7A' },
-  { key:'commission', label:'Commission', color:'#C2790F' },
-  { key:'installation', label:'Installation', color:'#0F8A5F' },
+  { key:'commission', label:'Commission', color:'var(--warn-text)' },
+  { key:'installation', label:'Installation', color:'var(--ok-text)' },
 ];
 
 // Stage keys never collide between the two systems, so both stageInfo()
@@ -2216,13 +2325,13 @@ function stagesForBrand(brand){ return brand === 'atm' ? ATM_LEAD_STAGES : STAGE
    LEADS/STAGES entirely so nothing here can affect the EPAY POS pipeline.
    ========================================================================= */
 const LENDING_STAGES = [
-  { key:'new_lead', label:'New Lead', color:'#2453C4' },
-  { key:'contacted', label:'Contacted', color:'#2453C4' },
-  { key:'application_sent', label:'Application Sent', color:'#B4720B' },
-  { key:'underwriting', label:'Underwriting', color:'#B4720B' },
-  { key:'approved', label:'Approved', color:'#0F8A5F' },
-  { key:'funded', label:'Funded', color:'#0F8A5F' },
-  { key:'declined', label:'Declined', color:'#C23A3F' },
+  { key:'new_lead', label:'New Lead', color:'var(--info-text)' },
+  { key:'contacted', label:'Contacted', color:'var(--info-text)' },
+  { key:'application_sent', label:'Application Sent', color:'var(--warn-text)' },
+  { key:'underwriting', label:'Underwriting', color:'var(--warn-text)' },
+  { key:'approved', label:'Approved', color:'var(--ok-text)' },
+  { key:'funded', label:'Funded', color:'var(--ok-text)' },
+  { key:'declined', label:'Declined', color:'var(--err-text)' },
 ];
 function lendingStageIndex(key){ return LENDING_STAGES.findIndex(s => s.key === key); }
 function lendingStageInfo(key){ return LENDING_STAGES.find(s => s.key === key) || LENDING_STAGES[0]; }
@@ -2616,9 +2725,9 @@ function findMatchingAccount(app){
    ========================================================================= */
 const COLD_LEAD_SOURCES = ['Scraping','Cold Call','Marketing Campaign','Social Media','Referral List','Other'];
 const TEMPERATURES = [
-  { key:'cold', label:'Cold', color:'#2453C4' },
-  { key:'warm', label:'Warm', color:'#B4720B' },
-  { key:'hot', label:'Hot', color:'#C23A3F' },
+  { key:'cold', label:'Cold', color:'var(--info-text)' },
+  { key:'warm', label:'Warm', color:'var(--warn-text)' },
+  { key:'hot', label:'Hot', color:'var(--err-text)' },
 ];
 const SOURCE_CATEGORIES = [
   { key:'hand_entered', label:'Hand Entered' },
@@ -2673,12 +2782,12 @@ async function loadColdLeadsFromSupabase(){
    ========================================================================= */
 const INSTANTLY_STATUSES = {
   sent: { label:'Sent', color:'#5B6B8C' },
-  opened: { label:'Opened', color:'#2453C4' },
-  clicked: { label:'Clicked', color:'#2453C4' },
-  replied: { label:'Replied', color:'#0F8A5F' },
-  meeting_booked: { label:'Meeting Booked', color:'#0F8A5F' },
-  bounced: { label:'Bounced', color:'#C23A3F' },
-  not_interested: { label:'Not Interested', color:'#B4720B' },
+  opened: { label:'Opened', color:'var(--info-text)' },
+  clicked: { label:'Clicked', color:'var(--info-text)' },
+  replied: { label:'Replied', color:'var(--ok-text)' },
+  meeting_booked: { label:'Meeting Booked', color:'var(--ok-text)' },
+  bounced: { label:'Bounced', color:'var(--err-text)' },
+  not_interested: { label:'Not Interested', color:'var(--warn-text)' },
 };
 
 async function loadInstantlyContactsFromSupabase(){
@@ -2751,9 +2860,9 @@ function saveIntegrations(obj){ localStorage.setItem(LS_INTEGRATIONS_KEY, JSON.s
    instead of localStorage.
    ========================================================================= */
 const MEETING_TYPES = {
-  phone: { label:'Phone Call', color:'#2453C4' },
-  zoom_meeting: { label:'Zoom Meeting', color:'#0F8A5F' },
-  zoom_demo: { label:'Zoom Demo', color:'#B4720B' },
+  phone: { label:'Phone Call', color:'var(--info-text)' },
+  zoom_meeting: { label:'Zoom Meeting', color:'var(--ok-text)' },
+  zoom_demo: { label:'Zoom Demo', color:'var(--warn-text)' },
   in_person: { label:'In-Person Install/Training', color:'#7C3AED' },
 };
 
@@ -3782,6 +3891,37 @@ const viewTitles = {
   leads:'Leads', deals:'Deals', followups:'Follow-Ups', settings:'Settings'
 };
 /* -----------------------------------------------------------------------
+   NIGHT MODE
+   The theme itself is applied by an inline script in <head> so there is no
+   flash on load. This part only handles the toggle and remembering it.
+   ----------------------------------------------------------------------- */
+function currentTheme(){
+  return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+}
+function applyTheme(theme, persist){
+  document.documentElement.setAttribute('data-theme', theme);
+  const btn = document.getElementById('themeToggle');
+  if(btn) btn.setAttribute('aria-checked', theme === 'dark' ? 'true' : 'false');
+  if(persist){
+    try { localStorage.setItem('epay-theme', theme); } catch(e){}
+  }
+}
+document.getElementById('themeToggle').addEventListener('click', function(e){
+  e.stopPropagation();   // the dropdown closes on outside clicks
+  applyTheme(currentTheme() === 'dark' ? 'light' : 'dark', true);
+});
+applyTheme(currentTheme(), false);
+
+// Follow the OS only while the user hasn't expressed a preference of their own.
+if(window.matchMedia){
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(ev){
+    var saved = null;
+    try { saved = localStorage.getItem('epay-theme'); } catch(e){}
+    if(!saved) applyTheme(ev.matches ? 'dark' : 'light', false);
+  });
+}
+
+/* -----------------------------------------------------------------------
    TABLE PAGINATION
    These tables rendered every matching row at once. At ~500 partners the
    referrals table alone built ~9,000 DOM nodes, and the browser's layout
@@ -4113,12 +4253,12 @@ function statusPill(p){
 // stored, just derived each render so it's always current.
 function partnerActivityStatus(p){
   if(p.status !== 'active') return { key:'inactive', label:'Inactive', color:'#AEB9CC' };
-  if(!p.last_deal_date && p.leads_submitted === 0) return { key:'new', label:'New', color:'#2453C4' };
-  if(!p.last_deal_date) return { key:'dormant', label:'Dormant', color:'#C23A3F' };
+  if(!p.last_deal_date && p.leads_submitted === 0) return { key:'new', label:'New', color:'var(--info-text)' };
+  if(!p.last_deal_date) return { key:'dormant', label:'Dormant', color:'var(--err-text)' };
   const days = daysSince(p.last_deal_date);
-  if(days <= 30) return { key:'active', label:'Active', color:'#0F8A5F' };
-  if(days <= 90) return { key:'slowing', label:'Slowing', color:'#B4720B' };
-  return { key:'dormant', label:'Dormant', color:'#C23A3F' };
+  if(days <= 30) return { key:'active', label:'Active', color:'var(--ok-text)' };
+  if(days <= 90) return { key:'slowing', label:'Slowing', color:'var(--warn-text)' };
+  return { key:'dormant', label:'Dormant', color:'var(--err-text)' };
 }
 // "By hand vs. by link" — clicks on the custom link vs. leads that actually
 // converted through it. Real click counts need the link's redirect page to
@@ -5324,8 +5464,8 @@ function teamPartnerCardHtml(p){
       </div>
       <div class="tc-badges">
         <span class="pill ${isAuth ? 'pill-agent-auth' : 'pill-agent-basic'}">${isAuth ? 'Authorized Reseller' : 'Basic Payments'}</span>
-        ${parent ? `<span class="pill" style="background:#F1F5FC;color:var(--slate-500);">Reports to ${parent.name}</span>` : ''}
-        ${downlineCount ? `<span class="pill" style="background:#F1F5FC;color:var(--slate-500);">${downlineCount} downline</span>` : ''}
+        ${parent ? `<span class="pill" style="background:var(--hover);color:var(--slate-500);">Reports to ${parent.name}</span>` : ''}
+        ${downlineCount ? `<span class="pill" style="background:var(--hover);color:var(--slate-500);">${downlineCount} downline</span>` : ''}
       </div>
     </div>`;
 }
@@ -5554,7 +5694,7 @@ function renderTeamStructureHierarchy(){
     return;
   }
 
-  const linesHtml = lines.map(l => `<line data-connector data-from-type="${l.fromType}" data-from-id="${l.fromId}" data-to-type="${l.toType}" data-to-id="${l.toId}" stroke="#C3D2EA" stroke-width="2"></line>`).join('');
+  const linesHtml = lines.map(l => `<line data-connector data-from-type="${l.fromType}" data-from-id="${l.fromId}" data-to-type="${l.toType}" data-to-id="${l.toId}" stroke="var(--line-strong)" stroke-width="2"></line>`).join('');
 
   document.getElementById('teamStructureHierarchy').innerHTML = `
     <div class="canvas-wrap" id="teamCanvasWrap">
@@ -6804,12 +6944,12 @@ function systemPricingFieldsHtml(l){
       </select>
     </div>
     <div class="field"><label>Equipment</label>
-      <div style="max-height:220px;overflow-y:auto;border:1px solid var(--line);border-radius:7px;padding:8px;background:#fff;">
+      <div style="max-height:220px;overflow-y:auto;border:1px solid var(--line);border-radius:7px;padding:8px;background:var(--card);">
         ${EPAY_EQUIPMENT_LIST.map(eq => {
           const existing = (l.equipment_selected||[]).find(e => e.name === eq.name);
           const qty = existing ? existing.qty : 0;
           return `
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 2px;border-bottom:1px solid #F1F5FC;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 2px;border-bottom:1px solid var(--hover);">
             <div style="min-width:0;">
               <div style="font-size:12.5px;font-weight:600;color:var(--navy-700);">${eq.name}</div>
               <div style="font-size:11px;color:var(--slate-500);">$${eq.price.toFixed(2)}${eq.recurring?'/mo':' each'}</div>
@@ -6819,14 +6959,14 @@ function systemPricingFieldsHtml(l){
           </div>`;
         }).join('')}
       </div>
-      <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin-top:10px;background:#F8FAFD;padding:9px 10px;border-radius:7px;">
+      <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin-top:10px;background:var(--surface-2);padding:9px 10px;border-radius:7px;">
         <input type="checkbox" id="spEquipmentFree" ${l.equipment_free?'checked':''} onchange="updateEquipmentTotal()" style="width:auto;flex-shrink:0;">
         Provide equipment free / cover the cost
       </label>
       <div class="detail-row" style="margin-top:6px;"><span class="k">Equipment total</span><span class="v" id="spEquipmentTotal">$0.00</span></div>
     </div>
     <div class="field"><label>Integrations</label>
-      <div style="border:1px solid var(--line);border-radius:7px;padding:8px;background:#fff;">
+      <div style="border:1px solid var(--line);border-radius:7px;padding:8px;background:var(--card);">
         ${EPAY_INTEGRATIONS_LIST.map(item => {
           if(item.tiers){
             const existing = (l.integrations_selected||[]).find(e => e.key === item.key);
@@ -6835,7 +6975,7 @@ function systemPricingFieldsHtml(l){
             const tierFieldId = 'tierField_' + item.key;
             const tierSelectId = 'tier_' + item.key;
             return `
-            <div style="padding:7px 2px;border-bottom:1px solid #F1F5FC;">
+            <div style="padding:7px 2px;border-bottom:1px solid var(--hover);">
               <label style="display:flex;align-items:center;gap:7px;font-size:12.5px;">
                 <input type="checkbox" class="sp-integration-check" data-key="${item.key}" data-tiered="true" ${checked?'checked':''}
                   onchange="document.getElementById('${tierFieldId}').style.display=this.checked?'block':'none'; updateIntegrationsTotal();" style="width:auto;">
@@ -6850,7 +6990,7 @@ function systemPricingFieldsHtml(l){
           }
           const checked = (l.integrations_selected||[]).some(e => e.key === item.key);
           return `
-            <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12.5px;padding:7px 2px;border-bottom:1px solid #F1F5FC;">
+            <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12.5px;padding:7px 2px;border-bottom:1px solid var(--hover);">
               <span style="display:flex;align-items:center;gap:7px;"><input type="checkbox" class="sp-integration-check" data-key="${item.key}" data-name="${item.name}" data-price="${item.price}" ${checked?'checked':''} onchange="updateIntegrationsTotal();" style="width:auto;"> ${item.name}</span>
               <span style="color:var(--slate-500);flex-shrink:0;">$${item.price}/mo</span>
             </label>`;
@@ -6861,11 +7001,11 @@ function systemPricingFieldsHtml(l){
     <div class="field"><label>Other integrations (not listed above)</label><input id="spIntegrations" value="${l.integrations_note||''}" placeholder="Anything not covered above"></div>
 
     <div class="field"><label>EPAY Apps</label>
-      <div style="border:1px solid var(--line);border-radius:7px;padding:8px;background:#fff;">
+      <div style="border:1px solid var(--line);border-radius:7px;padding:8px;background:var(--card);">
         ${EPAY_APPS_LIST.map(item => {
           const checked = (l.epay_apps_selected||[]).some(e => e.key === item.key);
           return `
-            <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12.5px;padding:7px 2px;border-bottom:1px solid #F1F5FC;">
+            <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12.5px;padding:7px 2px;border-bottom:1px solid var(--hover);">
               <span style="display:flex;align-items:center;gap:7px;"><input type="checkbox" class="sp-epayapp-check" data-key="${item.key}" data-name="${item.name}" data-price="${item.price}" ${checked?'checked':''} onchange="updateEpayAppsTotal();" style="width:auto;"> ${item.name}</span>
               <span style="color:var(--slate-500);flex-shrink:0;">$${item.price}/mo</span>
             </label>`;
@@ -7096,7 +7236,7 @@ function stagePanelHtml(l){
         <h3>Equipment &amp; Pricing Confirm</h3>
         <p class="stage-panel-desc">Confirm the final equipment list and monthly subscription plan before moving to Application.</p>
         ${systemPricingFieldsHtml(l)}
-        <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin:10px 0;background:#fff;padding:8px;border-radius:7px;"><input type="checkbox" id="epConfirmed" ${l.equipment_pricing_confirmed?'checked':''} style="width:auto;"> Equipment &amp; pricing confirmed with client</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin:10px 0;background:var(--card);padding:8px;border-radius:7px;"><input type="checkbox" id="epConfirmed" ${l.equipment_pricing_confirmed?'checked':''} style="width:auto;"> Equipment &amp; pricing confirmed with client</label>
         <button class="btn btn-accent" style="width:100%;" onclick="saveEquipmentConfirm('${l.id}')">Save</button>
         ${l.equipment_pricing_confirmed_at ? `<p style="font-size:11px;color:var(--slate-500);margin-top:6px;">Confirmed ${formatDate(l.equipment_pricing_confirmed_at)}</p>` : ''}
       </div>`;
@@ -7320,13 +7460,13 @@ function openTrackingEmailPreview(id){
       <button class="drawer-close" onclick="closeEmailPreviewDrawer()">&times;</button>
     </div>
     <div class="drawer-body">
-      ${!integration.connected ? `<p style="font-size:11.5px;color:#B4720B;background:#FFF8EC;border:1px solid #F3D9A8;border-radius:8px;padding:10px 12px;margin:0 0 16px;">Outbound Email isn't connected yet (Settings → Integrations). You can still preview and mark this sent, but nothing will actually deliver until that's set up.</p>` : ''}
+      ${!integration.connected ? `<p style="font-size:11.5px;color:var(--warn-text);background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:8px;padding:10px 12px;margin:0 0 16px;">Outbound Email isn't connected yet (Settings → Integrations). You can still preview and mark this sent, but nothing will actually deliver until that's set up.</p>` : ''}
       <div class="email-preview">
         <div class="email-preview-header"><img src="data:image/png;base64,${EPAY_LOGO_B64}" alt="EPAY POS"></div>
         <div class="email-preview-body">
           <h2>Hi ${firstName}, your EPAY POS equipment is on the way!</h2>
           <p>Great news — your system has shipped. Here's your tracking number so you can follow it every step of the way:</p>
-          <p style="text-align:center;"><span style="display:inline-block;background:#F1F5FC;border:1px dashed #C3D2EA;border-radius:8px;padding:12px 20px;font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:600;color:var(--navy-700);letter-spacing:.5px;">${l.tracking_number}</span></p>
+          <p style="text-align:center;"><span style="display:inline-block;background:var(--hover);border:1px dashed var(--line-strong);border-radius:8px;padding:12px 20px;font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:600;color:var(--navy-700);letter-spacing:.5px;">${l.tracking_number}</span></p>
           <p>Once it arrives, we'll be in touch to schedule your installation and training call — no setup needed on your end before then.</p>
           <p>Questions in the meantime? Just reply to this email or call us at (947) 228-7226 EXT 3.</p>
           <p style="margin-bottom:0;">— The EPAY POS Team</p>
@@ -7377,9 +7517,9 @@ function openAccountWelcomeEmailPreview(id){
       <button class="drawer-close" onclick="closeEmailPreviewDrawer()">&times;</button>
     </div>
     <div class="drawer-body">
-      ${!integration.connected ? `<p style="font-size:11.5px;color:#B4720B;background:#FFF8EC;border:1px solid #F3D9A8;border-radius:8px;padding:10px 12px;margin:0 0 16px;">Outbound Email isn't connected yet (Settings → Integrations). You can still preview and mark this sent, but nothing will actually deliver until that's set up.</p>` : ''}
+      ${!integration.connected ? `<p style="font-size:11.5px;color:var(--warn-text);background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:8px;padding:10px 12px;margin:0 0 16px;">Outbound Email isn't connected yet (Settings → Integrations). You can still preview and mark this sent, but nothing will actually deliver until that's set up.</p>` : ''}
       <div class="email-preview">
-        <div class="email-preview-header" style="background-color:#ffffff;border-bottom:1px solid #E4E9F2;"><img src="data:image/png;base64,${logoB64}" alt="${brandName}"></div>
+        <div class="email-preview-header" style="background-color:#ffffff;border-bottom:1px solid var(--line);"><img src="data:image/png;base64,${logoB64}" alt="${brandName}"></div>
         <div class="email-preview-body">
           <h2>Welcome aboard, ${firstName} — ${l.business_name} is officially set up with ${brandName}</h2>
           <p>You're all set. Your account is active and our team is behind you if you ever need anything — equipment questions, statements, or just a quick check-in.</p>
@@ -7473,13 +7613,13 @@ function emailShipment(id, shipmentId){
       <button class="drawer-close" onclick="closeEmailPreviewDrawer()">&times;</button>
     </div>
     <div class="drawer-body">
-      ${!integration.connected ? `<p style="font-size:11.5px;color:#B4720B;background:#FFF8EC;border:1px solid #F3D9A8;border-radius:8px;padding:10px 12px;margin:0 0 16px;">Outbound Email isn't connected yet (Settings → Integrations). You can still preview and mark this sent, but nothing will actually deliver until that's set up.</p>` : ''}
+      ${!integration.connected ? `<p style="font-size:11.5px;color:var(--warn-text);background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:8px;padding:10px 12px;margin:0 0 16px;">Outbound Email isn't connected yet (Settings → Integrations). You can still preview and mark this sent, but nothing will actually deliver until that's set up.</p>` : ''}
       <div class="email-preview">
         <div class="email-preview-header"><img src="data:image/png;base64,${EPAY_LOGO_B64}" alt="EPAY POS"></div>
         <div class="email-preview-body">
           <h2>Hi ${firstName}, a shipment is on the way</h2>
           <p>Here's the tracking number for your latest shipment from EPAY POS${shipment.carrier ? ' via '+shipment.carrier : ''}:</p>
-          <p style="text-align:center;"><span style="display:inline-block;background:#F1F5FC;border:1px dashed #C3D2EA;border-radius:8px;padding:12px 20px;font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:600;color:var(--navy-700);letter-spacing:.5px;">${shipment.tracking_number}</span></p>
+          <p style="text-align:center;"><span style="display:inline-block;background:var(--hover);border:1px dashed var(--line-strong);border-radius:8px;padding:12px 20px;font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:600;color:var(--navy-700);letter-spacing:.5px;">${shipment.tracking_number}</span></p>
           <p>Reach out anytime if you have questions — just reply to this email or call us at (947) 228-7226 EXT 3.</p>
           <p style="margin-bottom:0;">— The EPAY POS Team</p>
         </div>
@@ -7597,7 +7737,7 @@ function openApplicationEmailPreview(id){
       <button class="drawer-close" onclick="closeEmailPreviewDrawer()">&times;</button>
     </div>
     <div class="drawer-body">
-      ${!integration.connected ? `<p style="font-size:11.5px;color:#B4720B;background:#FFF8EC;border:1px solid #F3D9A8;border-radius:8px;padding:10px 12px;margin:0 0 16px;">Outbound Email isn't connected yet (Settings → Integrations). You can still preview and mark this sent, but nothing will actually deliver until that's set up.</p>` : ''}
+      ${!integration.connected ? `<p style="font-size:11.5px;color:var(--warn-text);background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:8px;padding:10px 12px;margin:0 0 16px;">Outbound Email isn't connected yet (Settings → Integrations). You can still preview and mark this sent, but nothing will actually deliver until that's set up.</p>` : ''}
       <div class="email-preview">
         <div class="email-preview-header"><img src="data:image/png;base64,${EPAY_LOGO_B64}" alt="EPAY POS"></div>
         <div class="email-preview-body">
@@ -7709,11 +7849,11 @@ async function openLeadDetail(id){
       <p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">Ties this record to a partner's productivity stats.</p>
     </div>
     ${l.converted_to_account ? `
-    <div style="margin-top:14px;padding-top:14px;border-top:1px solid #F0F3F9;">
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line);">
       <button class="btn btn-sm" style="width:100%;" onclick="openAccountWelcomeEmailPreview('${l.id}')">${l.welcome_email_sent ? `✓ Welcome email sent ${formatDate(l.welcome_email_sent_at)} — Resend` : 'Send account welcome email'}</button>
     </div>` : ''}
     ${(l.brand || 'epay') === 'atm' ? `
-    <div style="margin-top:14px;padding-top:14px;border-top:1px solid #F0F3F9;">
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line);">
       <button class="btn btn-sm" style="width:100%;" onclick="createEpayLeadFromAtmLead('${l.id}')">Create as EPAY Lead</button>
       <p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">Cross-sell — copies this into the EPAY POS Leads pipeline as a new Inbound Lead.</p>
     </div>` : ''}
@@ -7900,7 +8040,7 @@ function renderAccountsTable(filterText){
       document.getElementById('accountsTableBody').innerHTML = __pg_accounts.rows.map(a => {
     const stage = stageInfo(a.stage);
     const phase = stage.phase ? PHASES.find(p => p.key === stage.phase) : null;
-    const color = phase ? phase.color : (stage.color || '#2453C4');
+    const color = phase ? phase.color : (stage.color || 'var(--info-text)');
     return `
     <tr onclick="openLeadDetail('${a.id}')">
       <td onclick="event.stopPropagation();"><input type="checkbox" class="row-check-accounts" data-id="${a.id}" onchange="updateBulkDeleteBar('accounts')"></td>
@@ -8314,9 +8454,9 @@ const FOLLOWUP_METHODS = {
 };
 function coldLeadFollowupStatus(c){
   if(!c.follow_up_date) return { key:'none', label:'No follow-up set', color:'#AEB9CC' };
-  if(isPast(c.follow_up_date)) return { key:'overdue', label:'Overdue', color:'#C23A3F' };
-  if(isWithinDays(c.follow_up_date, 3)) return { key:'due_soon', label:'Due soon', color:'#B4720B' };
-  return { key:'scheduled', label:'Scheduled', color:'#0F8A5F' };
+  if(isPast(c.follow_up_date)) return { key:'overdue', label:'Overdue', color:'var(--err-text)' };
+  if(isWithinDays(c.follow_up_date, 3)) return { key:'due_soon', label:'Due soon', color:'var(--warn-text)' };
+  return { key:'scheduled', label:'Scheduled', color:'var(--ok-text)' };
 }
 
 let coldLeadsFollowupFilter = 'all';
@@ -9195,9 +9335,9 @@ document.getElementById('runAiScrapeBtn').addEventListener('click', function(){
 });
 
 function confidenceColor(score){
-  if(score >= 85) return '#0F8A5F';
-  if(score >= 70) return '#B4720B';
-  return '#C23A3F';
+  if(score >= 85) return 'var(--ok-text)';
+  if(score >= 70) return 'var(--warn-text)';
+  return 'var(--err-text)';
 }
 
 const SOCIAL_ICON_SVG = {
@@ -9628,10 +9768,10 @@ document.getElementById('nlPreviewBtn').addEventListener('click', function(){
       <button class="drawer-close" onclick="closeEmailPreviewDrawer()">&times;</button>
     </div>
     <div class="drawer-body">
-      ${!integration.connected ? `<p style="font-size:11.5px;color:#B4720B;background:#FFF8EC;border:1px solid #F3D9A8;border-radius:8px;padding:10px 12px;margin:0 0 16px;">Outbound Email isn't connected yet (Settings → Integrations). You can still preview and mark this sent, but nothing will actually deliver until that's set up.</p>` : ''}
-      ${recipients.length === 0 ? `<p style="font-size:11.5px;color:#B4720B;background:#FFF8EC;border:1px solid #F3D9A8;border-radius:8px;padding:10px 12px;margin:0 0 16px;">No recipients selected — there's no one to send this to.</p>` : ''}
+      ${!integration.connected ? `<p style="font-size:11.5px;color:var(--warn-text);background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:8px;padding:10px 12px;margin:0 0 16px;">Outbound Email isn't connected yet (Settings → Integrations). You can still preview and mark this sent, but nothing will actually deliver until that's set up.</p>` : ''}
+      ${recipients.length === 0 ? `<p style="font-size:11.5px;color:var(--warn-text);background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:8px;padding:10px 12px;margin:0 0 16px;">No recipients selected — there's no one to send this to.</p>` : ''}
       <div class="email-preview">
-        <div class="email-preview-header" style="background-color:#ffffff;border-bottom:1px solid #E4E9F2;"><img src="data:image/png;base64,${logoB64}" alt="${brandName}"></div>
+        <div class="email-preview-header" style="background-color:#ffffff;border-bottom:1px solid var(--line);"><img src="data:image/png;base64,${logoB64}" alt="${brandName}"></div>
         <div class="email-preview-body">
           <h2>${subject}</h2>
           ${bodyHtml}
@@ -10101,9 +10241,9 @@ function liveRecallSearchHandler(rawQuery){
   }
 
   const kindMeta = {
-    lead: { label:'Lead', color:'#2453C4' },
-    account: { label:'Account', color:'#0F8A5F' },
-    coldlead: { label:'Cold Lead', color:'#B4720B' },
+    lead: { label:'Lead', color:'var(--info-text)' },
+    account: { label:'Account', color:'var(--ok-text)' },
+    coldlead: { label:'Cold Lead', color:'var(--warn-text)' },
   };
 
   resultsEl.innerHTML = all.map(({kind, record:r}) => {
