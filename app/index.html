@@ -3150,26 +3150,63 @@ async function enterAppAsAuthUser(authUser){
     return;
   }
   currentUser = appUser;
+
+  // Roles genuinely have to come first — rebuildRoles() reads CUSTOM_ROLES and
+  // everything downstream reads the ROLES it builds.
   CUSTOM_ROLES = await loadCustomRolesFromSupabase();
   rebuildRoles();
-  USERS = await loadUsersFromSupabase();
-  PARTNERS = await loadPartnersFromSupabase();
-  LEADS = await loadLeadsFromSupabase();
-  APPLICATIONS = await loadApplicationsFromSupabase();
-  COLD_LEADS = await loadColdLeadsFromSupabase();
-  NOTES = await loadNotesFromSupabase();
-  LEAD_NOTES = await loadLeadNotesFromSupabase();
-  LEAD_CALL_NOTES = await loadLeadCallNotesFromSupabase();
-  LEAD_DOCUMENTS = await loadLeadDocumentsFromSupabase();
-  OFFICES = await loadOfficesFromSupabase();
-  LENDING_LEADS = await loadLendingLeadsFromSupabase();
-  LENDING_LEAD_NOTES = await loadLendingLeadNotesFromSupabase();
-  LENDING_LEAD_CALL_NOTES = await loadLendingLeadCallNotesFromSupabase();
-  NEWSLETTERS = await loadNewslettersFromSupabase();
-  NL_TEMPLATES = await loadNlTemplatesFromSupabase();
-  CONNECTED_CALENDARS = await loadConnectedCalendarsFromSupabase();
-  CALENDAR_EVENTS = await loadCalendarEventsFromSupabase();
-  INSTANTLY_CONTACTS = await loadInstantlyContactsFromSupabase();
+
+  // The rest are independent of each other. They used to run one await at a
+  // time: eighteen sequential round trips to Supabase before the app would
+  // show anything, which is what made login feel like it had hung. Run
+  // concurrently the whole set costs about as long as its slowest member.
+  // Each loadXFromSupabase() already logs and returns [] on failure, so one
+  // slow or failing table can't take the whole login down with it.
+  const [
+    users, partners, leads, applications, coldLeads, notes, leadNotes,
+    leadCallNotes, leadDocuments, offices, lendingLeads, lendingLeadNotes,
+    lendingLeadCallNotes, newsletters, nlTemplates, connectedCalendars,
+    calendarEvents, instantlyContacts
+  ] = await Promise.all([
+    loadUsersFromSupabase(),
+    loadPartnersFromSupabase(),
+    loadLeadsFromSupabase(),
+    loadApplicationsFromSupabase(),
+    loadColdLeadsFromSupabase(),
+    loadNotesFromSupabase(),
+    loadLeadNotesFromSupabase(),
+    loadLeadCallNotesFromSupabase(),
+    loadLeadDocumentsFromSupabase(),
+    loadOfficesFromSupabase(),
+    loadLendingLeadsFromSupabase(),
+    loadLendingLeadNotesFromSupabase(),
+    loadLendingLeadCallNotesFromSupabase(),
+    loadNewslettersFromSupabase(),
+    loadNlTemplatesFromSupabase(),
+    loadConnectedCalendarsFromSupabase(),
+    loadCalendarEventsFromSupabase(),
+    loadInstantlyContactsFromSupabase()
+  ]);
+
+  USERS = users;
+  PARTNERS = partners;
+  LEADS = leads;
+  APPLICATIONS = applications;
+  COLD_LEADS = coldLeads;
+  NOTES = notes;
+  LEAD_NOTES = leadNotes;
+  LEAD_CALL_NOTES = leadCallNotes;
+  LEAD_DOCUMENTS = leadDocuments;
+  OFFICES = offices;
+  LENDING_LEADS = lendingLeads;
+  LENDING_LEAD_NOTES = lendingLeadNotes;
+  LENDING_LEAD_CALL_NOTES = lendingLeadCallNotes;
+  NEWSLETTERS = newsletters;
+  NL_TEMPLATES = nlTemplates;
+  CONNECTED_CALENDARS = connectedCalendars;
+  CALENDAR_EVENTS = calendarEvents;
+  INSTANTLY_CONTACTS = instantlyContacts;
+
   document.getElementById('login-screen').style.display = 'none';
   enterApp();
 }
@@ -3300,8 +3337,8 @@ document.getElementById('loginFormEl').addEventListener('submit', async function
   const btn = document.getElementById('loginSubmitBtn');
   btn.disabled = true; btn.textContent = 'Logging in\u2026';
   const { data, error } = await supa.auth.signInWithPassword({ email, password });
-  btn.disabled = false; btn.textContent = 'Log in';
   if(error){
+    btn.disabled = false; btn.textContent = 'Log in';
     emailEl.classList.add('invalid');
     pwEl.classList.add('invalid');
     pwEl.value = '';
@@ -3310,7 +3347,21 @@ document.getElementById('loginFormEl').addEventListener('submit', async function
     return showFormError('loginError', friendlyAuthError(error));
   }
   pwEl.value = '';
-  await enterAppAsAuthUser(data.user);
+
+  // The button used to be re-enabled here, before enterAppAsAuthUser() had
+  // loaded anything — so for the several seconds that took, the login form
+  // sat there looking idle and untouched, which reads as "nothing happened".
+  // It stays in a loading state until the app is actually on screen.
+  btn.textContent = 'Loading your data\u2026';
+  try {
+    await enterAppAsAuthUser(data.user);
+  } catch(err){
+    console.error('Failed to load the app after login', err);
+    showFormError('loginError', "You're signed in, but the app couldn't finish loading. Please try again.");
+    showToast("Couldn't finish loading. Please try again.", 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Log in';
+  }
 });
 
 /* ---------------------------------------------------------------------------
