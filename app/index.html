@@ -1986,6 +1986,17 @@ const supa = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.addEventListener('click', function(e){
   const btn = e.target.closest('button');
   if(!btn || btn.disabled) return;
+  // A type="submit" button must NOT be disabled while the click is still
+  // being dispatched. This handler runs in the capture phase, i.e. before
+  // the browser performs the button's default action, and a disabled
+  // submit button doesn't submit its form — so disabling here silently
+  // cancelled every submit in the app. The click fired, nothing happened,
+  // and no error was raised anywhere.
+  //
+  // The three submit buttons (login, password reset, set password) each
+  // disable themselves for the duration of their own async request, so
+  // they're already guarded against double-submits without this.
+  if(btn.type === 'submit') return;
   btn.disabled = true;
   setTimeout(() => { btn.disabled = false; }, 900);
 }, true);
