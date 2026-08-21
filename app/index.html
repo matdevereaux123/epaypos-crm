@@ -13,7 +13,6 @@
 <meta name="apple-mobile-web-app-title" content="EPAY CRM">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
   :root{
@@ -2961,7 +2960,7 @@ function enterApp(){
   applyRolePermissions();
   setBrand(currentBrand);
   populatePreviewAsSelect();
-  showView('referrals');
+  showView('dashboard');
 }
 
 /* =========================================================================
@@ -3135,6 +3134,31 @@ function showSetPasswordScreen(){
    is timestamped to the console and kept in window.__loginTrace so it can
    be copied out in one go. Remove once login is confirmed healthy.
    ========================================================================= */
+/* =========================================================================
+   XLSX ON DEMAND
+   The SheetJS bundle is ~196KB and used in exactly two places — downloading
+   an upload template and parsing an imported file. It used to sit in <head>
+   as a render-blocking script, so every single page load paid for it whether
+   or not anyone touched bulk import. Loaded on first use instead; the promise
+   is cached so a second call reuses the same script tag.
+   ========================================================================= */
+let __xlsxPromise = null;
+function loadXLSX(){
+  if(window.XLSX) return Promise.resolve(window.XLSX);
+  if(__xlsxPromise) return __xlsxPromise;
+  __xlsxPromise = new Promise(function(resolve, reject){
+    const el = document.createElement('script');
+    el.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    el.onload = function(){ resolve(window.XLSX); };
+    el.onerror = function(){
+      __xlsxPromise = null;
+      reject(new Error('Could not load the spreadsheet library'));
+    };
+    document.head.appendChild(el);
+  });
+  return __xlsxPromise;
+}
+
 window.__loginTrace = [];
 function loginTrace(step, extra){
   const entry = { t: Math.round(performance.now()), step: step };
@@ -3180,36 +3204,19 @@ async function fetchCurrentAppUser(authUser){
 }
 
 async function enterAppAsAuthUser(authUser){
-  const appUser = await fetchCurrentAppUser(authUser);
-  if(!appUser){
-    const errEl = document.getElementById('loginError');
-    errEl.textContent = "That login worked, but there's no matching account set up for you in the CRM yet. Ask an admin to add you as a user first.";
-    errEl.style.display = 'block';
-    await supa.auth.signOut();
-    showLoginScreen();
-    return;
-  }
-  currentUser = appUser;
-  loginTrace('app user resolved', { email: appUser.email, role: appUser.role });
+  // Settle the session ONCE, here, before anything RLS-gated is dispatched.
+  // Everything below fires concurrently, so this has to complete first or
+  // those reads race the token and come back empty as `anon`.
+  await supa.auth.getSession();
+  loginTrace('session settled');
 
-  // Roles genuinely have to come first — rebuildRoles() reads CUSTOM_ROLES and
-  // everything downstream reads the ROLES it builds.
-  CUSTOM_ROLES = await loadCustomRolesFromSupabase();
-  rebuildRoles();
-  loginTrace('roles loaded', { customRoles: (CUSTOM_ROLES || []).length });
-
-  // The rest are independent of each other. They used to run one await at a
-  // time: eighteen sequential round trips to Supabase before the app would
-  // show anything, which is what made login feel like it had hung. Run
-  // concurrently the whole set costs about as long as its slowest member.
-  // Each loadXFromSupabase() already logs and returns [] on failure, so one
-  // slow or failing table can't take the whole login down with it.
-  const [
-    users, partners, leads, applications, coldLeads, notes, leadNotes,
-    leadCallNotes, leadDocuments, offices, lendingLeads, lendingLeadNotes,
-    lendingLeadCallNotes, newsletters, nlTemplates, connectedCalendars,
-    calendarEvents, instantlyContacts
-  ] = await (loginTrace('parallel table loads starting'), Promise.all([
+  // The user lookup, the custom roles, and the eighteen tables are all
+  // independent requests. They used to run as three sequential phases at
+  // roughly 900ms each. Dispatching them together makes the whole login cost
+  // about as long as the slowest single request rather than their sum.
+  const userPromise = fetchCurrentAppUser(authUser);
+  const rolesPromise = loadCustomRolesFromSupabase();
+  const tablesPromise = Promise.all([
     loadUsersFromSupabase(),
     loadPartnersFromSupabase(),
     loadLeadsFromSupabase(),
@@ -3228,7 +3235,37 @@ async function enterAppAsAuthUser(authUser){
     loadConnectedCalendarsFromSupabase(),
     loadCalendarEventsFromSupabase(),
     loadInstantlyContactsFromSupabase()
-  ]));
+  ]);
+  loginTrace('all requests dispatched');
+
+  const appUser = await userPromise;
+  if(!appUser){
+    // Bailing out here leaves the other requests in flight. Attach handlers
+    // so they can't surface as unhandled rejections after we've gone.
+    rolesPromise.catch(function(){});
+    tablesPromise.catch(function(){});
+    const errEl = document.getElementById('loginError');
+    errEl.textContent = "That login worked, but there's no matching account set up for you in the CRM yet. Ask an admin to add you as a user first.";
+    errEl.style.display = 'block';
+    await supa.auth.signOut();
+    showLoginScreen();
+    return;
+  }
+  currentUser = appUser;
+  loginTrace('app user resolved', { email: appUser.email, role: appUser.role });
+
+  // rebuildRoles() reads CUSTOM_ROLES, and everything downstream reads the
+  // ROLES it builds — so this still has to be awaited before enterApp().
+  CUSTOM_ROLES = await rolesPromise;
+  rebuildRoles();
+  loginTrace('roles loaded', { customRoles: (CUSTOM_ROLES || []).length });
+
+  const [
+    users, partners, leads, applications, coldLeads, notes, leadNotes,
+    leadCallNotes, leadDocuments, offices, lendingLeads, lendingLeadNotes,
+    lendingLeadCallNotes, newsletters, nlTemplates, connectedCalendars,
+    calendarEvents, instantlyContacts
+  ] = await tablesPromise;
 
   USERS = users;
   PARTNERS = partners;
@@ -8408,7 +8445,13 @@ const UPLOAD_TARGETS = {
   },
 };
 
-function downloadUploadTemplate(target, format){
+async function downloadUploadTemplate(target, format){
+  try {
+    await loadXLSX();
+  } catch(err){
+    showToast("Couldn't load the spreadsheet library. Check your connection and try again.", 'error');
+    return;
+  }
   const def = UPLOAD_TARGETS[target];
   const columns = format === 'salesforce' ? def.sfColumns : def.ourColumns;
   const example = format === 'salesforce' ? def.sfExample : def.ourExample;
@@ -8484,6 +8527,7 @@ function processBulkUpload(target){
   const reader = new FileReader();
   reader.onload = async function(e){
     try{
+      await loadXLSX();
       const wb = XLSX.read(e.target.result, { type:'array' });
       const sheet = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(sheet, { header:1 });
