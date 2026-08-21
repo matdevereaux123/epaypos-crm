@@ -3129,13 +3129,53 @@ function showSetPasswordScreen(){
 // Supabase login only proves the credentials are valid — this is the step
 // that confirms an admin actually added them as a user first (README's
 // "a login should never grant default access" rule from 03_auth_link.sql).
+/* =========================================================================
+   LOGIN TRACE
+   Temporary instrumentation for diagnosing a stalled login. Every step
+   is timestamped to the console and kept in window.__loginTrace so it can
+   be copied out in one go. Remove once login is confirmed healthy.
+   ========================================================================= */
+window.__loginTrace = [];
+function loginTrace(step, extra){
+  const entry = { t: Math.round(performance.now()), step: step };
+  if(extra) entry.detail = extra;
+  window.__loginTrace.push(entry);
+  console.log('[login +' + entry.t + 'ms]', step, extra !== undefined ? extra : '');
+}
+
 async function fetchCurrentAppUser(authUser){
-  const { data, error } = await supa
-    .from('users')
-    .select('*')
-    .eq('auth_id', authUser.id)
-    .single();
-  if(error || !data) return null;
+  // Every read below is gated by RLS, which means it needs the signed-in
+  // user's JWT attached to the request. Immediately after signInWithPassword()
+  // there is a window where the client has resolved but the session hasn't
+  // been persisted yet — a read that goes out in that window travels as
+  // `anon`, matches no policy, and comes back empty rather than erroring.
+  // Asking for the session first forces the client to settle.
+  await supa.auth.getSession();
+
+  async function readOnce(){
+    const { data, error } = await supa
+      .from('users')
+      .select('*')
+      .eq('auth_id', authUser.id)
+      .single();
+    return { data, error };
+  }
+
+  let { data, error } = await readOnce();
+
+  // An empty result here is ambiguous: either this login genuinely has no
+  // CRM user row, or the token wasn't attached yet. Retrying once separates
+  // the two, and costs a single extra round trip only on the failure path.
+  if(!data){
+    loginTrace('users row empty on first read - retrying once', { error: error && error.message });
+    await new Promise(r => setTimeout(r, 250));
+    ({ data, error } = await readOnce());
+  }
+
+  if(error || !data){
+    loginTrace('users row not found', { error: error && error.message });
+    return null;
+  }
   return data;
 }
 
@@ -3150,11 +3190,13 @@ async function enterAppAsAuthUser(authUser){
     return;
   }
   currentUser = appUser;
+  loginTrace('app user resolved', { email: appUser.email, role: appUser.role });
 
   // Roles genuinely have to come first — rebuildRoles() reads CUSTOM_ROLES and
   // everything downstream reads the ROLES it builds.
   CUSTOM_ROLES = await loadCustomRolesFromSupabase();
   rebuildRoles();
+  loginTrace('roles loaded', { customRoles: (CUSTOM_ROLES || []).length });
 
   // The rest are independent of each other. They used to run one await at a
   // time: eighteen sequential round trips to Supabase before the app would
@@ -3167,7 +3209,7 @@ async function enterAppAsAuthUser(authUser){
     leadCallNotes, leadDocuments, offices, lendingLeads, lendingLeadNotes,
     lendingLeadCallNotes, newsletters, nlTemplates, connectedCalendars,
     calendarEvents, instantlyContacts
-  ] = await Promise.all([
+  ] = await (loginTrace('parallel table loads starting'), Promise.all([
     loadUsersFromSupabase(),
     loadPartnersFromSupabase(),
     loadLeadsFromSupabase(),
@@ -3186,7 +3228,7 @@ async function enterAppAsAuthUser(authUser){
     loadConnectedCalendarsFromSupabase(),
     loadCalendarEventsFromSupabase(),
     loadInstantlyContactsFromSupabase()
-  ]);
+  ]));
 
   USERS = users;
   PARTNERS = partners;
@@ -3207,8 +3249,19 @@ async function enterAppAsAuthUser(authUser){
   CALENDAR_EVENTS = calendarEvents;
   INSTANTLY_CONTACTS = instantlyContacts;
 
+  loginTrace('tables loaded', {
+    users: (users||[]).length, partners: (partners||[]).length,
+    leads: (leads||[]).length, applications: (applications||[]).length
+  });
+
   document.getElementById('login-screen').style.display = 'none';
-  enterApp();
+  try {
+    enterApp();
+    loginTrace('enterApp() completed - login finished');
+  } catch(err){
+    loginTrace('enterApp() THREW', { message: err && err.message });
+    throw err;
+  }
 }
 
 /* =========================================================================
@@ -3347,6 +3400,7 @@ document.getElementById('loginFormEl').addEventListener('submit', async function
     return showFormError('loginError', friendlyAuthError(error));
   }
   pwEl.value = '';
+  loginTrace('signInWithPassword succeeded');
 
   // The button used to be re-enabled here, before enterAppAsAuthUser() had
   // loaded anything — so for the several seconds that took, the login form
