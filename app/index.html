@@ -421,6 +421,13 @@
   }
   .pager-btn:hover:not(:disabled){border-color:var(--brand-accent-2);color:var(--brand-accent-2);}
   .pager-btn:disabled{opacity:.45;cursor:not-allowed;}
+  .fu-search-create{border-top:1px solid var(--line);color:var(--brand-accent-2);font-weight:600;}
+  .fu-search-create .frs-sub{color:var(--slate-500);font-weight:400;}
+  .fu-create-plus{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:16px;height:16px;border-radius:50%;margin-right:5px;
+    background:var(--brand-accent-2);color:#fff;font-size:12px;line-height:1;
+  }
   thead th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--slate-500);padding:10px 20px;border-bottom:1px solid var(--line);background:#FAFCFF;}
   tbody td{padding:13px 20px;border-bottom:1px solid var(--line);vertical-align:middle;}
   tbody tr:last-child td{border-bottom:none;}
@@ -4946,15 +4953,91 @@ function fuRecordSearchHandler(rawQuery){
   const matches = (q ? pool.filter(r => r.name.toLowerCase().includes(q)) : pool)
     .sort((a,b)=> a.name.localeCompare(b.name)).slice(0, 8);
 
+  let html;
   if(matches.length === 0){
-    resultsEl.innerHTML = `<div class="fu-search-empty">${pool.length ? 'No matches' : (fuActiveType==='partner' ? 'No partners yet' : 'No leads or accounts yet')}</div>`;
+    html = `<div class="fu-search-empty">${pool.length ? 'No matches' : (fuActiveType==='partner' ? 'No partners yet' : 'No leads or accounts yet')}</div>`;
   } else {
-    resultsEl.innerHTML = matches.map(r => `
+    html = matches.map(r => `
       <div class="fu-search-result" onmousedown="event.preventDefault(); selectFuRecord('${r.id}', '${escJsString(r.name)}')">
         ${r.name}<div class="frs-sub">${r.sub}</div>
       </div>`).join('');
   }
+
+  // Quick-create. The whole point of this box is "who is this follow-up for",
+  // and the answer is often someone not in the system yet. Rather than making
+  // them leave, go add a partner/lead properly, and come back, offer to create
+  // a stub right here. Hidden when what they typed already matches a record
+  // exactly, so it can't be used to make accidental duplicates.
+  const typed = rawQuery.trim();
+  const exists = pool.some(r => r.name.toLowerCase() === typed.toLowerCase());
+  if(typed && !exists){
+    html += `
+      <div class="fu-search-result fu-search-create" onmousedown="event.preventDefault(); quickCreateFuRecord('${escJsString(typed)}')">
+        <span class="fu-create-plus">+</span> Create &ldquo;${typed}&rdquo;
+        <div class="frs-sub">Adds a ${fuActiveType === 'partner' ? 'referral partner' : 'lead'} with just this name — fill in the rest later</div>
+      </div>`;
+  }
+
+  resultsEl.innerHTML = html;
   resultsEl.classList.add('open');
+}
+
+/* Creates the bare minimum row needed to hang a follow-up on. Deliberately
+   NOT the full add flow: no portal login is provisioned for a partner made
+   this way (saveNewReferral() does that, and it emails an invite), and no
+   pipeline defaults are assumed for a lead beyond the first stage. */
+async function quickCreateFuRecord(name){
+  const resultsEl = document.getElementById('fuRecordResults');
+  resultsEl.innerHTML = '<div class="fu-search-empty">Creating\u2026</div>';
+
+  try {
+    if(fuActiveType === 'partner'){
+      async function insertPartner(attempt){
+        const fields = {
+          name: name,
+          contact: '\u2014', email: '\u2014', phone: '\u2014',
+          type: 'referral_partner', reseller_type: null,
+          city: null, state: null, address: '', zip: '', website: '',
+          lat: null, lng: null,
+          link_slug: slugify(name) + '-' + Math.floor(Math.random()*9000+1000),
+          brand: currentBrand,
+          leads_submitted: 0, deals_closed: 0, link_clicks: 0,
+          last_deal_date: null, status: 'active',
+          next_follow_up: null, auto_followup_days: null, general_notes: '',
+          parent_partner_id: null
+        };
+        const res = await supa.from('partners').insert(fields).select().single();
+        // link_slug is unique — a collision on the random suffix is unlikely
+        // but cheap to recover from, so retry once with a fresh one.
+        if(res.error && res.error.code === '23505' && attempt < 2) return insertPartner(attempt + 1);
+        return res;
+      }
+      const { data, error } = await insertPartner(1);
+      if(error) throw error;
+      PARTNERS.unshift(data);
+      selectFuRecord(data.id, data.name);
+      showToast('Created partner \u201c' + data.name + '\u201d \u2014 add their details from Referral Partners', 'success');
+    } else {
+      const fields = {
+        business_name: name,
+        contact_name: '\u2014', phone: '\u2014', email: '\u2014',
+        est_volume: '',
+        stage: stagesForBrand(currentBrand)[0].key,
+        brand: currentBrand,
+        converted_to_account: false,
+        converted_at: null,
+        linked_partner_id: null
+      };
+      const { data, error } = await supa.from('leads').insert(fields).select().single();
+      if(error) throw error;
+      LEADS.unshift(data);
+      selectFuRecord(data.id, data.business_name);
+      showToast('Created lead \u201c' + data.business_name + '\u201d \u2014 add details from Leads', 'success');
+    }
+  } catch(err){
+    closeFuRecordResults();
+    showToast("Couldn't create that record: " + ((err && err.message) || 'unknown error'), 'error');
+  }
 }
 function selectFuRecord(id, name){
   document.getElementById('fuRecordSelect').value = id;
