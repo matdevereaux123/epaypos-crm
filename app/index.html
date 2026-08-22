@@ -2698,6 +2698,12 @@ async function loadLeadDocumentsFromSupabase(){
   return data;
 }
 
+async function loadPartnerDocumentsFromSupabase(){
+  const { data, error } = await supa.from('partner_documents').select('*').order('uploaded_at', { ascending: false });
+  if(error){ console.error('Failed to load partner documents from Supabase', error); return []; }
+  return data;
+}
+
 /* =========================================================================
    APPLICATIONS
    Field set copied 1:1 from the live Wix application form at
@@ -3039,6 +3045,7 @@ let LENDING_LEAD_CALL_NOTES = [];
 let LEAD_NOTES = [];
 let LEAD_CALL_NOTES = [];
 let LEAD_DOCUMENTS = [];
+let PARTNER_DOCUMENTS = [];
 // Populated for real from Supabase in enterAppAsAuthUser().
 let APPLICATIONS = [];
 // Populated for real from Supabase in enterAppAsAuthUser().
@@ -3531,7 +3538,8 @@ async function enterAppAsAuthUser(authUser){
     loadNlTemplatesFromSupabase(),
     loadConnectedCalendarsFromSupabase(),
     loadCalendarEventsFromSupabase(),
-    loadInstantlyContactsFromSupabase()
+    loadInstantlyContactsFromSupabase(),
+    loadPartnerDocumentsFromSupabase()
   ]);
   loginTrace('all requests dispatched');
 
@@ -3561,7 +3569,7 @@ async function enterAppAsAuthUser(authUser){
     users, partners, leads, applications, coldLeads, notes, leadNotes,
     leadCallNotes, leadDocuments, offices, lendingLeads, lendingLeadNotes,
     lendingLeadCallNotes, newsletters, nlTemplates, connectedCalendars,
-    calendarEvents, instantlyContacts
+    calendarEvents, instantlyContacts, partnerDocuments
   ] = await tablesPromise;
 
   USERS = users;
@@ -3582,6 +3590,7 @@ async function enterAppAsAuthUser(authUser){
   CONNECTED_CALENDARS = connectedCalendars;
   CALENDAR_EVENTS = calendarEvents;
   INSTANTLY_CONTACTS = instantlyContacts;
+  PARTNER_DOCUMENTS = partnerDocuments;
 
   loginTrace('tables loaded', {
     users: (users||[]).length, partners: (partners||[]).length,
@@ -4641,6 +4650,153 @@ function refreshSensitiveFieldView(recordId){
   if(PARTNERS.some(p => p.id === recordId)){ openReferralDetail(recordId); return; }
 }
 
+/* =========================================================================
+   AGENT ONBOARDING (internal side)
+   Create the agent -> upload the signed admit packet -> the invite unlocks.
+   The packet requirement is enforced in the database too
+   (mark_partner_invited in database/16_agent_onboarding.sql), so the disabled
+   button here is the convenient gate, not the real one.
+   ========================================================================= */
+const ONBOARDING_LABELS = {
+  pending_packet: { label: 'Awaiting admit packet', cls: 'pill-status-overdue' },
+  packet_on_file: { label: 'Ready to invite',       cls: 'pill-status-upcoming' },
+  invited:        { label: 'Invite sent',           cls: 'pill-referral' },
+  submitted:      { label: 'Awaiting review',       cls: 'pill-status-upcoming' },
+  active:         { label: 'Active',                cls: 'pill-status-active' }
+};
+
+function partnerAdmitPacket(partnerId){
+  return PARTNER_DOCUMENTS.find(d => d.partner_id === partnerId && d.doc_type === 'admit_packet') || null;
+}
+
+function buildOnboardingSectionHTML(p){
+  // Portal logins have no business seeing their own onboarding controls.
+  if(!roleOf(currentUser).perms.editPartners) return '';
+
+  const status = p.onboarding_status || 'active';
+  const meta = ONBOARDING_LABELS[status] || ONBOARDING_LABELS.active;
+  const packet = partnerAdmitPacket(p.id);
+  const canInvite = !!packet;
+  const alreadyMovedOn = ['invited','submitted','active'].includes(status);
+
+  return `
+    <hr style="border:none;border-top:1px solid var(--line);margin:20px 0;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <label style="font-size:11.5px;text-transform:uppercase;color:var(--slate-500);">Onboarding</label>
+      <span class="pill ${meta.cls}">${meta.label}</span>
+    </div>
+
+    <div class="detail-row">
+      <span class="k">Admit packet</span>
+      <span class="v">${packet
+        ? `<a href="#" onclick="event.preventDefault();viewPartnerDocumentFile('${packet.id}')">${packet.name}</a>
+           <div class="sub">Uploaded ${formatDate(packet.uploaded_at)} by ${packet.uploaded_by}</div>`
+        : '<span style="color:var(--red);">Not on file</span>'}</span>
+    </div>
+
+    <input type="file" id="partnerPacketFile" style="display:none;"
+           accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+           onchange="uploadPartnerAdmitPacket('${p.id}', this)">
+    <button class="btn btn-sm" style="width:100%;margin-top:8px;"
+            onclick="document.getElementById('partnerPacketFile').click()">
+      ${packet ? 'Replace signed admit packet' : 'Upload signed admit packet'}
+    </button>
+
+    ${alreadyMovedOn ? '' : `
+      <button class="btn btn-accent" style="width:100%;margin-top:8px;"
+              ${canInvite ? '' : 'disabled'}
+              onclick="sendPartnerInvite('${p.id}')">
+        Send portal invite
+      </button>
+      <p style="font-size:10.5px;color:var(--slate-300);margin:6px 0 0;">
+        ${canInvite
+          ? 'Sends them an email link to set a password and complete their application.'
+          : 'The signed admit packet has to be on file before an invite can go out.'}
+      </p>`}
+
+    ${status === 'submitted' ? `
+      <button class="btn btn-accent" style="width:100%;margin-top:8px;"
+              onclick="approvePartnerOnboarding('${p.id}')">
+        Approve and activate
+      </button>
+      <p style="font-size:10.5px;color:var(--slate-300);margin:6px 0 0;">
+        Application submitted ${formatDate(p.onboarding_submitted_at)}. Approving marks them active.
+      </p>` : ''}
+  `;
+}
+
+async function uploadPartnerAdmitPacket(partnerId, input){
+  const file = input.files && input.files[0];
+  if(!file) return;
+  const path = `${partnerId}/${Date.now()}-${file.name}`;
+
+  const { error: uploadErr } = await supa.storage.from('partner-documents').upload(path, file);
+  if(uploadErr){ showToast('Could not upload the packet: ' + uploadErr.message, 'error'); return; }
+
+  const { data: doc, error } = await supa.from('partner_documents').insert({
+    partner_id: partnerId, name: file.name, doc_type: 'admit_packet',
+    size_bytes: file.size, storage_path: path, uploaded_by: currentUser.email
+  }).select().single();
+  if(error){ showToast('Uploaded, but the record could not be saved: ' + error.message, 'error'); return; }
+
+  PARTNER_DOCUMENTS.unshift(doc);
+
+  // Only advance a partner still waiting on the packet — re-uploading for
+  // someone already invited or active must not walk their status backwards.
+  const p = PARTNERS.find(x => x.id === partnerId);
+  if(p && p.onboarding_status === 'pending_packet'){
+    const { error: upErr } = await supa.from('partners')
+      .update({ onboarding_status: 'packet_on_file' }).eq('id', partnerId);
+    if(!upErr) p.onboarding_status = 'packet_on_file';
+  }
+
+  showToast('Signed admit packet uploaded', 'success');
+  openReferralDetail(partnerId);
+}
+
+async function viewPartnerDocumentFile(docId){
+  const d = PARTNER_DOCUMENTS.find(x => x.id === docId);
+  if(!d) return;
+  const { data, error } = await supa.storage.from('partner-documents').createSignedUrl(d.storage_path, 60);
+  if(error){ showToast('Could not open the file: ' + error.message, 'error'); return; }
+  window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+}
+
+async function sendPartnerInvite(partnerId){
+  const p = PARTNERS.find(x => x.id === partnerId);
+  if(!p) return;
+  if(!p.email){ showToast('This partner has no email address on file.', 'error'); return; }
+
+  const { error: gateErr } = await supa.rpc('mark_partner_invited', { p_partner_id: partnerId });
+  if(gateErr){ showToast(gateErr.message, 'error'); return; }
+
+  const { error: fnErr } = await supa.functions.invoke('invite-user', {
+    body: { email: p.email, first_name: (p.contact || p.name || '').split(' ')[0], partner_id: partnerId }
+  });
+  if(fnErr){
+    showToast('Status updated, but the invite email failed: ' + fnErr.message, 'error');
+  } else {
+    showToast('Invite sent to ' + p.email, 'success');
+  }
+
+  p.onboarding_status = 'invited';
+  openReferralDetail(partnerId);
+}
+
+async function approvePartnerOnboarding(partnerId){
+  const { error } = await supa.from('partners').update({
+    onboarding_status: 'active',
+    onboarding_approved_at: new Date().toISOString(),
+    onboarding_approved_by: currentUser.id
+  }).eq('id', partnerId);
+  if(error){ showToast('Could not approve: ' + error.message, 'error'); return; }
+
+  const p = PARTNERS.find(x => x.id === partnerId);
+  if(p) p.onboarding_status = 'active';
+  showToast('Agent approved and activated', 'success');
+  openReferralDetail(partnerId);
+}
+
 function buildBankingSectionHTML(p, bank){
   const perms = roleOf(currentUser).perms;
   // Must agree with openReferralDetail(), scopedPartnersForCurrentUser() and
@@ -4738,6 +4894,8 @@ async function openReferralDetail(id){
       <div class="detail-row"><span class="k">Phone</span><span class="v">${p.phone}</span></div>
       <div class="detail-row"><span class="k">Website</span><span class="v">${p.website || '—'}</span></div>
       <div class="detail-row"><span class="k">Address</span><span class="v">${p.address ? p.address + ', ' : ''}${p.city}, ${p.state}${p.zip ? ' ' + p.zip : ''}</span></div>
+
+      ${buildOnboardingSectionHTML(p)}
 
       ${currentBrand === 'atm' ? `<button class="btn btn-accent" style="width:100%;margin-top:14px;" onclick="createEpayLeadFromPartner('${p.id}')">Create as EPAY Lead</button>` : ''}
 
