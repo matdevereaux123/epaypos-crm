@@ -4945,15 +4945,34 @@ async function openOnboardingForm(){
       ${f('obFirst','First name', p.owner_first_name)}
       ${f('obLast','Last name', p.owner_last_name)}
       ${f('obDob','Date of birth', sens.dob, 'date')}
-      ${f('obSsn','Social security number', sens.ssn)}
       ${f('obDl','Driver\u2019s licence number', sens.drivers_license)}
       ${f('obDlState','Driver\u2019s licence state', p.drivers_license_state)}
       ${f('obPersonalAddress','Home address', p.personal_address)}
 
+      <div class="section-label" style="margin-top:18px;">For your 1099</div>
+      <div class="field">
+        <label>What do you file under?</label>
+        <select id="obTaxIdType" onchange="onTaxIdTypeChange()">
+          <option value="ssn" ${p.tax_id_type !== 'ein' ? 'selected' : ''}>Social security number (sole proprietor)</option>
+          <option value="ein" ${p.tax_id_type === 'ein' ? 'selected' : ''}>EIN (LLC, corporation, partnership)</option>
+        </select>
+        <p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">
+          Whichever the IRS has on file for you. If you are unsure, it is your SSN.
+        </p>
+      </div>
+      <div class="field" id="obTaxIdWrap">
+        <label id="obTaxIdLabel">${p.tax_id_type === 'ein' ? 'EIN' : 'Social security number'}</label>
+        <input id="obTaxIdValue" value="${(p.tax_id_type === 'ein' ? sens.tax_id : sens.ssn) || ''}"
+               placeholder="${p.tax_id_type === 'ein' ? '12-3456789' : '123-45-6789'}">
+      </div>
+      ${f('obMailingAddress','Mailing address for your 1099', p.mailing_address)}
+      <p style="font-size:10.5px;color:var(--slate-300);margin:-8px 0 0;">
+        Where your 1099 should be posted, if that is not your home address.
+      </p>
+
       <div class="section-label" style="margin-top:18px;">Your business</div>
       ${f('obLegalName','Legal business name', p.legal_business_name)}
       ${f('obDba','DBA / trading name', p.dba_name)}
-      ${f('obTaxId','Business tax ID (EIN)', sens.tax_id)}
       ${f('obBizAddress','Business address', p.business_address)}
       ${f('obBizPhone','Business phone', p.business_phone, 'tel')}
       ${f('obBizEmail','Business email', p.business_email, 'email')}
@@ -4976,6 +4995,17 @@ async function openOnboardingForm(){
     </div>`;
 
   document.getElementById('onboardingOverlay').classList.add('open');
+}
+
+function onTaxIdTypeChange(){
+  const isEin = document.getElementById('obTaxIdType').value === 'ein';
+  document.getElementById('obTaxIdLabel').textContent = isEin ? 'EIN' : 'Social security number';
+  const input = document.getElementById('obTaxIdValue');
+  input.placeholder = isEin ? '12-3456789' : '123-45-6789';
+  // Switching type clears the field rather than carrying a 9-digit SSN over
+  // into the EIN column, which would file the 1099 against the wrong number.
+  input.value = '';
+  input.focus();
 }
 
 function closeOnboardingDrawer(){
@@ -5014,6 +5044,8 @@ async function submitOnboardingForm(){
       p_business_start_date: v('obStart') || null,
       p_business_type_services: v('obServices'),
       p_personal_address: v('obPersonalAddress'),
+      p_mailing_address: v('obMailingAddress'),
+      p_tax_id_type: v('obTaxIdType') || 'ssn',
       p_phone: null, p_website: null, p_address: null,
       p_city: null, p_state: null, p_zip: null
     });
@@ -5021,12 +5053,18 @@ async function submitOnboardingForm(){
 
     // Sensitive fields, each through its own RPC. Blank means "leave alone"
     // rather than "clear", so re-saving the form doesn't wipe what's stored.
+    // One taxpayer ID, written to the column matching the chosen type. The
+    // other stays untouched rather than being cleared — blank means "leave
+    // alone" in set_partner_sensitive, and tax_id_type is what says which
+    // column is authoritative.
+    const taxType = v('obTaxIdType') || 'ssn';
+    const taxValue = v('obTaxIdValue') || null;
     const { error: sensErr } = await supa.rpc('set_partner_sensitive', {
       p_partner_id: id,
-      p_ssn: v('obSsn') || null,
+      p_ssn: taxType === 'ssn' ? taxValue : null,
       p_dob: v('obDob') || null,
       p_drivers_license: v('obDl') || null,
-      p_tax_id: v('obTaxId') || null
+      p_tax_id: taxType === 'ein' ? taxValue : null
     });
     if(sensErr) throw sensErr;
 
