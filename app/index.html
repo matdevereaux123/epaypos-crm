@@ -4246,7 +4246,16 @@ function partnerMatchesBrand(p, brand){ return p.brand === brand || p.brand === 
 function scopedPartnersForCurrentUser(){
   let scoped = PARTNERS.filter(p => partnerMatchesBrand(p, currentBrand));
   if(roleOf(currentUser).portal_scope === 'own'){
-    scoped = scoped.filter(p => p.email && p.email.toLowerCase() === currentUser.email.toLowerCase());
+    // Match on users.linked_partner_id, which is what the RLS policy in
+    // database/04_rls.sql uses too. This previously compared email addresses,
+    // which is a different notion of "which partner is this user" — a partner
+    // whose contact email differed from their login email would be granted
+    // their row by the database and then filtered back out here, so the portal
+    // showed them nothing at all. Falling back to the email match keeps any
+    // account that predates linked_partner_id being set working.
+    scoped = currentUser.linked_partner_id
+      ? scoped.filter(p => p.id === currentUser.linked_partner_id)
+      : scoped.filter(p => p.email && p.email.toLowerCase() === currentUser.email.toLowerCase());
   }
   return scoped;
 }
@@ -7947,6 +7956,11 @@ async function openLeadDetail(id){
 
   const relevantPartners = PARTNERS.filter(p => partnerMatchesBrand(p, l.brand || 'epay')).slice().sort((a,b)=> a.name.localeCompare(b.name));
   const internalUsers = USERS.filter(u => roleOf(u).portal_scope === 'internal').slice().sort((a,b)=> a.name.localeCompare(b.name));
+  // Portal logins (agents, referral partners, resellers) are assignable too.
+  // The RLS policy already grants access on assigned_to regardless of role —
+  // this dropdown was the only thing keeping it internal-only, which meant a
+  // lead could never actually be handed to the agent working it.
+  const portalUsers = USERS.filter(u => roleOf(u).portal_scope === 'own').slice().sort((a,b)=> a.name.localeCompare(b.name));
   const overviewBody = `
     <div class="detail-row"><span class="k">Contact</span><span class="v">${l.contact_name}</span></div>
     <div class="detail-row"><span class="k">Phone</span><span class="v">${l.phone}</span></div>
@@ -7958,9 +7972,10 @@ async function openLeadDetail(id){
       <label>Assigned to</label>
       <select id="leadAssignedTo" onchange="saveLeadAssignment('${l.id}', this.value)">
         <option value="">Unassigned</option>
-        ${internalUsers.map(u => `<option value="${u.id}" ${l.assigned_to===u.id?'selected':''}>${u.name} — ${roleOf(u).label}</option>`).join('')}
+        ${internalUsers.length ? `<optgroup label="Employees">${internalUsers.map(u => `<option value="${u.id}" ${l.assigned_to===u.id?'selected':''}>${u.name} — ${roleOf(u).label}</option>`).join('')}</optgroup>` : ''}
+        ${portalUsers.length ? `<optgroup label="Agents &amp; partners">${portalUsers.map(u => `<option value="${u.id}" ${l.assigned_to===u.id?'selected':''}>${u.name} — ${roleOf(u).label}</option>`).join('')}</optgroup>` : ''}
       </select>
-      <p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">Which employee owns working this lead.</p>
+      <p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">Who owns working this lead. Assigning an agent or partner is what gives them access to it — they see nothing they haven't been given.</p>
     </div>
     <div class="field" style="margin-top:12px;">
       <label>Referred by (partner)</label>
