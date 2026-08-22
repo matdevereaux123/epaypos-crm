@@ -4643,7 +4643,13 @@ function refreshSensitiveFieldView(recordId){
 
 function buildBankingSectionHTML(p, bank){
   const perms = roleOf(currentUser).perms;
-  const isOwnRecord = p.email && currentUser.email && p.email.toLowerCase() === currentUser.email.toLowerCase();
+  // Must agree with openReferralDetail(), scopedPartnersForCurrentUser() and
+  // current_partner_is_own() — this one decides whether the banking fields
+  // render editable, so disagreeing with the RPC shows an agent a form whose
+  // save the database then refuses.
+  const isOwnRecord = currentUser.linked_partner_id
+    ? p.id === currentUser.linked_partner_id
+    : !!(p.email && currentUser.email && p.email.toLowerCase() === currentUser.email.toLowerCase());
 
   if(perms.editBanking === true || (perms.editBanking === 'own' && isOwnRecord)){
     // Full view + edit access (admin, or an external user viewing their own record)
@@ -4692,7 +4698,15 @@ async function openReferralDetail(id){
   // re-opening this same drawer (e.g. toggling the banking eye icon)
   // re-renders from memory instead of re-hitting the RPC each time.
   const p = Object.assign({}, base);
-  const isOwnRecord = base.email && currentUser.email && base.email.toLowerCase() === currentUser.email.toLowerCase();
+  // Third place this decision gets made — the other two are
+  // scopedPartnersForCurrentUser() and current_partner_is_own() in
+  // database/16_agent_onboarding.sql. All three must agree on what "my own
+  // partner record" means, or the app and the database disagree about who
+  // may reveal banking. linked_partner_id is the answer RLS uses; the email
+  // comparison stays only as a fallback for accounts predating it.
+  const isOwnRecord = currentUser.linked_partner_id
+    ? base.id === currentUser.linked_partner_id
+    : !!(base.email && currentUser.email && base.email.toLowerCase() === currentUser.email.toLowerCase());
   if(canViewSensitive() || (roleOf(currentUser).perms.editBanking === 'own' && isOwnRecord)){
     if(!decryptedPartnerBankingCache.hasOwnProperty(id)){
       const { data } = await supa.rpc('reveal_partner_banking', { p_partner_id: id });
