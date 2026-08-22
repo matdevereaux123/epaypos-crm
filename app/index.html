@@ -2089,6 +2089,23 @@
 
         <div class="panel">
           <div class="panel-head">
+            <h2>Application links</h2>
+            <button class="btn btn-accent btn-sm" onclick="openApplicationLinkEditor()">+ Add link</button>
+          </div>
+          <p style="padding:0 20px;margin:0 0 4px;font-size:12.5px;color:var(--slate-500);">
+            The options offered when sending a merchant their application email.
+          </p>
+          <table>
+            <thead><tr><th>Label</th><th>URL</th><th>Brand</th><th>Status</th><th></th></tr></thead>
+            <tbody id="applicationLinksBody"></tbody>
+          </table>
+          <div id="applicationLinksEmptyState" style="display:none;padding:18px 20px;color:var(--slate-500);font-size:13px;">
+            No application links yet.
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
             <h2>Connected calendars</h2>
             <button class="btn btn-accent btn-sm" id="addCalendarBtn">+ Connect calendar</button>
           </div>
@@ -2156,6 +2173,11 @@
 <!-- ================= DRAWER: AGENT ONBOARDING APPLICATION ================= -->
 <div class="overlay" id="onboardingOverlay">
   <div class="drawer" id="onboardingDrawer"></div>
+</div>
+
+<!-- ================= DRAWER: APPLICATION LINK ================= -->
+<div class="overlay" id="appLinkOverlay">
+  <div class="drawer" id="appLinkDrawer"></div>
 </div>
 
 <!-- ================= DRAWER: ADD USER ================= -->
@@ -2522,7 +2544,15 @@ const EPAY_APPS_LIST = [
   { key:'tv_signage', name:'TV Signage', price:30 },
   { key:'ecomm', name:'E-Commerce', price:60 },
 ];
-const APPLICATION_LINKS = [
+// Loaded from the application_links table at login (see
+// loadApplicationLinksFromSupabase). These two are the values seeded by
+// database/21_application_links.sql, kept here as the fallback if that read
+// fails — without them the dropdown renders empty and there is no way to send
+// an application email at all.
+//
+// 'custom' is appended in code rather than stored: it means "type a one-off
+// URL on this lead", held per-lead in leads.application_link_custom.
+let APPLICATION_LINKS = [
   { key:'free_processing', label:'Free Processing Application', url:'https://www.epaypos.net/copy-of-free-processing' },
   { key:'sign_up', label:'Sign Up', url:'https://www.epaypos.net/sign-up' },
   { key:'custom', label:'Custom link...', url:'' },
@@ -2718,6 +2748,13 @@ async function loadLeadCallNotesFromSupabase(){
 async function loadLeadDocumentsFromSupabase(){
   const { data, error } = await supa.from('lead_documents').select('*').order('uploaded_at', { ascending: false });
   if(error){ console.error('Failed to load lead documents from Supabase', error); return []; }
+  return data;
+}
+
+async function loadApplicationLinksFromSupabase(){
+  const { data, error } = await supa.from('application_links')
+    .select('*').eq('is_active', true).order('sort_order').order('label');
+  if(error){ console.error('Failed to load application links from Supabase', error); return null; }
   return data;
 }
 
@@ -3547,7 +3584,8 @@ async function enterAppAsAuthUser(authUser){
     loadConnectedCalendarsFromSupabase(),
     loadCalendarEventsFromSupabase(),
     loadInstantlyContactsFromSupabase(),
-    loadPartnerDocumentsFromSupabase()
+    loadPartnerDocumentsFromSupabase(),
+    loadApplicationLinksFromSupabase()
   ]);
 
   const appUser = await userPromise;
@@ -3574,7 +3612,7 @@ async function enterAppAsAuthUser(authUser){
     users, partners, leads, applications, coldLeads, notes, leadNotes,
     leadCallNotes, leadDocuments, offices, lendingLeads, lendingLeadNotes,
     lendingLeadCallNotes, newsletters, nlTemplates, connectedCalendars,
-    calendarEvents, instantlyContacts, partnerDocuments
+    calendarEvents, instantlyContacts, partnerDocuments, applicationLinks
   ] = await tablesPromise;
 
   USERS = users;
@@ -3596,6 +3634,16 @@ async function enterAppAsAuthUser(authUser){
   CALENDAR_EVENTS = calendarEvents;
   INSTANTLY_CONTACTS = instantlyContacts;
   PARTNER_DOCUMENTS = partnerDocuments;
+
+  // null means the read failed — keep the hardcoded fallback rather than
+  // leaving the dropdown empty. An empty array is a real answer (someone
+  // deactivated every link) and is respected.
+  if(applicationLinks){
+    APPLICATION_LINKS = applicationLinks
+      .map(a => ({ key:a.key, label:a.label, url:a.url, brand:a.brand, id:a.id,
+                   sort_order:a.sort_order, is_active:a.is_active }))
+      .concat([{ key:'custom', label:'Custom link...', url:'' }]);
+  }
 
 
   document.getElementById('login-screen').style.display = 'none';
@@ -4171,7 +4219,7 @@ function showView(view, fromHistory){
   if(view === 'dashboard') renderDashboard();
   if(view === 'referrals') renderReferralTable();
   if(view === 'followups') renderFollowups();
-  if(view === 'settings'){ renderUsersTable(); renderRolesTable(); renderIntegrationsList(); renderConnectedCalendarsList(); }
+  if(view === 'settings'){ renderUsersTable(); renderRolesTable(); renderIntegrationsList(); renderConnectedCalendarsList(); renderApplicationLinksTable(); }
   if(view === 'agents') renderAgentsTable();
   if(view === 'authresellers') renderResellersTable();
   if(view === 'coldleads') renderColdLeadsTable();
@@ -4642,6 +4690,129 @@ function unlockSensitiveField(recordId, fieldKey){
 function refreshSensitiveFieldView(recordId){
   if(LEADS.some(l => l.id === recordId)){ openLeadDetail(recordId); return; }
   if(PARTNERS.some(p => p.id === recordId)){ openReferralDetail(recordId); return; }
+}
+
+/* =========================================================================
+   APPLICATION LINKS (Settings)
+   The options offered when sending a merchant their application email.
+   Backed by the application_links table; 'custom' is not stored, it means
+   "type a one-off URL on this lead".
+   ========================================================================= */
+function renderApplicationLinksTable(){
+  const body = document.getElementById('applicationLinksBody');
+  if(!body) return;
+  const empty = document.getElementById('applicationLinksEmptyState');
+  const rows = APPLICATION_LINKS.filter(a => a.key !== 'custom');
+
+  if(rows.length === 0){
+    body.innerHTML = '';
+    if(empty) empty.style.display = 'block';
+    return;
+  }
+  if(empty) empty.style.display = 'none';
+
+  const canEdit = roleOf(currentUser).perms.manageSettings;
+  body.innerHTML = rows.map(a => `
+    <tr>
+      <td class="name-cell">${a.label}</td>
+      <td><span class="mono" style="font-size:12px;">${a.url}</span></td>
+      <td><span class="pill pill-referral">${a.brand === 'both' ? 'Both' : (a.brand === 'atm' ? 'Envision ATM' : 'EPAY POS')}</span></td>
+      <td><span class="pill ${a.is_active === false ? 'pill-status-overdue' : 'pill-status-active'}">${a.is_active === false ? 'Hidden' : 'Active'}</span></td>
+      <td style="text-align:right;">
+        ${canEdit ? `
+          <button class="btn btn-xs" onclick="openApplicationLinkEditor('${a.id || ''}')">Edit</button>
+          <button class="btn btn-xs" onclick="deactivateApplicationLink('${a.id || ''}')">Hide</button>` : ''}
+      </td>
+    </tr>`).join('');
+}
+
+function openApplicationLinkEditor(id){
+  const existing = id ? APPLICATION_LINKS.find(a => a.id === id) : null;
+  document.getElementById('appLinkDrawer').innerHTML = `
+    <div class="drawer-head">
+      <div><h2>${existing ? 'Edit application link' : 'Add application link'}</h2></div>
+      <button class="drawer-close" onclick="closeApplicationLinkDrawer()">&times;</button>
+    </div>
+    <div class="drawer-body">
+      <div class="field"><label>Label</label>
+        <input id="alLabel" value="${existing ? existing.label : ''}" placeholder="e.g. Free Processing Application"></div>
+      <div class="field"><label>URL</label>
+        <input id="alUrl" value="${existing ? existing.url : ''}" placeholder="https://..."></div>
+      <div class="field"><label>Brand</label>
+        <select id="alBrand">
+          <option value="both" ${existing && existing.brand==='both' ? 'selected':''}>Both brands</option>
+          <option value="epay" ${!existing || existing.brand==='epay' ? 'selected':''}>EPAY POS</option>
+          <option value="atm"  ${existing && existing.brand==='atm'  ? 'selected':''}>Envision ATM</option>
+        </select></div>
+      <div class="field"><label>Order</label>
+        <input id="alSort" type="number" value="${existing ? (existing.sort_order || 0) : 0}"></div>
+      <div id="alError" class="form-error" style="display:none;margin-top:12px;padding:10px 12px;background:#FDECEC;border:1px solid #F3C6C6;border-radius:8px;color:var(--red);font-size:13px;"></div>
+      <button class="btn btn-accent" style="width:100%;margin-top:14px;"
+              onclick="saveApplicationLink('${id || ''}')">${existing ? 'Save changes' : 'Add link'}</button>
+    </div>`;
+  document.getElementById('appLinkOverlay').classList.add('open');
+}
+
+function closeApplicationLinkDrawer(){
+  document.getElementById('appLinkOverlay').classList.remove('open');
+}
+
+async function saveApplicationLink(id){
+  const label = (document.getElementById('alLabel').value || '').trim();
+  const url   = (document.getElementById('alUrl').value || '').trim();
+  const brand = document.getElementById('alBrand').value;
+  const sort  = parseInt(document.getElementById('alSort').value, 10) || 0;
+  const err   = document.getElementById('alError');
+  err.style.display = 'none';
+
+  if(!label){ err.textContent = 'Give the link a label.'; err.style.display='block'; return; }
+  if(!/^https?:\/\//i.test(url)){
+    err.textContent = 'The URL needs to start with http:// or https://';
+    err.style.display='block'; return;
+  }
+
+  if(id){
+    const { error } = await supa.from('application_links')
+      .update({ label, url, brand, sort_order: sort }).eq('id', id);
+    if(error){ err.textContent = error.message; err.style.display='block'; return; }
+    const a = APPLICATION_LINKS.find(x => x.id === id);
+    if(a) Object.assign(a, { label, url, brand, sort_order: sort });
+    showToast('Application link updated', 'success');
+  } else {
+    // The key is what leads.application_link_choice stores, so it has to be
+    // stable and unique. Derived from the label, suffixed if already taken.
+    let key = label.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'').slice(0,40) || 'link';
+    if(key === 'custom') key = 'custom_link';
+    const taken = new Set(APPLICATION_LINKS.map(a => a.key));
+    if(taken.has(key)){
+      let n = 2;
+      while(taken.has(key + '_' + n)) n++;
+      key = key + '_' + n;
+    }
+    const { data, error } = await supa.from('application_links')
+      .insert({ key, label, url, brand, sort_order: sort }).select().single();
+    if(error){ err.textContent = error.message; err.style.display='block'; return; }
+    APPLICATION_LINKS = APPLICATION_LINKS.filter(a => a.key !== 'custom')
+      .concat([{ key:data.key, label:data.label, url:data.url, brand:data.brand,
+                 id:data.id, sort_order:data.sort_order, is_active:true }])
+      .concat([{ key:'custom', label:'Custom link...', url:'' }]);
+    showToast('Application link added', 'success');
+  }
+
+  closeApplicationLinkDrawer();
+  renderApplicationLinksTable();
+}
+
+async function deactivateApplicationLink(id){
+  if(!confirm('Hide this link from the dropdown? Leads already using it keep working.')) return;
+  const { error } = await supa.from('application_links').update({ is_active:false }).eq('id', id);
+  if(error){ showToast('Could not hide it: ' + error.message, 'error'); return; }
+  // Kept in memory so applicationLinkUrl() can still resolve a lead already
+  // pointing at it — it is just no longer offered as a choice.
+  const a = APPLICATION_LINKS.find(x => x.id === id);
+  if(a) a.is_active = false;
+  showToast('Link hidden from the dropdown', 'success');
+  renderApplicationLinksTable();
 }
 
 /* =========================================================================
@@ -7730,7 +7901,7 @@ function stagePanelHtml(l){
         <p class="stage-panel-desc">Pick the link to send, then preview and send a branded application email.</p>
         <div class="field"><label>Application link</label>
           <select id="spAppLinkChoice" onchange="document.getElementById('spAppLinkCustom').style.display = this.value==='custom' ? 'block':'none';">
-            ${APPLICATION_LINKS.map(a=>`<option value="${a.key}" ${l.application_link_choice===a.key?'selected':''}>${a.label}</option>`).join('')}
+            ${APPLICATION_LINKS.filter(a=>a.is_active !== false && (a.key==='custom' || !a.brand || a.brand==='both' || a.brand===(l.brand||'epay'))).map(a=>`<option value="${a.key}" ${l.application_link_choice===a.key?'selected':''}>${a.label}</option>`).join('')}
           </select>
         </div>
         <div class="field" id="spAppLinkCustom" style="${l.application_link_choice==='custom'?'':'display:none;'}">
