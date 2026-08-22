@@ -497,6 +497,24 @@
      does not, hence the override below. */
   .panel tbody tr{content-visibility:auto;contain-intrinsic-size:auto 44px;}
   @media print{ .panel tbody tr{content-visibility:visible;} }
+  .onboarding-banner{
+    display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+    margin:0 0 18px;padding:13px 16px;border-radius:10px;
+    background:var(--accent-soft);border:1px solid var(--brand-accent-2);
+    font-size:13.5px;color:var(--navy-700);
+  }
+  .onboarding-banner.is-submitted{
+    background:var(--ok-bg);border-color:var(--green);
+  }
+  .onboarding-banner .ob-dot{
+    width:8px;height:8px;border-radius:50%;background:var(--brand-accent-2);flex-shrink:0;
+  }
+  .onboarding-banner.is-submitted .ob-dot{background:var(--green);}
+  .onboarding-banner .ob-text{flex:1;min-width:220px;line-height:1.45;}
+  .section-label{
+    font-size:11px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;
+    color:var(--slate-500);margin:0 0 10px;
+  }
   .pager{
     display:flex;align-items:center;justify-content:space-between;gap:12px;
     padding:12px 20px;border-top:1px solid var(--line);flex-wrap:wrap;
@@ -2135,6 +2153,11 @@
   <div class="drawer" id="referralDrawer"></div>
 </div>
 
+<!-- ================= DRAWER: AGENT ONBOARDING APPLICATION ================= -->
+<div class="overlay" id="onboardingOverlay">
+  <div class="drawer" id="onboardingDrawer"></div>
+</div>
+
 <!-- ================= DRAWER: ADD USER ================= -->
 <div class="overlay" id="userOverlay">
   <div class="drawer" id="userDrawer"></div>
@@ -3201,6 +3224,8 @@ function enterApp(){
   currentBrand = (currentUser.brands && currentUser.brands[0]) || 'epay';
   applyRolePermissions();
   setBrand(currentBrand);
+  // Portal logins may still owe us their application; internal users never do.
+  refreshMyOnboarding();
   populatePreviewAsSelect();
   // Honour the hash so refreshing keeps you on the tab you were looking at;
   // anything unrecognised (including a leftover #access_token from a recovery
@@ -3433,12 +3458,6 @@ function showSetPasswordScreen(){
 // that confirms an admin actually added them as a user first (README's
 // "a login should never grant default access" rule from 03_auth_link.sql).
 /* =========================================================================
-   LOGIN TRACE
-   Temporary instrumentation for diagnosing a stalled login. Every step
-   is timestamped to the console and kept in window.__loginTrace so it can
-   be copied out in one go. Remove once login is confirmed healthy.
-   ========================================================================= */
-/* =========================================================================
    XLSX ON DEMAND
    The SheetJS bundle is ~196KB and used in exactly two places — downloading
    an upload template and parsing an imported file. It used to sit in <head>
@@ -3461,14 +3480,6 @@ function loadXLSX(){
     document.head.appendChild(el);
   });
   return __xlsxPromise;
-}
-
-window.__loginTrace = [];
-function loginTrace(step, extra){
-  const entry = { t: Math.round(performance.now()), step: step };
-  if(extra) entry.detail = extra;
-  window.__loginTrace.push(entry);
-  console.log('[login +' + entry.t + 'ms]', step, extra !== undefined ? extra : '');
 }
 
 async function fetchCurrentAppUser(authUser){
@@ -3495,13 +3506,11 @@ async function fetchCurrentAppUser(authUser){
   // CRM user row, or the token wasn't attached yet. Retrying once separates
   // the two, and costs a single extra round trip only on the failure path.
   if(!data){
-    loginTrace('users row empty on first read - retrying once', { error: error && error.message });
     await new Promise(r => setTimeout(r, 250));
     ({ data, error } = await readOnce());
   }
 
   if(error || !data){
-    loginTrace('users row not found', { error: error && error.message });
     return null;
   }
   return data;
@@ -3512,7 +3521,6 @@ async function enterAppAsAuthUser(authUser){
   // Everything below fires concurrently, so this has to complete first or
   // those reads race the token and come back empty as `anon`.
   await supa.auth.getSession();
-  loginTrace('session settled');
 
   // The user lookup, the custom roles, and the eighteen tables are all
   // independent requests. They used to run as three sequential phases at
@@ -3541,7 +3549,6 @@ async function enterAppAsAuthUser(authUser){
     loadInstantlyContactsFromSupabase(),
     loadPartnerDocumentsFromSupabase()
   ]);
-  loginTrace('all requests dispatched');
 
   const appUser = await userPromise;
   if(!appUser){
@@ -3557,13 +3564,11 @@ async function enterAppAsAuthUser(authUser){
     return;
   }
   currentUser = appUser;
-  loginTrace('app user resolved', { email: appUser.email, role: appUser.role });
 
   // rebuildRoles() reads CUSTOM_ROLES, and everything downstream reads the
   // ROLES it builds — so this still has to be awaited before enterApp().
   CUSTOM_ROLES = await rolesPromise;
   rebuildRoles();
-  loginTrace('roles loaded', { customRoles: (CUSTOM_ROLES || []).length });
 
   const [
     users, partners, leads, applications, coldLeads, notes, leadNotes,
@@ -3592,19 +3597,9 @@ async function enterAppAsAuthUser(authUser){
   INSTANTLY_CONTACTS = instantlyContacts;
   PARTNER_DOCUMENTS = partnerDocuments;
 
-  loginTrace('tables loaded', {
-    users: (users||[]).length, partners: (partners||[]).length,
-    leads: (leads||[]).length, applications: (applications||[]).length
-  });
 
   document.getElementById('login-screen').style.display = 'none';
-  try {
-    enterApp();
-    loginTrace('enterApp() completed - login finished');
-  } catch(err){
-    loginTrace('enterApp() THREW', { message: err && err.message });
-    throw err;
-  }
+  enterApp();
 }
 
 /* =========================================================================
@@ -3743,7 +3738,6 @@ document.getElementById('loginFormEl').addEventListener('submit', async function
     return showFormError('loginError', friendlyAuthError(error));
   }
   pwEl.value = '';
-  loginTrace('signInWithPassword succeeded');
 
   // The button used to be re-enabled here, before enterAppAsAuthUser() had
   // loaded anything — so for the several seconds that took, the login form
@@ -4648,6 +4642,193 @@ function unlockSensitiveField(recordId, fieldKey){
 function refreshSensitiveFieldView(recordId){
   if(LEADS.some(l => l.id === recordId)){ openLeadDetail(recordId); return; }
   if(PARTNERS.some(p => p.id === recordId)){ openReferralDetail(recordId); return; }
+}
+
+/* =========================================================================
+   AGENT ONBOARDING (agent side)
+   An invited agent gets the normal portal with a banner until they complete
+   their application. Their own partner row is not writable directly —
+   partners_write requires editPartners — so submitting goes through
+   submit_partner_onboarding(), which writes an explicit list of application
+   columns and cannot touch residuals, status or hierarchy. Sensitive fields
+   go through set_partner_sensitive()/set_partner_banking() as usual.
+   ========================================================================= */
+let myOnboarding = null;
+
+async function refreshMyOnboarding(){
+  // Only portal logins have an onboarding record to chase.
+  if(roleOf(currentUser).portal_scope !== 'own'){ myOnboarding = null; return; }
+  const { data, error } = await supa.rpc('my_onboarding_status');
+  if(error){ console.error('Could not read onboarding status', error); myOnboarding = null; return; }
+  myOnboarding = (data && data.partner_id) ? data : null;
+  renderOnboardingBanner();
+}
+
+function renderOnboardingBanner(){
+  let bar = document.getElementById('onboardingBanner');
+  const needed = myOnboarding && ['invited','submitted'].includes(myOnboarding.status);
+
+  if(!needed){ if(bar) bar.remove(); return; }
+
+  if(!bar){
+    bar = document.createElement('div');
+    bar.id = 'onboardingBanner';
+    bar.className = 'onboarding-banner';
+    const main = document.querySelector('.main') || document.getElementById('app-screen');
+    main.insertBefore(bar, main.firstChild);
+  }
+
+  if(myOnboarding.status === 'submitted'){
+    bar.className = 'onboarding-banner is-submitted';
+    bar.innerHTML =
+      '<span class="ob-dot"></span>' +
+      '<span class="ob-text"><strong>Application received.</strong> We are reviewing it and will be in touch. ' +
+      'You can still make corrections until it is approved.</span>' +
+      '<button type="button" class="btn btn-sm" onclick="openOnboardingForm()">Review answers</button>';
+  } else {
+    bar.className = 'onboarding-banner';
+    bar.innerHTML =
+      '<span class="ob-dot"></span>' +
+      '<span class="ob-text"><strong>Finish setting up your account.</strong> ' +
+      'We need a few details before you can start submitting deals.</span>' +
+      '<button type="button" class="btn btn-accent btn-sm" onclick="openOnboardingForm()">Complete application</button>';
+  }
+}
+
+async function openOnboardingForm(){
+  if(!myOnboarding) return;
+  const id = myOnboarding.partner_id;
+  const p = PARTNERS.find(x => x.id === id) || {};
+
+  // Their own sensitive values come back through the RPC rather than the row.
+  let sens = { ssn:'', dob:'', drivers_license:'', tax_id:'' };
+  const { data } = await supa.rpc('reveal_partner_sensitive', { p_partner_id: id });
+  if(data) sens = Object.assign(sens, data);
+
+  const f = (id_, label, val, type) =>
+    `<div class="field"><label>${label}</label><input id="${id_}" type="${type||'text'}" value="${val || ''}"></div>`;
+
+  document.getElementById('onboardingDrawer').innerHTML = `
+    <div class="drawer-head">
+      <div><h2>Your application</h2>
+        <p class="sub" style="margin:4px 0 0;font-size:12px;color:var(--slate-500);">
+          Everything here is stored encrypted and only visible to you and EPAY staff.</p></div>
+      <button class="drawer-close" onclick="closeOnboardingDrawer()">&times;</button>
+    </div>
+    <div class="drawer-body">
+      <div class="section-label">About you</div>
+      ${f('obFirst','First name', p.owner_first_name)}
+      ${f('obLast','Last name', p.owner_last_name)}
+      ${f('obDob','Date of birth', sens.dob, 'date')}
+      ${f('obSsn','Social security number', sens.ssn)}
+      ${f('obDl','Driver\u2019s licence number', sens.drivers_license)}
+      ${f('obDlState','Driver\u2019s licence state', p.drivers_license_state)}
+      ${f('obPersonalAddress','Home address', p.personal_address)}
+
+      <div class="section-label" style="margin-top:18px;">Your business</div>
+      ${f('obLegalName','Legal business name', p.legal_business_name)}
+      ${f('obDba','DBA / trading name', p.dba_name)}
+      ${f('obTaxId','Business tax ID (EIN)', sens.tax_id)}
+      ${f('obBizAddress','Business address', p.business_address)}
+      ${f('obBizPhone','Business phone', p.business_phone, 'tel')}
+      ${f('obBizEmail','Business email', p.business_email, 'email')}
+      ${f('obStart','Business start date', p.business_start_date, 'date')}
+      <div class="field"><label>What the business does</label>
+        <textarea id="obServices" rows="3">${p.business_type_services || ''}</textarea></div>
+
+      <div class="section-label" style="margin-top:18px;">Where we send your payouts</div>
+      ${f('obBankName','Bank name', (p.banking||{}).bank_name)}
+      ${f('obBankHolder','Account holder name', (p.banking||{}).account_holder)}
+      ${f('obRouting','Routing number', (p.banking||{}).routing_number)}
+      ${f('obAccount','Account number', (p.banking||{}).account_number)}
+
+      <div id="obError" class="form-error" style="display:none;margin:14px 0 0;padding:10px 12px;background:#FDECEC;border:1px solid #F3C6C6;border-radius:8px;color:var(--red);font-size:13px;"></div>
+      <button class="btn btn-accent" id="obSubmitBtn" style="width:100%;margin-top:16px;" onclick="submitOnboardingForm()">
+        ${myOnboarding.status === 'submitted' ? 'Save changes' : 'Submit application'}
+      </button>
+      <p style="font-size:10.5px;color:var(--slate-300);margin:8px 0 0;text-align:center;">
+        You can come back and correct anything until it is approved.</p>
+    </div>`;
+
+  document.getElementById('onboardingOverlay').classList.add('open');
+}
+
+function closeOnboardingDrawer(){
+  document.getElementById('onboardingOverlay').classList.remove('open');
+}
+
+async function submitOnboardingForm(){
+  const id = myOnboarding.partner_id;
+  const v = x => (document.getElementById(x) || {}).value || '';
+  const btn = document.getElementById('obSubmitBtn');
+  const err = document.getElementById('obError');
+  err.style.display = 'none';
+
+  if(!v('obFirst') || !v('obLast')){
+    err.textContent = 'Please give us your first and last name.';
+    err.style.display = 'block';
+    return;
+  }
+
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.textContent = 'Saving\u2026';
+
+  try {
+    // Application fields, through the scoped RPC.
+    const { error: subErr } = await supa.rpc('submit_partner_onboarding', {
+      p_partner_id: id,
+      p_owner_first_name: v('obFirst'),
+      p_owner_last_name: v('obLast'),
+      p_drivers_license_state: v('obDlState'),
+      p_legal_business_name: v('obLegalName'),
+      p_dba_name: v('obDba'),
+      p_business_address: v('obBizAddress'),
+      p_business_phone: v('obBizPhone'),
+      p_business_email: v('obBizEmail'),
+      p_business_start_date: v('obStart') || null,
+      p_business_type_services: v('obServices'),
+      p_personal_address: v('obPersonalAddress'),
+      p_phone: null, p_website: null, p_address: null,
+      p_city: null, p_state: null, p_zip: null
+    });
+    if(subErr) throw subErr;
+
+    // Sensitive fields, each through its own RPC. Blank means "leave alone"
+    // rather than "clear", so re-saving the form doesn't wipe what's stored.
+    const { error: sensErr } = await supa.rpc('set_partner_sensitive', {
+      p_partner_id: id,
+      p_ssn: v('obSsn') || null,
+      p_dob: v('obDob') || null,
+      p_drivers_license: v('obDl') || null,
+      p_tax_id: v('obTaxId') || null
+    });
+    if(sensErr) throw sensErr;
+
+    if(v('obBankName') || v('obRouting') || v('obAccount')){
+      const { error: bankErr } = await supa.rpc('set_partner_banking', {
+        p_partner_id: id,
+        p_banking: JSON.stringify({
+          bank_name: v('obBankName'), account_holder: v('obBankHolder'),
+          account_type: 'checking', routing_number: v('obRouting'),
+          account_number: v('obAccount')
+        })
+      });
+      if(bankErr) throw bankErr;
+    }
+
+    myOnboarding.status = 'submitted';
+    closeOnboardingDrawer();
+    renderOnboardingBanner();
+    showToast('Application submitted \u2014 we will review it shortly', 'success');
+  } catch(e){
+    err.textContent = e.message || 'Something went wrong saving your application.';
+    err.style.display = 'block';
+    showToast('Could not save your application', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
 }
 
 /* =========================================================================
