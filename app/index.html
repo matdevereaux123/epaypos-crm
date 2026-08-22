@@ -5739,9 +5739,14 @@ async function saveNewReferral(){
       if(userErr){ alert('Partner saved, but could not create their portal login: ' + userErr.message); return; }
       USERS.push(newUser);
       if(document.getElementById('view-settings').style.display !== 'none') renderUsersTable();
-      if(confirm(`${newUser.name} was also added as a portal user (${ROLES[role].label}). Send them a login invite email now?`)){
-        openPartnerInviteEmailPreview(newUser.id);
-      }
+      // Deliberately does NOT offer to invite here. Onboarding requires the
+      // signed admit packet on file first, and this prompt was a second route
+      // to inviting that skipped that gate. The database would still refuse —
+      // mark_partner_invited raises without a packet — but only after an email
+      // had gone out from a path that never checked. The one way to invite is
+      // the Onboarding section on their record, where the button stays
+      // disabled until the packet exists.
+      showToast(`${newUser.name} added as a portal user. Upload their signed admit packet to unlock the invite.`, 'success');
     }
   }
 }
@@ -8576,6 +8581,24 @@ function openPartnerInviteEmailPreview(userId){
 async function sendPartnerInviteEmail(userId){
   const u = USERS.find(x => x.id === userId);
   if(!u) return;
+
+  // Second route to inviting, reachable from Settings -> Team access. It has
+  // to respect the same packet gate as the Onboarding section, or the rule
+  // holds in one place and not the other. Only applies to users linked to a
+  // partner record — internal staff have no admit packet and are unaffected.
+  if(u.linked_partner_id){
+    const partner = PARTNERS.find(x => x.id === u.linked_partner_id);
+    if(partner && !partnerAdmitPacket(partner.id)){
+      showToast('Upload their signed admit packet before sending an invite.', 'error');
+      return;
+    }
+    // Keep the partner's onboarding status in step with the invite going out,
+    // whichever route sent it. This also re-checks the packet server-side.
+    const { error: gateErr } = await supa.rpc('mark_partner_invited', { p_partner_id: u.linked_partner_id });
+    if(gateErr){ showToast(gateErr.message, 'error'); return; }
+    if(partner) partner.onboarding_status = 'invited';
+  }
+
   const btn = document.querySelector('#emailPreviewDrawer .btn-accent');
   if(btn){ btn.disabled = true; btn.textContent = 'Sending...'; }
   const { data, error } = await supa.functions.invoke('invite-user', { body: { userId } });
