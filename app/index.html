@@ -497,6 +497,13 @@
      does not, hence the override below. */
   .panel tbody tr{content-visibility:auto;contain-intrinsic-size:auto 44px;}
   @media print{ .panel tbody tr{content-visibility:visible;} }
+  /* The two kinds of person on the board. The left accent bar does the work
+     at a glance across a full column; the pill confirms it up close. */
+  .team-card.is-inhouse{border-left:3px solid var(--brand-accent-2);}
+  .team-card.is-agent{border-left:3px solid var(--amber);}
+  .tc-avatar-inhouse{background:linear-gradient(135deg, var(--navy-500), var(--navy-700));}
+  .pill-inhouse{background:var(--accent-soft);color:var(--brand-accent-2);}
+  .pill-commission{background:var(--warn-bg);color:var(--warn-text);}
   .onboarding-banner{
     display:flex;align-items:center;gap:12px;flex-wrap:wrap;
     margin:0 0 18px;padding:13px 16px;border-radius:10px;
@@ -1460,6 +1467,7 @@
             <div class="view-toggle" id="teamStructureModeToggle">
               <button type="button" class="view-toggle-btn active" data-mode="board">Board</button>
               <button type="button" class="view-toggle-btn" data-mode="hierarchy">Hierarchy</button>
+              <button type="button" class="view-toggle-btn" data-mode="team">Team</button>
             </div>
             <button class="btn btn-sm" id="downloadHierarchyBtn">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -1481,6 +1489,21 @@
           <button class="btn btn-xs" onclick="cancelLinkMode()">Cancel</button>
         </div>
         <div id="teamStructureHierarchy" style="display:none;"></div>
+        <div id="teamStructureTeam" style="display:none;">
+          <div class="panel">
+            <div class="panel-head"><h2>In-house team</h2></div>
+            <p style="padding:0 20px;margin:0 0 4px;font-size:12.5px;color:var(--slate-500);">
+              Everyone on an internal role &mdash; your own staff, as opposed to commission agents.
+            </p>
+            <table>
+              <thead><tr><th>Name</th><th>Role</th><th>Office</th><th>Reports to</th><th>Assigned</th></tr></thead>
+              <tbody id="internalTeamBody"></tbody>
+            </table>
+            <div id="internalTeamEmptyState" style="display:none;padding:18px 20px;color:var(--slate-500);font-size:13px;">
+              No internal team members yet. Add them under Settings &rarr; Team access.
+            </div>
+          </div>
+        </div>
       </section>
 
       <!-- REPORT: MONTHLY SUBSCRIPTION ADD-ONS -->
@@ -2552,6 +2575,37 @@ const EPAY_APPS_LIST = [
 //
 // 'custom' is appended in code rather than stored: it means "type a one-off
 // URL on this lead", held per-lead in leads.application_link_custom.
+// Lead sources, offered as a dropdown rather than free text so reporting on
+// where deals come from is countable instead of a pile of near-duplicate
+// spellings. 'Other' keeps a free-text escape hatch.
+//
+// Existing leads may hold values predating this list (the demo data uses
+// "Referral partner", "Cold Call" and similar). leadSourceOptionsFor() adds
+// whatever a lead already has to its own dropdown, so opening an old lead
+// never silently reassigns or blanks its source.
+const LEAD_SOURCES = [
+  'Social media',
+  'SEO & AI',
+  'Internal sales team',
+  'Paid ads',
+  '1099 sales agents / ISO channel',
+  'Trade shows',
+  'Outbound',
+  'Alternative lead gen funnels',
+  'Cross marketing or other business services we provide',
+  'Referral agents',
+  'Referral',
+  'Amazon / FB marketplace',
+  'Blogs',
+  'Other'
+];
+
+function leadSourceOptionsFor(current){
+  const list = LEAD_SOURCES.slice();
+  if(current && !list.includes(current)) list.unshift(current);
+  return list;
+}
+
 let APPLICATION_LINKS = [
   { key:'free_processing', label:'Free Processing Application', url:'https://www.epaypos.net/copy-of-free-processing' },
   { key:'sign_up', label:'Sign Up', url:'https://www.epaypos.net/sign-up' },
@@ -6082,7 +6136,15 @@ document.getElementById('teamStructureSearch').addEventListener('input', renderT
 function renderTeamStructure(){
   const boardEl = document.getElementById('teamStructureBoard');
   const hierEl = document.getElementById('teamStructureHierarchy');
+  const teamEl = document.getElementById('teamStructureTeam');
   if(!boardEl) return;
+  if(teamEl) teamEl.style.display = teamStructureMode === 'team' ? 'block' : 'none';
+  if(teamStructureMode === 'team'){
+    boardEl.style.display = 'none';
+    hierEl.style.display = 'none';
+    renderInternalTeamTable();
+    return;
+  }
   if(teamStructureMode === 'board'){
     boardEl.style.display = 'block';
     hierEl.style.display = 'none';
@@ -6101,13 +6163,60 @@ function teamStructurePartners(){
     .sort((a,b)=> a.name.localeCompare(b.name));
 }
 
+// The board holds two different kinds of person from two different tables.
+// Normalising them here means the column and drag code doesn't have to care
+// which is which — only the card does, so it can label them.
+function teamStructurePeople(){
+  const agents = teamStructurePartners().map(p => ({
+    kind: 'agent', id: p.id, name: p.name, office_id: p.office_id,
+    city: p.city, state: p.state, ref: p
+  }));
+  const inhouse = internalTeamMembers().map(u => ({
+    kind: 'inhouse', id: u.id, name: u.name, office_id: u.office_id,
+    city: '', state: '', ref: u
+  }));
+  return inhouse.concat(agents);
+}
+
+function teamPersonCardHtml(person){
+  return person.kind === 'inhouse'
+    ? teamInhouseCardHtml(person.ref)
+    : teamPartnerCardHtml(person.ref);
+}
+
+// In-house staff. The is-inhouse class carries a left accent bar so the two
+// kinds are distinguishable at a glance across a full office column, not only
+// by reading the badge on each card.
+function teamInhouseCardHtml(u){
+  const initials = (u.name || '?').split(' ').filter(Boolean).map(w=>w[0]).slice(0,2).join('').toUpperCase();
+  const manager = u.manager_id ? (USERS.find(x => x.id === u.manager_id) || {}).name : null;
+  const openLeads = LEADS.filter(l => l.assigned_to === u.id && !l.converted_to_account).length;
+  return `
+    <div class="team-card is-inhouse" draggable="true" data-user-id="${u.id}"
+         ondragstart="handleTeamCardDragStart(event)" ondragend="handleTeamCardDragEnd(event)">
+      <div class="tc-top">
+        <span class="tc-avatar tc-avatar-inhouse">${initials}</span>
+        <div>
+          <div class="tc-name">${u.name || '—'}</div>
+          <div class="tc-sub">${u.email || ''}</div>
+        </div>
+      </div>
+      <div class="tc-badges">
+        <span class="pill pill-inhouse">In-house</span>
+        <span class="pill" style="background:var(--hover);color:var(--slate-500);">${roleOf(u).label}</span>
+        ${manager ? `<span class="pill" style="background:var(--hover);color:var(--slate-500);">Reports to ${manager}</span>` : ''}
+        ${openLeads ? `<span class="pill" style="background:var(--hover);color:var(--slate-500);">${openLeads} open</span>` : ''}
+      </div>
+    </div>`;
+}
+
 function teamPartnerCardHtml(p){
   const initials = p.name.split(' ').filter(Boolean).map(w=>w[0]).slice(0,2).join('').toUpperCase();
   const isAuth = p.reseller_type === 'authorized_reseller';
   const downlineCount = PARTNERS.filter(x => x.parent_partner_id === p.id).length;
   const parent = p.parent_partner_id ? PARTNERS.find(x => x.id === p.parent_partner_id) : null;
   return `
-    <div class="team-card" draggable="true" data-partner-id="${p.id}"
+    <div class="team-card is-agent" draggable="true" data-partner-id="${p.id}"
          ondragstart="handleTeamCardDragStart(event)" ondragend="handleTeamCardDragEnd(event)"
          onclick="openReferralDetail('${p.id}')">
       <div class="tc-top">
@@ -6118,6 +6227,7 @@ function teamPartnerCardHtml(p){
         </div>
       </div>
       <div class="tc-badges">
+        <span class="pill pill-commission">Commission agent</span>
         <span class="pill ${isAuth ? 'pill-agent-auth' : 'pill-agent-basic'}">${isAuth ? 'Authorized Reseller' : 'Basic Payments'}</span>
         ${parent ? `<span class="pill" style="background:var(--hover);color:var(--slate-500);">Reports to ${parent.name}</span>` : ''}
         ${downlineCount ? `<span class="pill" style="background:var(--hover);color:var(--slate-500);">${downlineCount} downline</span>` : ''}
@@ -6125,12 +6235,55 @@ function teamPartnerCardHtml(p){
     </div>`;
 }
 
+/* -----------------------------------------------------------------------
+   IN-HOUSE TEAM
+   Your own staff, which is a different table from the commission agents the
+   board was built for: internal people are USERS on a role whose
+   portal_scope is 'internal', agents are PARTNERS with type = 'agent'.
+   ----------------------------------------------------------------------- */
+function internalTeamMembers(){
+  const q = ((document.getElementById('teamStructureSearch')||{}).value || '').trim().toLowerCase();
+  return USERS
+    .filter(u => roleOf(u).portal_scope === 'internal')
+    .filter(u => !q || (u.name||'').toLowerCase().includes(q) || (u.email||'').toLowerCase().includes(q))
+    .sort((a,b) => (a.name||'').localeCompare(b.name||''));
+}
+
+function renderInternalTeamTable(){
+  const body = document.getElementById('internalTeamBody');
+  if(!body) return;
+  const empty = document.getElementById('internalTeamEmptyState');
+  const rows = internalTeamMembers();
+
+  if(rows.length === 0){
+    body.innerHTML = '';
+    if(empty) empty.style.display = 'block';
+    return;
+  }
+  if(empty) empty.style.display = 'none';
+
+  body.innerHTML = rows.map(u => {
+    const office = u.office_id ? (OFFICES.find(o => o.id === u.office_id) || {}).name : null;
+    const manager = u.manager_id ? (USERS.find(x => x.id === u.manager_id) || {}).name : null;
+    const openLeads = LEADS.filter(l => l.assigned_to === u.id && !l.converted_to_account).length;
+    const accounts  = LEADS.filter(l => l.assigned_to === u.id && l.converted_to_account).length;
+    return `
+      <tr onclick="openUserDrawer && openUserDrawer('${u.id}')">
+        <td class="name-cell">${u.name || '—'}<div class="sub">${u.email || ''}</div></td>
+        <td><span class="pill ${rolePillClass(u.role)}">${roleOf(u).label}</span></td>
+        <td>${office || '<span style="color:var(--slate-300);">Unassigned</span>'}</td>
+        <td>${manager || '—'}</td>
+        <td>${openLeads} lead${openLeads===1?'':'s'}<div class="sub">${accounts} account${accounts===1?'':'s'}</div></td>
+      </tr>`;
+  }).join('');
+}
+
 function renderTeamStructureBoard(){
-  const partners = teamStructurePartners();
+  const partners = teamStructurePeople();
   const unassigned = partners.filter(p => !p.office_id);
   const officeColumns = OFFICES.map(office => {
     const officePartners = partners.filter(p => p.office_id === office.id);
-    const cardsHtml = officePartners.length ? officePartners.map(teamPartnerCardHtml).join('') : `<div class="kanban-empty">Drag agents here</div>`;
+    const cardsHtml = officePartners.length ? officePartners.map(teamPersonCardHtml).join('') : `<div class="kanban-empty">Drag people here</div>`;
     return `
       <div class="office-column">
         <div class="office-head">
@@ -6153,7 +6306,7 @@ function renderTeamStructureBoard(){
         <span class="office-count">${unassigned.length}</span>
       </div>
       <div class="office-body" data-office-id="" ondragover="handleOfficeDragOver(event)" ondragleave="handleOfficeDragLeave(event)" ondrop="handleOfficeDrop(event)">
-        ${unassigned.length ? unassigned.map(teamPartnerCardHtml).join('') : `<div class="kanban-empty">Everyone's assigned</div>`}
+        ${unassigned.length ? unassigned.map(teamPersonCardHtml).join('') : `<div class="kanban-empty">Everyone's assigned</div>`}
       </div>
     </div>`;
 
@@ -6164,11 +6317,16 @@ function renderTeamStructureBoard(){
 // since both can technically be dragging independently across tabs. ---
 let _draggingPartnerId = null;
 function handleTeamCardDragStart(e){
-  _draggingPartnerId = e.currentTarget.dataset.partnerId;
+  // A card is now either a partner or an internal user, so the drop handler
+  // has to know which table to write to.
+  _draggingPartnerId = e.currentTarget.dataset.partnerId || null;
+  _draggingUserId = e.currentTarget.dataset.userId || null;
   e.currentTarget.classList.add('dragging');
   e.dataTransfer.effectAllowed = 'move';
 }
+let _draggingUserId = null;
 function handleTeamCardDragEnd(e){
+  _draggingUserId = null;
   e.currentTarget.classList.remove('dragging');
   _draggingPartnerId = null;
 }
@@ -6185,7 +6343,24 @@ function handleOfficeDrop(e){
   const officeId = e.currentTarget.dataset.officeId || null;
   if(_draggingPartnerId){
     movePartnerToOffice(_draggingPartnerId, officeId);
+  } else if(_draggingUserId){
+    moveUserToOffice(_draggingUserId, officeId);
   }
+}
+
+async function moveUserToOffice(userId, officeId){
+  const u = USERS.find(x => x.id === userId);
+  if(!u) return;
+  const { error } = await supa.from('users').update({ office_id: officeId }).eq('id', userId);
+  if(error){
+    // users_write gates on manageUsers, so a non-admin drag fails here rather
+    // than appearing to work. Re-render so the card snaps back.
+    showToast('Could not move them: ' + error.message, 'error');
+    renderTeamStructureBoard();
+    return;
+  }
+  u.office_id = officeId;
+  renderTeamStructureBoard();
 }
 async function movePartnerToOffice(partnerId, officeId){
   const p = PARTNERS.find(x => x.id === partnerId);
@@ -7850,7 +8025,16 @@ function stagePanelHtml(l){
           <div class="detail-row"><span class="k">Lead source</span><span class="v">${l.lead_source}</span></div>
           <button class="btn btn-sm" style="margin-top:10px;" onclick="unlockLeadSource('${l.id}')">Edit</button>
         ` : `
-          <div class="field"><label>Lead source</label><input id="spLeadSource" value="${l.lead_source||''}" placeholder="e.g. Wix Application, Referral, Cold Call"></div>
+          <div class="field"><label>Lead source</label>
+            <select id="spLeadSource" onchange="document.getElementById('spLeadSourceOther').style.display = this.value === 'Other' ? 'block' : 'none';">
+              <option value="">Select a source...</option>
+              ${leadSourceOptionsFor(l.lead_source).map(src => `<option value="${src}" ${l.lead_source===src?'selected':''}>${src}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field" id="spLeadSourceOther" style="${l.lead_source==='Other'?'':'display:none;'}">
+            <label>Tell us more</label>
+            <input id="spLeadSourceOtherInput" placeholder="Where did this one come from?">
+          </div>
           <button class="btn btn-accent" style="width:100%;" onclick="saveInboundLeadFields('${l.id}')">Save</button>
         `}
       </div>
@@ -7988,7 +8172,12 @@ async function saveLeadAssignment(id, userId){
 
 async function saveInboundLeadFields(id){
   const l = LEADS.find(x=>x.id===id); if(!l) return;
-  const lead_source = document.getElementById('spLeadSource').value.trim();
+  let lead_source = document.getElementById('spLeadSource').value.trim();
+  // 'Other' alone says nothing useful in a report, so keep what they typed.
+  if(lead_source === 'Other'){
+    const other = (document.getElementById('spLeadSourceOtherInput') || {}).value || '';
+    if(other.trim()) lead_source = 'Other \u2014 ' + other.trim();
+  }
   const { error } = await supa.from('leads').update({ lead_source }).eq('id', id);
   if(error){ alert('Could not save: ' + error.message); return; }
   l.lead_source = lead_source;
