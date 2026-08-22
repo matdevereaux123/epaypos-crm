@@ -5214,12 +5214,26 @@ async function sendPartnerInvite(partnerId){
   const { error: gateErr } = await supa.rpc('mark_partner_invited', { p_partner_id: partnerId });
   if(gateErr){ showToast(gateErr.message, 'error'); return; }
 
-  const { error: fnErr } = await supa.functions.invoke('invite-user', {
-    body: { email: p.email, first_name: (p.contact || p.name || '').split(' ')[0], partner_id: partnerId }
+  // The edge function takes the users-table id, not the partner or the email —
+  // it looks the address up itself with the service role. Passing anything
+  // else gets "userId is required" back and no email is sent.
+  const portalUser = USERS.find(u => u.linked_partner_id === partnerId);
+  if(!portalUser){
+    showToast('No portal login exists for this partner yet, so there is nothing to invite. Re-save the partner with an email address to create one.', 'error');
+    return;
+  }
+
+  const { data: fnData, error: fnErr } = await supa.functions.invoke('invite-user', {
+    body: { userId: portalUser.id }
   });
-  if(fnErr){
-    showToast('Status updated, but the invite email failed: ' + fnErr.message, 'error');
+  // invoke() surfaces transport failures in fnErr, but the function's own
+  // refusals come back as a 200-shaped body with an error field.
+  const failure = fnErr ? fnErr.message : (fnData && fnData.error);
+  if(failure){
+    showToast('Status updated, but the invite email failed: ' + failure, 'error');
   } else {
+    portalUser.invite_sent = true;
+    portalUser.invite_sent_at = todayISO();
     showToast('Invite sent to ' + p.email, 'success');
   }
 
