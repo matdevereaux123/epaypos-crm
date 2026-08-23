@@ -2948,7 +2948,126 @@ function loadIntegrations(){
   localStorage.setItem(LS_INTEGRATIONS_KEY, JSON.stringify(seeded));
   return seeded;
 }
+// localStorage is kept only as an offline mirror so Settings has something to
+// paint before the first read returns. The integrations table is the real
+// store — config in one browser is invisible to the rest of the team and gone
+// on a cache clear: fine for a UI-only preview, not fine once a real
+// integration depends on it.
 function saveIntegrations(obj){ localStorage.setItem(LS_INTEGRATIONS_KEY, JSON.stringify(obj)); }
+
+/* -----------------------------------------------------------------------
+   OUTBOUND EMAIL
+   Goes through the send-email edge function, never Resend directly — the
+   API key lives on the function as an environment variable, and anything
+   the browser can read is public.
+
+   Auth email (invites, resets, magic links) is NOT this. That goes through
+   Supabase Auth and its own templates.
+   ----------------------------------------------------------------------- */
+function outboundEmailReady(){
+  const cfg = INTEGRATIONS['outbound_email'];
+  return !!(cfg && cfg.connected);
+}
+
+async function sendOutboundEmail(opts){
+  if(!outboundEmailReady()){
+    showToast('Outbound email is not switched on yet — Settings \u2192 Integrations.', 'error');
+    return false;
+  }
+
+  const { data, error } = await supa.functions.invoke('send-email', {
+    body: {
+      kind: opts.kind,
+      to: opts.to,
+      subject: opts.subject,
+      heading: opts.heading,
+      body: opts.body,
+      buttonLabel: opts.buttonLabel || null,
+      buttonUrl: opts.buttonUrl || null,
+      leadId: opts.leadId || null
+    }
+  });
+
+  // invoke() reports transport failures in error; the function's own refusals
+  // come back as a body with an error field, which would otherwise read as
+  // success.
+  const failure = error ? error.message : (data && data.error);
+  if(failure){
+    showToast('Email failed: ' + failure, 'error');
+    return false;
+  }
+  showToast('Sent to ' + opts.to, 'success');
+  return true;
+}
+
+// Sends the prospect a link to the application landing page, creating the
+// link first so each send is individually attributable.
+async function emailApplicationLink(leadId){
+  const l = LEADS.find(x => x.id === leadId);
+  if(!l) return;
+  if(!l.email || l.email === '\u2014'){
+    showToast('This lead has no email address on file.', 'error');
+    return;
+  }
+
+  const label = l.business_name || 'Application';
+  const { data: token, error } = await supa.from('application_link_tokens').insert({
+    slug: applicationLinkSlug(label),
+    label: label,
+    brand: (l.brand === 'atm') ? 'atm' : 'epay',
+    created_by: currentUser.id
+  }).select().single();
+  if(error){ showToast('Could not create the link: ' + error.message, 'error'); return; }
+  APPLICATION_LINK_TOKENS.unshift(token);
+
+  const brandName = l.brand === 'atm' ? 'Envision ATM' : 'EPAY POS';
+  const ok = await sendOutboundEmail({
+    kind: 'application_link',
+    to: l.email,
+    leadId: l.id,
+    subject: 'Your ' + brandName + ' application',
+    heading: 'Your application is ready',
+    body: 'Hi ' + (l.contact_name || 'there') + ',\n\n'
+        + 'Here is the application for ' + (l.business_name || 'your business') + '. '
+        + 'It takes a couple of minutes and there is no obligation \u2014 we will come back to you with pricing once we have it.',
+    buttonLabel: 'Open my application',
+    buttonUrl: applicationShareUrl(token.slug)
+  });
+
+  if(ok){
+    await supa.from('leads').update({
+      application_email_sent: true,
+      application_email_sent_at: todayISO()
+    }).eq('id', l.id);
+    l.application_email_sent = true;
+    l.application_email_sent_at = todayISO();
+    openLeadDetail(l.id);
+  }
+}
+
+async function loadIntegrationsFromSupabase(){
+  const { data, error } = await supa.from('integrations').select('*');
+  // integrations is manageSettings-only, so a portal login legitimately gets
+  // nothing. Null tells the caller to leave the mirror alone.
+  if(error) return null;
+  const out = {};
+  INTEGRATION_DEFS.forEach(def => { out[def.key] = { connected:false, values:{} }; });
+  (data || []).forEach(row => {
+    out[row.key] = { connected: !!row.connected, values: row.values || {} };
+  });
+  return out;
+}
+
+async function saveIntegrationToSupabase(key){
+  const cfg = INTEGRATIONS[key] || { connected:false, values:{} };
+  const { error } = await supa.from('integrations')
+    .upsert({ key: key, connected: !!cfg.connected, values: cfg.values || {} }, { onConflict: 'key' });
+  if(error){
+    showToast('Could not save that integration: ' + error.message, 'error');
+    return false;
+  }
+  return true;
+}
 
 /* =========================================================================
    CALENDAR
@@ -3534,7 +3653,8 @@ async function enterAppAsAuthUser(authUser){
     loadCalendarEventsFromSupabase(),
     loadInstantlyContactsFromSupabase(),
     loadPartnerDocumentsFromSupabase(),
-    loadApplicationLinksFromSupabase()
+    loadApplicationLinksFromSupabase(),
+    loadIntegrationsFromSupabase()
   ]);
 
   const appUser = await userPromise;
@@ -3561,7 +3681,8 @@ async function enterAppAsAuthUser(authUser){
     users, partners, leads, applications, coldLeads, notes, leadNotes,
     leadCallNotes, leadDocuments, offices, lendingLeads, lendingLeadNotes,
     lendingLeadCallNotes, newsletters, nlTemplates, connectedCalendars,
-    calendarEvents, instantlyContacts, partnerDocuments, applicationLinks
+    calendarEvents, instantlyContacts, partnerDocuments, applicationLinks,
+    integrationsFromDb
   ] = await tablesPromise;
 
   USERS = users;
@@ -3583,6 +3704,12 @@ async function enterAppAsAuthUser(authUser){
   CALENDAR_EVENTS = calendarEvents;
   INSTANTLY_CONTACTS = instantlyContacts;
   PARTNER_DOCUMENTS = partnerDocuments;
+  // Null means the read was refused, so the localStorage mirror stands rather
+  // than blanking Settings for someone who simply cannot see it.
+  if(integrationsFromDb){
+    INTEGRATIONS = integrationsFromDb;
+    saveIntegrations(INTEGRATIONS);
+  }
 
   // null means the read failed — keep the hardcoded fallback rather than
   // leaving the dropdown empty. An empty array is a real answer (someone
@@ -8525,6 +8652,9 @@ function stagePanelHtml(l){
         </div>
         <button class="btn" style="width:100%;margin-bottom:8px;" onclick="saveApplicationLinkChoice('${l.id}')">Save link choice</button>
         <button class="btn btn-accent" style="width:100%;" onclick="openApplicationEmailPreview('${l.id}')">Preview &amp; send application email</button>
+        <button class="btn" style="width:100%;margin-top:8px;" onclick="emailApplicationLink('${l.id}')">
+          Email them an application link
+        </button>
         <button class="btn" style="width:100%;margin-top:8px;" onclick="createApplicationLinkForLead('${l.id}')">
           Create &amp; copy an application link
         </button>
@@ -11278,6 +11408,7 @@ function saveIntegrationConfig(key){
   });
   INTEGRATIONS[key] = { connected: hasValue, values };
   saveIntegrations(INTEGRATIONS);
+  saveIntegrationToSupabase(key);
   closeIntegrationConfig();
   renderIntegrationsList();
 }
@@ -11285,6 +11416,7 @@ function saveIntegrationConfig(key){
 function disconnectIntegration(key){
   INTEGRATIONS[key] = { connected:false, values:{} };
   saveIntegrations(INTEGRATIONS);
+  saveIntegrationToSupabase(key);
   closeIntegrationConfig();
   renderIntegrationsList();
 }
