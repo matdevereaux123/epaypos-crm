@@ -1810,6 +1810,10 @@
             <p class="subtext">Applications from the Wix sign-up form, auto-linked to accounts by email, phone, or business name. EPAY POS only.</p>
           </div>
           <div class="topbar-actions">
+            <button class="btn btn-sm" id="applicationLinksBtn" onclick="openApplicationLinksDrawer()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+              Application Links
+            </button>
             <button class="btn btn-sm" id="addPaperApplicationBtn">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
               Upload Paper Application
@@ -2196,6 +2200,11 @@
 <!-- ================= DRAWER: AGENT ONBOARDING APPLICATION ================= -->
 <div class="overlay" id="onboardingOverlay">
   <div class="drawer" id="onboardingDrawer"></div>
+</div>
+
+<!-- ================= DRAWER: APPLICATION LINKS ================= -->
+<div class="overlay" id="applicationLinksOverlay">
+  <div class="drawer" id="applicationLinksDrawer"></div>
 </div>
 
 <!-- ================= DRAWER: APPLICATION LINK ================= -->
@@ -4040,6 +4049,15 @@ async function initAuth(){
     return;
   }
 
+  // Application links land here the same way referral links do — a public
+  // page reached before any session check, talking only to the two
+  // SECURITY DEFINER functions in database/28_application_links.sql.
+  const appSlug = new URLSearchParams(window.location.search).get('app');
+  if(appSlug){
+    renderApplicationLandingPage(appSlug);
+    return;
+  }
+
   // An invite or password-reset link lands here with #access_token=...&type=invite
   // (or type=recovery) in the URL — supabase-js reads that automatically and
   // creates a session, but we want to catch that specific case and show the
@@ -4073,6 +4091,264 @@ async function initAuth(){
    this page. Submitting it writes a real Lead, genuinely sitting in the
    Inbound Lead stage and attributed to that partner.
    ========================================================================= */
+const APPLICATION_LINK_FIELDS = [
+  { id:'alBusinessName',     label:'Business name',            required:true },
+  { id:'alContactName',      label:'Your name',                required:true },
+  { id:'alEmail',            label:'Email',                    type:'email' },
+  { id:'alPhone',            label:'Phone',                    type:'tel' },
+  { id:'alBusinessAddress',  label:'Business address' },
+  { id:'alBusinessType',     label:'What does the business do?' },
+  { id:'alMonthlyVolume',    label:'Average monthly card volume' },
+  { id:'alAverageTicket',    label:'Average ticket size' },
+  { id:'alCurrentProcessor', label:'Who processes your payments today?' }
+];
+
+/* -----------------------------------------------------------------------
+   APPLICATION LINKS (internal side)
+   Generate a shareable link, copy it, see how many came in through it, and
+   retire it. Same shape as the referral links, but the submission lands in
+   Applications rather than creating a lead.
+   ----------------------------------------------------------------------- */
+let APPLICATION_LINK_TOKENS = [];
+
+async function loadApplicationLinkTokensFromSupabase(){
+  const { data, error } = await supa.from('application_link_tokens')
+    .select('*').order('created_at', { ascending: false });
+  if(error){ console.error('Failed to load application links', error); return []; }
+  return data;
+}
+
+// Named distinctly from applicationLinkUrl(lead) further down, which returns
+// the marketing URL chosen on a lead. Two functions with the same name means
+// the later definition silently wins — this one was being shadowed.
+function applicationShareUrl(slug){
+  return window.location.origin + '/?app=' + encodeURIComponent(slug);
+}
+
+// Readable rather than random: a label of "Spring mailer" becomes
+// spring-mailer-k3f9, which is recognisable in a browser bar and still
+// unguessable enough that links cannot be enumerated.
+function applicationLinkSlug(label){
+  const base = (label || 'application').toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 28) || 'application';
+  const suffix = Math.random().toString(36).slice(2, 6);
+  return base + '-' + suffix;
+}
+
+async function openApplicationLinksDrawer(){
+  APPLICATION_LINK_TOKENS = await loadApplicationLinkTokensFromSupabase();
+  renderApplicationLinksDrawer();
+  document.getElementById('applicationLinksOverlay').classList.add('open');
+}
+
+function closeApplicationLinksDrawer(){
+  document.getElementById('applicationLinksOverlay').classList.remove('open');
+}
+
+function renderApplicationLinksDrawer(){
+  const rows = APPLICATION_LINK_TOKENS;
+  document.getElementById('applicationLinksDrawer').innerHTML = `
+    <div class="drawer-head">
+      <div><h2>Application links</h2>
+        <p style="font-size:11.5px;color:var(--slate-500);margin:4px 0 0;">
+          Send one of these to a prospect. What they submit arrives here under Applications.</p></div>
+      <button class="drawer-close" onclick="closeApplicationLinksDrawer()">&times;</button>
+    </div>
+    <div class="drawer-body">
+      <div class="field">
+        <label>Name this link</label>
+        <input id="newAppLinkLabel" placeholder="e.g. Spring mailer, Trade show, Joe's referrals">
+        <p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">
+          Only you see this. It is how you tell your links apart when the applications come in.
+        </p>
+      </div>
+      <div class="field">
+        <label>Brand</label>
+        <select id="newAppLinkBrand">
+          <option value="epay">EPAY POS</option>
+          <option value="atm">Envision ATM</option>
+        </select>
+      </div>
+      <button class="btn btn-accent" style="width:100%;" onclick="createApplicationLink()">Create link</button>
+
+      <hr style="border:none;border-top:1px solid var(--line);margin:20px 0;">
+
+      ${rows.length === 0
+        ? '<p style="font-size:13px;color:var(--slate-500);">No links yet. Create one above and send it to a prospect.</p>'
+        : rows.map(t => `
+          <div style="padding:12px 0;border-bottom:1px solid var(--line);">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+              <div>
+                <div style="font-weight:600;font-size:13.5px;color:var(--navy-700);">${t.label}</div>
+                <div class="sub">${t.brand === 'atm' ? 'Envision ATM' : 'EPAY POS'} · ${t.submissions} submission${t.submissions === 1 ? '' : 's'}${t.is_active ? '' : ' · retired'}</div>
+              </div>
+              <span class="pill ${t.is_active ? 'pill-status-active' : ''}" style="${t.is_active ? '' : 'background:var(--hover);color:var(--slate-500);'}">${t.is_active ? 'Active' : 'Retired'}</span>
+            </div>
+            <span class="link-chip mono" style="width:100%;margin-top:8px;">${applicationShareUrl(t.slug)}
+              <button onclick="copyLink('${applicationShareUrl(t.slug)}')">Copy</button>
+              <button onclick="window.open('${applicationShareUrl(t.slug)}','_blank','noopener')">Preview</button>
+            </span>
+            <button class="btn btn-xs" style="margin-top:8px;" onclick="toggleApplicationLink('${t.id}')">
+              ${t.is_active ? 'Retire this link' : 'Make active again'}
+            </button>
+          </div>`).join('')}
+    </div>`;
+}
+
+// One-click from a specific account: names the link after the business so the
+// submission is recognisable when it lands, and copies it ready to paste.
+async function createApplicationLinkForLead(leadId){
+  const l = LEADS.find(x => x.id === leadId);
+  if(!l) return;
+
+  const label = l.business_name || 'Application';
+  const { data, error } = await supa.from('application_link_tokens').insert({
+    slug: applicationLinkSlug(label),
+    label: label,
+    brand: (l.brand === 'atm') ? 'atm' : 'epay',
+    created_by: currentUser.id
+  }).select().single();
+
+  if(error){ showToast('Could not create the link: ' + error.message, 'error'); return; }
+  APPLICATION_LINK_TOKENS.unshift(data);
+  copyLink(applicationShareUrl(data.slug));
+  showToast('Application link for ' + label + ' copied to your clipboard', 'success');
+}
+
+async function createApplicationLink(){
+  const label = (document.getElementById('newAppLinkLabel').value || '').trim();
+  if(!label){ showToast('Give the link a name so you can tell it apart later.', 'error'); return; }
+  const brand = document.getElementById('newAppLinkBrand').value;
+
+  const { data, error } = await supa.from('application_link_tokens').insert({
+    slug: applicationLinkSlug(label),
+    label: label,
+    brand: brand,
+    created_by: currentUser.id
+  }).select().single();
+
+  if(error){ showToast('Could not create the link: ' + error.message, 'error'); return; }
+  APPLICATION_LINK_TOKENS.unshift(data);
+  renderApplicationLinksDrawer();
+  copyLink(applicationShareUrl(data.slug));
+  showToast('Link created and copied to your clipboard', 'success');
+}
+
+async function toggleApplicationLink(id){
+  const t = APPLICATION_LINK_TOKENS.find(x => x.id === id);
+  if(!t) return;
+  const { error } = await supa.from('application_link_tokens')
+    .update({ is_active: !t.is_active }).eq('id', id);
+  if(error){ showToast('Could not update the link: ' + error.message, 'error'); return; }
+  t.is_active = !t.is_active;
+  renderApplicationLinksDrawer();
+  // Retiring is not deleting: existing submissions keep pointing at it, and
+  // anyone who still has the link gets a clear "no longer active" page.
+  showToast(t.is_active ? 'Link is active again' : 'Link retired', 'success');
+}
+
+async function renderApplicationLandingPage(slug){
+  document.getElementById('app-screen').style.display = 'none';
+  document.getElementById('landing-screen').style.display = 'flex';
+
+  const { data, error } = await supa.rpc('public_lookup_application_link', { p_slug: slug });
+  const link = (!error && data && data.brand) ? data : null;
+  const logoB64 = (!link || link.brand !== 'atm') ? EPAY_LOGO_B64 : ATM_LOGO_B64;
+  document.getElementById('landingLogo').innerHTML = `<img src="data:image/png;base64,${logoB64}" alt="Logo">`;
+
+  if(!link){
+    document.getElementById('landingContent').innerHTML = `
+      <div class="landing-404">
+        <h1 class="landing-h1">Link not found</h1>
+        <p>This application link is no longer active. Ask whoever sent it for an up-to-date one.</p>
+      </div>`;
+    return;
+  }
+
+  const brandName = link.brand === 'atm' ? 'Envision ATM' : 'EPAY POS';
+  document.getElementById('landingContent').innerHTML = `
+    ${link.partner_name ? `<div class="landing-referrer-badge">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/></svg>
+      Sent by <b>${link.partner_name}</b>
+    </div>` : ''}
+    <h1 class="landing-h1">Apply for ${brandName} processing</h1>
+    <p class="landing-sub">Tell us a little about the business and we'll come back to you with pricing. It takes a couple of minutes and costs nothing to ask.</p>
+
+    <div id="alError" class="form-error" style="display:none;margin-bottom:14px;padding:10px 12px;background:#FDECEC;border:1px solid #F3C6C6;border-radius:8px;color:var(--red);font-size:13px;"></div>
+
+    <form id="applicationLinkForm" novalidate>
+      ${APPLICATION_LINK_FIELDS.map(f => `
+        <div class="field">
+          <label>${f.label}${f.required ? '' : ' <span style="color:var(--slate-300);font-weight:400;">(optional)</span>'}</label>
+          <input id="${f.id}" type="${f.type || 'text'}">
+        </div>`).join('')}
+      <div class="field">
+        <label>Anything else we should know? <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
+        <textarea id="alNotes" rows="3"></textarea>
+      </div>
+      <button type="submit" class="btn btn-accent" id="alSubmitBtn" style="width:100%;margin-top:6px;">Submit application</button>
+      <p style="font-size:10.5px;color:var(--slate-300);margin:10px 0 0;text-align:center;">
+        Submitting does not run a credit check or commit you to anything.
+      </p>
+    </form>`;
+
+  document.getElementById('applicationLinkForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    submitApplicationLink(slug);
+  });
+}
+
+async function submitApplicationLink(slug){
+  const v = id => ((document.getElementById(id) || {}).value || '').trim();
+  const err = document.getElementById('alError');
+  const btn = document.getElementById('alSubmitBtn');
+  err.style.display = 'none';
+
+  if(!v('alBusinessName') || !v('alContactName')){
+    err.textContent = 'Please give us the business name and your name.';
+    err.style.display = 'block';
+    return;
+  }
+
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.textContent = 'Submitting\u2026';
+
+  const { error } = await supa.rpc('public_submit_application', {
+    p_slug: slug,
+    p_business_name: v('alBusinessName'),
+    p_contact_name: v('alContactName'),
+    p_email: v('alEmail'),
+    p_phone: v('alPhone'),
+    p_business_address: v('alBusinessAddress'),
+    p_business_type: v('alBusinessType'),
+    p_monthly_volume: v('alMonthlyVolume'),
+    p_average_ticket: v('alAverageTicket'),
+    p_current_processor: v('alCurrentProcessor'),
+    p_notes: v('alNotes')
+  });
+
+  btn.disabled = false;
+  btn.textContent = original;
+
+  if(error){
+    err.textContent = error.message || 'Something went wrong submitting that. Please try again.';
+    err.style.display = 'block';
+    return;
+  }
+
+  document.getElementById('landingContent').innerHTML = `
+    <div class="sent-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="20 6 9 17 4 12"/>
+      </svg>
+    </div>
+    <h1 class="landing-h1" style="text-align:center;">Thank you \u2014 we have it</h1>
+    <p class="landing-sub" style="text-align:center;">
+      Someone will be in touch shortly. There is nothing else you need to do.
+    </p>`;
+}
+
 async function renderReferralLandingPage(slug){
   document.getElementById('app-screen').style.display = 'none';
   document.getElementById('landing-screen').style.display = 'flex';
@@ -8386,6 +8662,12 @@ function stagePanelHtml(l){
         </div>
         <button class="btn" style="width:100%;margin-bottom:8px;" onclick="saveApplicationLinkChoice('${l.id}')">Save link choice</button>
         <button class="btn btn-accent" style="width:100%;" onclick="openApplicationEmailPreview('${l.id}')">Preview &amp; send application email</button>
+        <button class="btn" style="width:100%;margin-top:8px;" onclick="createApplicationLinkForLead('${l.id}')">
+          Create &amp; copy an application link
+        </button>
+        <p style="font-size:10.5px;color:var(--slate-300);margin:6px 0 0;">
+          A landing page you can send any way you like. What they submit arrives under Applications.
+        </p>
         ${l.application_email_sent ? `<p style="font-size:11.5px;color:var(--green);margin-top:8px;">✓ Sent ${formatDate(l.application_email_sent_at)}</p>` : ''}
       </div>`;
     case 'app_id_entered': return `
