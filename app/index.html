@@ -3358,6 +3358,29 @@ function applyRolePermissions(){
   if(!isAdmin && onAdminOnlyView){
     showView('dashboard');
   }
+
+  // Calendar and Reports are internal tools. The data behind them was already
+  // out of a portal login's reach — connected_calendars, calendar_events and
+  // the report tables are all fullDashboard-only in database/04_rls.sql — but
+  // the nav items still showed, so an agent saw tabs that opened onto nothing.
+  const isInternal = roleOf(currentUser).portal_scope === 'internal';
+
+  const calendarNav = document.getElementById('navCalendarItem');
+  if(calendarNav) calendarNav.style.display = isInternal ? 'flex' : 'none';
+
+  const reportsToggle = document.getElementById('reportsSectionToggle');
+  const reportsItems = document.getElementById('reportsSectionItems');
+  if(reportsToggle) reportsToggle.style.display = isInternal ? 'flex' : 'none';
+  if(reportsItems) reportsItems.style.display = isInternal ? 'block' : 'none';
+
+  // Same reasoning as the admin-only check above: hiding a nav item is not the
+  // same as being unable to reach the view, so bounce anyone already sitting
+  // on one when their role says they shouldn't be.
+  const onInternalOnlyView = ['view-calendar','view-reportsubs','view-collections']
+    .some(id => { const el = document.getElementById(id); return el && el.style.display !== 'none'; });
+  if(!isInternal && onInternalOnlyView){
+    showView('dashboard');
+  }
 }
 
 function initials(name){
