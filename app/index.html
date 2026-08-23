@@ -556,6 +556,7 @@
   .smm-stage{font-size:13px;font-weight:600;color:var(--navy-700);}
   .smm-detail{font-size:12.5px;color:var(--slate-500);line-height:1.45;margin-top:2px;}
   .smm-item.is-missing .smm-detail{color:var(--red);}
+  .smm-fix{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;}
   .smm-empty{font-size:13px;color:var(--slate-500);padding:14px 4px;}
   .smm-actions{display:flex;gap:8px;justify-content:flex-end;flex-shrink:0;flex-wrap:wrap;}
   .onboarding-banner{
@@ -7832,7 +7833,14 @@ function getStageRequirementError(lead, stageKey){
       if(!lead.equipment_pricing_confirmed) return "Confirm equipment & pricing with the client before moving on.";
       return null;
     case 'application':
-      if(!lead.application_email_sent) return "Send the application email before moving on.";
+      // Sending the email only proves we asked. An application has to have
+      // come back and be attached to this account before the lead moves past
+      // this stage — otherwise a lead reaches App ID Entered with nothing to
+      // enter an ID from.
+      if(!APPLICATIONS.some(a => a.linked_account_id === lead.id)){
+        if(!lead.application_email_sent) return "Send an application, or attach one that has already come in.";
+        return "Application sent, but nothing has come back yet — attach the application once it arrives.";
+      }
       return null;
     case 'app_id_entered':
       if(!lead.app_id) return "Enter the Application ID before converting to Post Boarding.";
@@ -7894,6 +7902,91 @@ function requirementsBetween(lead, targetStageKey){
   return out;
 }
 
+// Some requirements can be satisfied from here rather than sending someone
+// off to the drawer and back. Only the ones where a single action genuinely
+// completes it — anything needing real data entry stays a trip to the record.
+function stageFixActionsHtml(lead, stageKey){
+  if(stageKey !== 'application') return '';
+
+  const unattached = APPLICATIONS.filter(a => !a.linked_account_id);
+  return `
+    <div class="smm-fix">
+      <button type="button" class="btn btn-xs" onclick="stageFixSendApplication('${lead.id}')">
+        ${lead.application_email_sent ? 'Send another link' : 'Email an application link'}
+      </button>
+      <button type="button" class="btn btn-xs" onclick="stageFixAttachApplication('${lead.id}')"
+              ${unattached.length ? '' : 'disabled'}>
+        Attach an application${unattached.length ? ' (' + unattached.length + ')' : ''}
+      </button>
+    </div>`;
+}
+
+async function stageFixSendApplication(leadId){
+  const move = _pendingStageMove;
+  await emailApplicationLink(leadId);
+  // emailApplicationLink reopens the lead drawer on success; come back to the
+  // checklist instead, since that is where the person was.
+  closeLeadDrawer && closeLeadDrawer();
+  if(move){ _pendingStageMove = move; openStageMoveModal(move.leadId, move.targetStageKey); }
+}
+
+function stageFixAttachApplication(leadId){
+  const lead = LEADS.find(l => l.id === leadId);
+  if(!lead) return;
+  const unattached = APPLICATIONS.filter(a => !a.linked_account_id)
+    .slice()
+    .sort((a,b) => String(b.submitted_at || '').localeCompare(String(a.submitted_at || '')));
+
+  if(unattached.length === 0){
+    showToast('There are no unattached applications to link.', 'error');
+    return;
+  }
+
+  const name = a => [a.legal_business_name, a.dba_name, [a.first_name, a.last_name].filter(Boolean).join(' ')]
+    .filter(Boolean)[0] || '(no name)';
+
+  document.getElementById('stageMoveBody').innerHTML = `
+    <div class="smm-head">
+      <div class="smm-title">Attach an application</div>
+      <p class="smm-sub">Pick the application that belongs to ${lead.business_name || 'this account'}. Newest first.</p>
+    </div>
+    <div class="smm-list">
+      ${unattached.map(a => `
+        <div class="smm-item" style="cursor:pointer;" onclick="stageFixConfirmAttach('${a.id}', '${lead.id}')">
+          <span class="smm-mark" style="background:var(--accent-soft);color:var(--brand-accent-2);">&rarr;</span>
+          <div>
+            <div class="smm-stage">${name(a)}</div>
+            <div class="smm-detail">
+              ${a.email || 'no email'} \u00b7 ${a.submitted_at ? formatDate(a.submitted_at) : 'no date'}
+              ${a.source ? ' \u00b7 ' + a.source : ''}
+            </div>
+          </div>
+        </div>`).join('')}
+    </div>
+    <div class="smm-actions">
+      <button type="button" class="btn" onclick="stageFixBackToChecklist()">Back</button>
+    </div>`;
+}
+
+function stageFixBackToChecklist(){
+  if(_pendingStageMove){
+    openStageMoveModal(_pendingStageMove.leadId, _pendingStageMove.targetStageKey);
+  } else {
+    closeStageMoveModal();
+  }
+}
+
+async function stageFixConfirmAttach(appId, leadId){
+  const { error } = await supa.from('applications')
+    .update({ linked_account_id: leadId, match_status: 'manual' }).eq('id', appId);
+  if(error){ showToast('Could not attach that application: ' + error.message, 'error'); return; }
+
+  const a = APPLICATIONS.find(x => x.id === appId);
+  if(a){ a.linked_account_id = leadId; a.match_status = 'manual'; }
+  showToast('Application attached', 'success');
+  stageFixBackToChecklist();
+}
+
 let _pendingStageMove = null;
 
 function openStageMoveModal(leadId, targetStageKey){
@@ -7925,9 +8018,10 @@ function openStageMoveModal(leadId, targetStageKey){
         : items.map(i => `
           <div class="smm-item ${i.error ? 'is-missing' : 'is-done'}">
             <span class="smm-mark">${i.error ? '' : '&#10003;'}</span>
-            <div>
+            <div style="flex:1;min-width:0;">
               <div class="smm-stage">${i.label}</div>
               <div class="smm-detail">${i.error ? i.error : 'Requirements met'}</div>
+              ${i.error ? stageFixActionsHtml(lead, i.key) : ''}
             </div>
           </div>`).join('')}
     </div>
