@@ -8211,8 +8211,10 @@ async function saveAccountDetails(id){
     drivers_license_state: val('acDLState', l.drivers_license_state).toUpperCase(),
     personal_address: val('acPersonalAddress', l.personal_address),
   };
+  // dob is encrypted now, so it cannot ride along in the plain update below —
+  // the column is bytea and the browser cannot produce that. Written through
+  // set_lead_dob with the other sensitive fields instead.
   const dobInput = document.getElementById('acDob');
-  if(dobInput) fields.dob = dobInput.value || null;
 
   const { error } = await supa.from('leads').update(fields).eq('id', id);
   if(error){ alert('Could not save: ' + error.message); return; }
@@ -8226,6 +8228,11 @@ async function saveAccountDetails(id){
     const { error: dlErr } = await supa.rpc('set_lead_drivers_license', { p_lead_id: id, p_value: dlInput.value.trim() });
     if(dlErr) alert('Could not save drivers license: ' + dlErr.message);
     else l.drivers_license = dlInput.value.trim();
+  }
+  if(dobInput){
+    const { error: dobErr } = await supa.rpc('set_lead_dob', { p_lead_id: id, p_value: dobInput.value || '' });
+    if(dobErr) alert('Could not save date of birth: ' + dobErr.message);
+    else l.dob = dobInput.value || null;
   }
   const ssnInput = document.getElementById('acSSN');
   if(ssnInput){
@@ -9224,11 +9231,12 @@ async function openLeadDetail(id){
   const l = Object.assign({}, base);
   if(canViewSensitive()){
     if(!decryptedLeadCache[id]){
-      const [ssnRes, dlRes, taxRes, bankRes] = await Promise.all([
+      const [ssnRes, dlRes, taxRes, bankRes, dobRes] = await Promise.all([
         supa.rpc('reveal_lead_ssn', { p_lead_id: id }),
         supa.rpc('reveal_lead_drivers_license', { p_lead_id: id }),
         supa.rpc('reveal_lead_tax_id', { p_lead_id: id }),
         supa.rpc('reveal_lead_banking', { p_lead_id: id }),
+        supa.rpc('reveal_lead_dob', { p_lead_id: id }),
       ]);
       let banking = null;
       if(bankRes.data){
@@ -9238,10 +9246,12 @@ async function openLeadDetail(id){
         ssn: ssnRes.data || null,
         drivers_license: dlRes.data || null,
         business_tax_id: taxRes.data || null,
+        dob: dobRes.data || null,
         banking,
       };
     }
     const cached = decryptedLeadCache[id];
+    if(cached.dob) l.dob = cached.dob;
     if(cached.ssn) l.ssn = cached.ssn;
     if(cached.drivers_license) l.drivers_license = cached.drivers_license;
     if(cached.business_tax_id) l.business_tax_id = cached.business_tax_id;
@@ -9729,7 +9739,9 @@ async function saveNewApplication(source){
     phone: document.getElementById('apPhone').value.trim(),
     business_type: document.getElementById('apBizCategory').value,
     pricing_plan: document.getElementById('apPricing').value,
-    dob: document.getElementById('apDob').value || null,
+    // dob is encrypted, so it cannot ride along in this insert — written
+    // through set_application_dob below with the other sensitive fields.
+
     drivers_license_state: document.getElementById('apDLState').value.trim().toUpperCase(),
     legal_business_name: document.getElementById('apLegalName').value.trim(),
     dba_name: document.getElementById('apDba').value.trim(),
@@ -9751,6 +9763,8 @@ async function saveNewApplication(source){
   const { data: saved, error } = await supa.from('applications').insert(app).select().single();
   if(error){ alert('Could not save application: ' + error.message); return; }
 
+  const apDobValue = (document.getElementById('apDob') || {}).value || '';
+  if(apDobValue) await supa.rpc('set_application_dob', { p_application_id: saved.id, p_value: apDobValue });
   if(ssn) await supa.rpc('set_application_ssn', { p_application_id: saved.id, p_value: ssn });
   if(drivers_license) await supa.rpc('set_application_drivers_license', { p_application_id: saved.id, p_value: drivers_license });
   if(business_tax_id) await supa.rpc('set_application_tax_id', { p_application_id: saved.id, p_value: business_tax_id });
