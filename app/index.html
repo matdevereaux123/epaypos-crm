@@ -2884,7 +2884,7 @@ async function loadApplicationsFromSupabase(){
 // Returns the matched lead (account) or null. If more than one account matches,
 // we deliberately do NOT auto-link (ambiguous) — leaves it for manual review.
 function findMatchingAccount(app){
-  const accounts = LEADS.filter(l => l.converted_to_account);
+  const accounts = scopedLeads().filter(l => l.converted_to_account);
   const norm = s => (s || '').toString().trim().toLowerCase();
   const appEmail = norm(app.email), appPhone = norm(app.phone).replace(/\D/g,'');
   const appBiz = norm(app.legal_business_name || app.dba_name);
@@ -4378,6 +4378,41 @@ document.querySelectorAll('.nav-section-toggle').forEach(toggle=>{
 // whichever brand tab is currently active, not just one.
 function partnerMatchesBrand(p, brand){ return p.brand === brand || p.brand === 'both'; }
 
+/* -----------------------------------------------------------------------
+   CLIENT-SIDE SCOPING
+   These mirror the RLS policies in database/04_rls.sql and
+   15_assignment_access.sql exactly.
+
+   For the real signed-in user they change nothing — the database already
+   filtered what arrived. They matter for "Preview as", which swaps
+   currentUser in memory without re-fetching: the arrays still hold whatever
+   the admin could see, so without this the preview showed another person's
+   navigation over the admin's data, which is worse than not having the
+   feature.
+
+   Keep these in step with the policies. If one says fullDashboard and the
+   other does not, the preview quietly lies.
+   ----------------------------------------------------------------------- */
+function scopedLeads(){
+  const perms = roleOf(currentUser).perms;
+  if(perms.fullDashboard) return LEADS;
+  const pid = currentUser.linked_partner_id;
+  return LEADS.filter(l =>
+    (pid && l.linked_partner_id === pid) || l.assigned_to === currentUser.id);
+}
+
+function scopedColdLeads(){
+  const perms = roleOf(currentUser).perms;
+  if(perms.fullDashboard) return COLD_LEADS;
+  return COLD_LEADS.filter(c => c.assigned_to === currentUser.id);
+}
+
+function scopedApplications(){
+  const perms = roleOf(currentUser).perms;
+  if(perms.fullDashboard) return APPLICATIONS;
+  return APPLICATIONS.filter(a => a.assigned_to === currentUser.id);
+}
+
 function scopedPartnersForCurrentUser(){
   let scoped = PARTNERS.filter(p => partnerMatchesBrand(p, currentBrand));
   if(roleOf(currentUser).portal_scope === 'own'){
@@ -4428,10 +4463,10 @@ function renderDashboard(){
   // Both brands now have a Leads/Accounts/Cold Leads pipeline, so this is
   // no longer EPAY-exclusive — only "Applications" (Wix form submissions)
   // stays EPAY-only, since that integration is specific to that brand.
-  const coldConvertedCount = COLD_LEADS.filter(c => c.promoted && (c.brand||'epay') === currentBrand).length;
-  const activeLeadsCount = LEADS.filter(l => !l.converted_to_account && (l.brand||'epay') === currentBrand).length;
-  const accountsCount = LEADS.filter(l => l.converted_to_account && (l.brand||'epay') === currentBrand).length;
-  const unmatchedApps = APPLICATIONS.filter(a => !a.linked_account_id).length;
+  const coldConvertedCount = scopedColdLeads().filter(c => c.promoted && (c.brand||'epay') === currentBrand).length;
+  const activeLeadsCount = scopedLeads().filter(l => !l.converted_to_account && (l.brand||'epay') === currentBrand).length;
+  const accountsCount = scopedLeads().filter(l => l.converted_to_account && (l.brand||'epay') === currentBrand).length;
+  const unmatchedApps = scopedApplications().filter(a => !a.linked_account_id).length;
 
   primaryLabel.textContent = 'Pipeline & follow-ups';
   primaryEl.style.display = 'grid';
@@ -4467,7 +4502,7 @@ function renderPipelineSnapshot(){
   const el = document.getElementById('pipelineSnapshot');
   el.innerHTML = PHASES.map(phase => {
     const phaseStages = STAGES.filter(s => s.phase === phase.key && s.key !== 'converted_active');
-    const count = LEADS.filter(l => phaseStages.some(s => s.key === l.stage) && (l.brand||'epay') === currentBrand).length;
+    const count = scopedLeads().filter(l => phaseStages.some(s => s.key === l.stage) && (l.brand||'epay') === currentBrand).length;
     return `
       <div class="pipeline-snap-card" onclick="showView('leads'); setActiveLeadPhase('${phase.key}');">
         <div class="psc-head"><span class="psc-dot" style="background:${phase.color};"></span><span class="psc-label">${phase.label}</span></div>
@@ -5441,8 +5476,8 @@ async function openReferralDetail(id){
   const baseUrl = currentBrand === 'atm' ? 'envisionatm.com/r/' : 'epaypos.net/r/';
   const notesForPartner = NOTES.filter(n=>n.partner_id===id).sort((a,b)=> new Date(b.created_at)-new Date(a.created_at));
   const bank = p.banking || { bank_name:'', account_holder:'', account_type:'checking', routing_number:'', account_number:'' };
-  const linkedLeads = LEADS.filter(l => l.linked_partner_id === id && !l.converted_to_account);
-  const linkedAccounts = LEADS.filter(l => l.linked_partner_id === id && l.converted_to_account);
+  const linkedLeads = scopedLeads().filter(l => l.linked_partner_id === id && !l.converted_to_account);
+  const linkedAccounts = scopedLeads().filter(l => l.linked_partner_id === id && l.converted_to_account);
   const downline = PARTNERS.filter(x => x.parent_partner_id === id);
   const possibleParents = PARTNERS.filter(x => x.id !== id && partnerMatchesBrand(x, currentBrand)).sort((a,b)=> a.name.localeCompare(b.name));
 
@@ -5986,7 +6021,7 @@ function fuRecordSearchHandler(rawQuery){
   if(fuActiveType === 'partner'){
     pool = scopedPartnersForCurrentUser().map(p => ({ id:p.id, name:p.name, sub:`${p.city}, ${p.state}` }));
   } else {
-    pool = LEADS.filter(l => (l.brand||'epay') === currentBrand).map(l => ({ id:l.id, name:l.business_name, sub: l.converted_to_account ? 'Account' : 'Lead' }));
+    pool = scopedLeads().filter(l => (l.brand||'epay') === currentBrand).map(l => ({ id:l.id, name:l.business_name, sub: l.converted_to_account ? 'Account' : 'Lead' }));
   }
   const matches = (q ? pool.filter(r => r.name.toLowerCase().includes(q)) : pool)
     .sort((a,b)=> a.name.localeCompare(b.name)).slice(0, 8);
@@ -6119,7 +6154,7 @@ function collectAllFollowups(){
       });
     }
   });
-  LEADS.filter(l => (l.brand||'epay') === currentBrand).forEach(l => {
+  scopedLeads().filter(l => (l.brand||'epay') === currentBrand).forEach(l => {
     const typeLabel = l.converted_to_account ? 'Account' : 'Lead';
     if(l.general_follow_up_date){
       items.push({ recordType:'lead', id:l.id, name:l.business_name, typeLabel, detail:'General reminder', note:l.general_follow_up_note, date:l.general_follow_up_date, converted:l.converted_to_account });
@@ -6379,7 +6414,7 @@ function teamPersonCardHtml(person){
 function teamInhouseCardHtml(u){
   const initials = (u.name || '?').split(' ').filter(Boolean).map(w=>w[0]).slice(0,2).join('').toUpperCase();
   const manager = u.manager_id ? (USERS.find(x => x.id === u.manager_id) || {}).name : null;
-  const openLeads = LEADS.filter(l => l.assigned_to === u.id && !l.converted_to_account).length;
+  const openLeads = scopedLeads().filter(l => l.assigned_to === u.id && !l.converted_to_account).length;
   return `
     <div class="team-card is-inhouse" draggable="true" data-user-id="${u.id}"
          ondragstart="handleTeamCardDragStart(event)" ondragend="handleTeamCardDragEnd(event)">
@@ -6454,8 +6489,8 @@ function renderInternalTeamTable(){
   body.innerHTML = rows.map(u => {
     const office = u.office_id ? (OFFICES.find(o => o.id === u.office_id) || {}).name : null;
     const manager = u.manager_id ? (USERS.find(x => x.id === u.manager_id) || {}).name : null;
-    const openLeads = LEADS.filter(l => l.assigned_to === u.id && !l.converted_to_account).length;
-    const accounts  = LEADS.filter(l => l.assigned_to === u.id && l.converted_to_account).length;
+    const openLeads = scopedLeads().filter(l => l.assigned_to === u.id && !l.converted_to_account).length;
+    const accounts  = scopedLeads().filter(l => l.assigned_to === u.id && l.converted_to_account).length;
     return `
       <tr onclick="openUserDrawer && openUserDrawer('${u.id}')">
         <td class="name-cell">${u.name || '—'}<div class="sub">${u.email || ''}</div></td>
@@ -7026,8 +7061,8 @@ function renderMirrorBanner(){
   }
   const u = USERS.find(x => x.id === mirroringUserId);
   if(!u){ mirroringUserId = null; el.style.display = 'none'; return; }
-  const leadCount = LEADS.filter(l => l.assigned_to === mirroringUserId && !l.converted_to_account).length;
-  const accountCount = LEADS.filter(l => l.assigned_to === mirroringUserId && l.converted_to_account).length;
+  const leadCount = scopedLeads().filter(l => l.assigned_to === mirroringUserId && !l.converted_to_account).length;
+  const accountCount = scopedLeads().filter(l => l.assigned_to === mirroringUserId && l.converted_to_account).length;
   el.style.display = 'flex';
   el.innerHTML = `
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="3"/><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/></svg>
@@ -7190,7 +7225,7 @@ function renderPhaseToggle(){
   const toggle = document.getElementById('phaseToggle');
   toggle.innerHTML = PHASES.map(phase => {
     const phaseStages = STAGES.filter(s => s.phase === phase.key && s.key !== 'converted_active');
-    const count = LEADS.filter(l => phaseStages.some(s => s.key === l.stage) && (l.brand || 'epay') === currentBrand).length;
+    const count = scopedLeads().filter(l => phaseStages.some(s => s.key === l.stage) && (l.brand || 'epay') === currentBrand).length;
     return `
       <button type="button" class="${phase.key===activeLeadPhase ? 'active':''}" onclick="setActiveLeadPhase('${phase.key}')">
         <span class="phase-dot" style="background:${phase.color};"></span>
@@ -7233,7 +7268,7 @@ function renderLeadsBoard(){
     phaseToggleEl.innerHTML = '';
 
     const columnsHtml = ATM_LEAD_STAGES.map(stage => {
-      let leadsInStage = LEADS.filter(l => l.stage === stage.key && (l.brand||'epay') === 'atm' && !l.converted_to_account);
+      let leadsInStage = scopedLeads().filter(l => l.stage === stage.key && (l.brand||'epay') === 'atm' && !l.converted_to_account);
       if(mirroringUserId) leadsInStage = leadsInStage.filter(l => l.assigned_to === mirroringUserId);
       if(q) leadsInStage = leadsInStage.filter(l => l.business_name.toLowerCase().includes(q) || l.contact_name.toLowerCase().includes(q));
       const isCollapsed = !!collapsed['atm_'+stage.key];
@@ -7265,7 +7300,7 @@ function renderLeadsBoard(){
   const phaseStages = STAGES.filter(s => s.phase === phase.key && s.key !== 'converted_active');
 
   const columnsHtml = phaseStages.map(stage => {
-    let leadsInStage = LEADS.filter(l => l.stage === stage.key && (l.brand || 'epay') === currentBrand);
+    let leadsInStage = scopedLeads().filter(l => l.stage === stage.key && (l.brand || 'epay') === currentBrand);
     if(mirroringUserId) leadsInStage = leadsInStage.filter(l => l.assigned_to === mirroringUserId);
     if(q) leadsInStage = leadsInStage.filter(l => l.business_name.toLowerCase().includes(q) || l.contact_name.toLowerCase().includes(q));
     const isCollapsed = !!collapsed[stage.key];
@@ -7770,7 +7805,7 @@ async function saveAccountCollectionsNote(id){
 // at the true bottom of the drawer — after Shipments — instead of bundled
 // in with the collapsed business/personal/banking group above it.
 function buildDocsSectionHTML(l){
-  const linkedApps = APPLICATIONS.filter(a => a.linked_account_id === l.id);
+  const linkedApps = scopedApplications().filter(a => a.linked_account_id === l.id);
   const docsForLead = LEAD_DOCUMENTS.filter(d => d.lead_id === l.id);
   const docsBody = `
     <div class="field">
@@ -9024,7 +9059,7 @@ async function deleteLead(id){
   if(!confirm(`Delete "${l.business_name}"? This can't be undone.`)) return;
   const { error } = await supa.from('leads').delete().eq('id', id);
   if(error){ alert('Could not delete: ' + error.message); return; }
-  LEADS = LEADS.filter(x => x.id !== id);
+  LEADS = scopedLeads().filter(x => x.id !== id);
   closeLeadDrawer();
   if(document.getElementById('view-leads').style.display !== 'none') renderLeadsBoard();
   if(document.getElementById('view-accounts').style.display !== 'none') renderAccountsTable();
@@ -9076,7 +9111,7 @@ async function deleteLeadCallNote(noteId, leadId){
    ========================================================================= */
 function renderAccountsTable(filterText){
   renderMirrorBanner();
-  let accounts = LEADS.filter(l => l.converted_to_account && (l.brand || 'epay') === currentBrand);
+  let accounts = scopedLeads().filter(l => l.converted_to_account && (l.brand || 'epay') === currentBrand);
   if(mirroringUserId) accounts = accounts.filter(l => l.assigned_to === mirroringUserId);
   const q = (filterText || (document.getElementById('accountsSearch') ? document.getElementById('accountsSearch').value : '') || '').toLowerCase();
   const rows = accounts.filter(a => !q || a.business_name.toLowerCase().includes(q) || a.contact_name.toLowerCase().includes(q))
@@ -9122,7 +9157,7 @@ document.getElementById('deleteSelectedAccountsBtn').addEventListener('click', a
   if(!confirm(`Delete ${ids.length} account${ids.length===1?'':'s'}? This removes the underlying lead record entirely and can't be undone.`)) return;
   const { error } = await supa.from('leads').delete().in('id', ids);
   if(error){ alert('Could not delete: ' + error.message); return; }
-  LEADS = LEADS.filter(l => !ids.includes(l.id));
+  LEADS = scopedLeads().filter(l => !ids.includes(l.id));
   renderAccountsTable();
 });
 
@@ -9138,13 +9173,13 @@ function updateBulkDeleteBar(kind){
 function purgeCollection(kind){
   let count, label;
   if(kind === 'coldleads'){
-    count = COLD_LEADS.filter(c => !c.promoted && (c.brand||'epay') === currentBrand).length;
+    count = scopedColdLeads().filter(c => !c.promoted && (c.brand||'epay') === currentBrand).length;
     label = 'Cold Leads';
   } else if(kind === 'leads'){
-    count = LEADS.filter(l => !l.converted_to_account && (l.brand||'epay') === currentBrand).length;
+    count = scopedLeads().filter(l => !l.converted_to_account && (l.brand||'epay') === currentBrand).length;
     label = 'Leads';
   } else if(kind === 'accounts'){
-    count = LEADS.filter(l => l.converted_to_account && (l.brand||'epay') === currentBrand).length;
+    count = scopedLeads().filter(l => l.converted_to_account && (l.brand||'epay') === currentBrand).length;
     label = 'Accounts';
   } else {
     count = PARTNERS.length;
@@ -9164,13 +9199,13 @@ function purgeCollection(kind){
   // in-memory view; the next reload re-fetches everything from Supabase
   // untouched.
   if(kind === 'coldleads'){
-    COLD_LEADS = COLD_LEADS.filter(c => c.promoted || (c.brand||'epay') !== currentBrand);
+    COLD_LEADS = scopedColdLeads().filter(c => c.promoted || (c.brand||'epay') !== currentBrand);
     if(document.getElementById('view-coldleads').style.display !== 'none') renderColdLeadsTable();
   } else if(kind === 'leads'){
-    LEADS = LEADS.filter(l => l.converted_to_account || (l.brand||'epay') !== currentBrand);
+    LEADS = scopedLeads().filter(l => l.converted_to_account || (l.brand||'epay') !== currentBrand);
     if(document.getElementById('view-leads').style.display !== 'none') renderLeadsBoard();
   } else if(kind === 'accounts'){
-    LEADS = LEADS.filter(l => !l.converted_to_account || (l.brand||'epay') !== currentBrand);
+    LEADS = scopedLeads().filter(l => !l.converted_to_account || (l.brand||'epay') !== currentBrand);
     if(document.getElementById('view-accounts').style.display !== 'none') renderAccountsTable();
   } else {
     PARTNERS = [];
@@ -9187,7 +9222,7 @@ function purgeCollection(kind){
    ========================================================================= */
 function renderApplicationsTable(filterText){
   const q = (filterText || (document.getElementById('applicationsSearch') ? document.getElementById('applicationsSearch').value : '') || '').toLowerCase();
-  const rows = APPLICATIONS.filter(a => {
+  const rows = scopedApplications().filter(a => {
     if(!q) return true;
     const hay = `${a.first_name} ${a.last_name} ${a.legal_business_name} ${a.dba_name} ${a.email}`.toLowerCase();
     return hay.includes(q);
@@ -9414,7 +9449,7 @@ async function openApplicationDetail(id){
     }
   }
   const linkedAccount = a.linked_account_id ? LEADS.find(l => l.id === a.linked_account_id) : null;
-  const accounts = LEADS.filter(l => l.converted_to_account);
+  const accounts = scopedLeads().filter(l => l.converted_to_account);
 
   document.getElementById('applicationDrawer').innerHTML = `
     <div class="drawer-head">
@@ -9520,7 +9555,7 @@ let coldLeadsFollowupFilter = 'all';
 let coldLeadsTempFilter = 'all';
 
 function renderColdLeadsStats(){
-  const active = COLD_LEADS.filter(c => !c.promoted && (c.brand || 'epay') === currentBrand);
+  const active = scopedColdLeads().filter(c => !c.promoted && (c.brand || 'epay') === currentBrand);
   const overdue = active.filter(c => coldLeadFollowupStatus(c).key === 'overdue').length;
   const dueSoon = active.filter(c => coldLeadFollowupStatus(c).key === 'due_soon').length;
   const hot = active.filter(c => c.temperature === 'hot').length;
@@ -9556,7 +9591,7 @@ function renderColdLeadsTable(filterText){
   const q = (filterText || (document.getElementById('coldLeadsSearch') ? document.getElementById('coldLeadsSearch').value : '') || '').toLowerCase();
   const sortBy = document.getElementById('coldLeadsSort') ? document.getElementById('coldLeadsSort').value : 'followup';
 
-  let rows = COLD_LEADS.filter(c => !c.promoted && (c.brand || 'epay') === currentBrand);
+  let rows = scopedColdLeads().filter(c => !c.promoted && (c.brand || 'epay') === currentBrand);
   if(q) rows = rows.filter(c => c.business_name.toLowerCase().includes(q) || c.contact_name.toLowerCase().includes(q));
   if(coldLeadsFollowupFilter !== 'all') rows = rows.filter(c => coldLeadFollowupStatus(c).key === coldLeadsFollowupFilter);
   if(coldLeadsTempFilter !== 'all') rows = rows.filter(c => c.temperature === coldLeadsTempFilter);
@@ -9619,7 +9654,7 @@ document.getElementById('deleteSelectedColdLeadsBtn').addEventListener('click', 
   if(!confirm(`Delete ${ids.length} cold lead${ids.length===1?'':'s'}? This can't be undone.`)) return;
   const { error } = await supa.from('cold_leads').delete().in('id', ids);
   if(error){ alert('Could not delete: ' + error.message); return; }
-  COLD_LEADS = COLD_LEADS.filter(c => !ids.includes(c.id));
+  COLD_LEADS = scopedColdLeads().filter(c => !ids.includes(c.id));
   renderColdLeadsTable();
 });
 
@@ -10645,7 +10680,7 @@ document.getElementById('syncInstantlyBtn').addEventListener('click', function()
    converted_to_account=true records on whichever brand is active.
    ========================================================================= */
 function newsletterAllAccounts(){
-  return LEADS.filter(l => l.converted_to_account && (l.brand||'epay') === currentBrand);
+  return scopedLeads().filter(l => l.converted_to_account && (l.brand||'epay') === currentBrand);
 }
 function newsletterRecipients(){
   const mode = document.getElementById('nlRecipientMode') ? document.getElementById('nlRecipientMode').value : 'all';
@@ -11122,8 +11157,8 @@ document.getElementById('calTodayBtn').addEventListener('click', function(){
 function meetingFormHtml(ev, prefillDate, prefillColdLead, prefillLead){
   ev = ev || { title:'', date: prefillDate || todayISO(), time:'10:00', duration:30, type:'phone', calendar_id: (CONNECTED_CALENDARS.find(c=>c.connected)||{}).id || '', linked_cold_lead_id: prefillColdLead || null, linked_lead_id: prefillLead || null, zoom_link:'', notes:'' };
   const connected = CONNECTED_CALENDARS.filter(c => c.connected);
-  const activeColdLeads = COLD_LEADS.filter(c => !c.promoted);
-  const activeLeads = LEADS.filter(l => !l.converted_to_account);
+  const activeColdLeads = scopedColdLeads().filter(c => !c.promoted);
+  const activeLeads = scopedLeads().filter(l => !l.converted_to_account);
   return `
     <div class="field"><label>Title</label><input id="mtTitle" value="${ev.title}" placeholder="e.g. Discovery call — Business Name"></div>
     <div class="ai-search-grid">
@@ -11280,10 +11315,10 @@ function liveRecallSearchHandler(rawQuery){
 
   const matches = (val) => (val || '').toString().toLowerCase().includes(q);
 
-  const leadResults = LEADS.filter(l => (l.brand || 'epay') === currentBrand && (matches(l.business_name) || matches(l.contact_name) || matches(l.phone) || matches(l.email)))
+  const leadResults = scopedLeads().filter(l => (l.brand || 'epay') === currentBrand && (matches(l.business_name) || matches(l.contact_name) || matches(l.phone) || matches(l.email)))
     .map(l => ({ kind: l.converted_to_account ? 'account' : 'lead', record: l }));
 
-  const coldResults = COLD_LEADS.filter(c => (c.brand || 'epay') === currentBrand && (matches(c.business_name) || matches(c.contact_name) || matches(c.phone) || matches(c.email)))
+  const coldResults = scopedColdLeads().filter(c => (c.brand || 'epay') === currentBrand && (matches(c.business_name) || matches(c.contact_name) || matches(c.phone) || matches(c.email)))
     .map(c => ({ kind: 'coldlead', record: c }));
 
   const all = leadResults.concat(coldResults).sort((a,b)=> a.record.business_name.localeCompare(b.record.business_name)).slice(0, 40);
