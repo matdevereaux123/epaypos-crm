@@ -2934,10 +2934,18 @@ const INTEGRATION_DEFS = [
     icon:'<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
     fields:[{key:'client_id', label:'Google OAuth Client ID', type:'text'}, {key:'client_secret', label:'Google OAuth Client Secret', type:'password'}],
     webhookNote:'Requires a Google Cloud project with the Calendar API enabled and an OAuth consent screen. Each team member then connects their own account below (per-user OAuth, not one shared login) — manage who\'s connected under "Connected calendars" further down this page.' },
-  { key:'outbound_email', name:'Outbound Email', desc:'Sends the branded application email from the Application stage of a lead.',
+  { key:'outbound_email', name:'Outbound Email', desc:'Sends application links, welcome notes and tracking updates through Resend.',
     icon:'<path d="M22 6c0-1.1-.9-2-2-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6z"/><polyline points="22 6 12 13 2 6"/>',
-    fields:[{key:'from_email', label:'Send from this address', type:'text'}, {key:'provider', label:'Provider (e.g. SendGrid, Postmark, Gmail API)', type:'text'}, {key:'api_key', label:'Provider API key', type:'password'}],
-    webhookNote:'This should route through a real transactional email provider on a backend — never put an email provider\'s API key directly in this front-end file. Once connected, the "from" address shows in the application email preview.' },
+    // No API key field, deliberately. Whatever is stored here is readable by
+    // anyone with manageSettings, which is a wider audience than should hold a
+    // sending credential — the Resend key is an environment variable on the
+    // send-email edge function and never reaches the browser or this table.
+    fields:[
+      {key:'from_email', label:'Send from this address', type:'text'},
+      {key:'from_name',  label:'Sender name shown to recipients', type:'text'},
+      {key:'reply_to',   label:'Reply-to address (optional)', type:'text'}
+    ],
+    webhookNote:'Sending runs through the send-email edge function, which holds the Resend API key as an environment variable — deploy it and set RESEND_API_KEY and EMAIL_FROM there, not here. The from-address must be on a domain verified in Resend: mail.epaypos.net is verified, epaypos.net is not. Every send is recorded in email_log, failures included.' },
 ];
 
 function loadIntegrations(){
