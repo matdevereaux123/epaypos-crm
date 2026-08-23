@@ -10,6 +10,18 @@
    and follows the OS live until an explicit choice is made. */
 (function(){
   try {
+    // Public pages are always light. A referral or application link goes to
+    // a prospect, and what their laptop is set to should not decide how our
+    // sign-up page looks — these stand in for print collateral, and a dark
+    // one reads as a different company. Decided here rather than after load
+    // so a dark-mode visitor never sees a flash of it.
+    var params = new URLSearchParams(window.location.search);
+    if(params.get('ref') || params.get('app')){
+      document.documentElement.setAttribute('data-theme', 'light');
+      document.documentElement.setAttribute('data-public-page', 'true');
+      return;
+    }
+
     var saved = localStorage.getItem('epay-theme');
     var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
     var theme = saved || (prefersDark ? 'dark' : 'light');
@@ -4271,6 +4283,15 @@ function currentTheme(){
   return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
 }
 function applyTheme(theme, persist){
+  // A referral or application link is pinned to light by the boot script, and
+  // nothing afterwards may move it — applyTheme(currentTheme()) runs on load
+  // and would otherwise put a dark-mode visitor straight back into dark.
+  // Guarded here rather than at each call site so a future caller cannot
+  // reintroduce it by accident.
+  if(document.documentElement.getAttribute('data-public-page') === 'true'){
+    document.documentElement.setAttribute('data-theme', 'light');
+    return;
+  }
   document.documentElement.setAttribute('data-theme', theme);
   const btn = document.getElementById('themeToggle');
   if(btn) btn.setAttribute('aria-checked', theme === 'dark' ? 'true' : 'false');
