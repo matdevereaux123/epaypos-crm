@@ -355,7 +355,6 @@
      the role pill render as a full-width bar rather than a badge. */
   .preview-as-option .opt-role{font-size:10.5px;margin-top:1px;align-self:flex-start;}
 
-
   /* min-width:0 is load-bearing. A grid item defaults to min-width:auto,
      which means this column refuses to shrink below its content's min-content
      width — so a wide table pushed the column past the viewport and the whole
@@ -674,7 +673,6 @@
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;
   }
   .cal-event-more{font-size:10px;color:var(--slate-500);margin-top:2px;padding:0 6px;}
-
 
   .ai-enrich-chip{
     display:flex;align-items:center;gap:7px;padding:8px 12px;border:1px solid var(--line);border-radius:20px;
@@ -1304,7 +1302,6 @@
             Collections
           </button>
         </div>
-
 
         <button class="nav-section-toggle" id="systemSectionToggle" type="button">
           <span>System</span>
@@ -2488,15 +2485,6 @@ function emptyLendingLeadFields(){
     stage_entered_at: new Date().toISOString().slice(0,10),
   };
 }
-function seedLendingLeads(){
-  const base = [
-    { id:'ll1', business_name:'Riverside Pizza Co', contact_name:'Tony Russo', phone:'(313) 555-0119', email:'tony@riversidepizza.com', loan_amount:'$25,000', source:'Referral', stage:'new_lead', created_at:'2026-08-01', stage_entered_at:'2026-08-01' },
-    { id:'ll2', business_name:'Sunset Diner', contact_name:'Greg Palmer', phone:'(614) 555-0177', email:'greg@sunsetdiner.com', loan_amount:'$50,000', source:'Cold Call', stage:'underwriting', created_at:'2026-07-20', stage_entered_at:'2026-07-28' },
-    { id:'ll3', business_name:'Northside Auto Repair', contact_name:'Wes Turner', phone:'(313) 555-0233', email:'wes@northsideauto.com', loan_amount:'$15,000', source:'Website', stage:'funded', created_at:'2026-07-10', stage_entered_at:'2026-07-30' },
-    { id:'ll4', business_name:'Corktown Coffee Roasters', contact_name:'Alicia Reyes', phone:'(313) 555-0377', email:'alicia@corktownroasters.com', loan_amount:'$35,000', source:'Referral partner', stage:'application_sent', created_at:'2026-07-25', stage_entered_at:'2026-08-02' },
-  ];
-  return base.map(l => Object.assign(emptyLendingLeadFields(), l));
-}
 async function loadLendingLeadsFromSupabase(){
   const { data, error } = await supa.from('lending_leads').select('*').order('created_at', { ascending: false });
   if(error){ console.error('Failed to load lending leads from Supabase', error); return []; }
@@ -2704,57 +2692,6 @@ function emptyAccountFields(){
   };
 }
 
-function seedLeads(){
-  const base = [
-    { id:'l1', business_name:'Riverside Pizza Co', contact_name:'Tony Russo', phone:'(313) 555-0119', email:'tony@riversidepizza.com', est_volume:'$18k/mo', stage:'inbound_lead', created_at:'2026-07-28', converted_to_account:false, converted_at:null,
-      lead_source:'' },
-    { id:'l2', business_name:'Corner Market', contact_name:'Alicia Nguyen', phone:'(616) 555-0142', email:'alicia@cornermarket.com', est_volume:'$32k/mo', stage:'initial_outreach', created_at:'2026-07-24', converted_to_account:false, converted_at:null,
-      lead_source:'Referral partner', system_choice:'epay', pos_plan:'epay_retail', processing_pricing:'free_processing',
-      integrations_selected:[{key:'quickbooks',name:'QuickBooks',price:20,added_at:'2026-08-01'}],
-      epay_apps_selected:[{key:'tv_signage',name:'TV Signage',price:30,added_at:'2026-07-20'}] },
-    { id:'l3', business_name:'Sunset Diner', contact_name:'Greg Palmer', phone:'(614) 555-0177', email:'greg@sunsetdiner.com', est_volume:'$24k/mo', stage:'follow_up_1', created_at:'2026-07-20', converted_to_account:false, converted_at:null,
-      lead_source:'Cold Lead — promoted', system_choice:'epay', pos_plan:'epay_table', processing_pricing:'interchange_flat',
-      followup1_date:'2026-08-06', followup1_idea:'', linked_partner_id:'p3' },
-    { id:'l4', business_name:'Downtown Cafe', contact_name:'Maria Lopez', phone:'(313) 555-0188', email:'maria@downtowncafe.com', est_volume:'$15k/mo', stage:'application', created_at:'2026-07-15', converted_to_account:false, converted_at:null,
-      owner_first_name:'Maria', owner_last_name:'Lopez', legal_business_name:'Downtown Cafe LLC', dba_name:'Downtown Cafe',
-      business_address:'118 Woodward Ave, Detroit, MI 48226', personal_address:'742 Elm St, Ferndale, MI 48220',
-      business_email:'billing@downtowncafe.com', business_phone:'(313) 555-0189', business_start_date:'2021-03-01',
-      business_type_services:'Full service cafe, breakfast and lunch', business_tax_id:'38-1234567',
-      highest_sale_amount:'$210', average_sale_amount:'$24', monthly_sales_average:'$15,000',
-      banking:{ bank_name:'Comerica Bank', account_type:'checking', routing_number:'072000096', account_number:'5591028834' },
-      lead_source:'Wix Application', system_choice:'epay', pos_plan:'epay_table', processing_pricing:'free_processing',
-      equipment_selected:[{name:'EPAY Table Starter Kit',qty:1},{name:'EPAY Cash Drawer',qty:2}], equipment_pricing_confirmed:true, equipment_pricing_confirmed_at:'2026-07-14', linked_partner_id:'p1' },
-    { id:'l5', business_name:'Value Mart', contact_name:'Sam Whitaker', phone:'(517) 555-0163', email:'sam@valuemart.com', est_volume:'$56k/mo', stage:'equipment_pricing_confirm', created_at:'2026-07-10', converted_to_account:false, converted_at:null,
-      lead_source:'AI Lead Scraper', system_choice:'clover', clover_device:'Clover Station Duo', processing_pricing:'interchange_flat' },
-    { id:'l6', business_name:'QuickStop Gas', contact_name:'Dana Fields', phone:'(248) 555-0129', email:'dana@quickstopgas.com', est_volume:'$41k/mo', stage:'app_id_entered', created_at:'2026-07-05', converted_to_account:false, converted_at:null,
-      owner_first_name:'Dana', owner_last_name:'Fields', legal_business_name:'QuickStop Fuel & Grocery Inc', dba_name:'QuickStop Gas',
-      business_address:'900 Telegraph Rd, Pontiac, MI 48341', personal_address:'22 Birch Ln, Waterford, MI 48328',
-      business_email:'dana@quickstopgas.com', business_phone:'(248) 555-0130', business_start_date:'2018-09-15',
-      business_type_services:'Gas station with attached convenience store', business_tax_id:'38-9876543',
-      highest_sale_amount:'$180', average_sale_amount:'$32', monthly_sales_average:'$41,000',
-      banking:{ bank_name:'Huntington National Bank', account_type:'checking', routing_number:'044000024', account_number:'7743920156' },
-      lead_source:'Marketing campaign', system_choice:'epay', pos_plan:'epay_retail', processing_pricing:'free_placement',
-      application_email_sent:true, application_email_sent_at:'2026-07-02', app_id:'EPAY-2026-40417' },
-    { id:'l7', business_name:'Main St Bakery', contact_name:'Ellie Cho', phone:'(313) 555-0155', email:'ellie@mainstbakery.com', est_volume:'$12k/mo', stage:'equipment_shipment', created_at:'2026-06-28', converted_to_account:true, converted_at:'2026-06-29',
-      in_person_install:false, tracking_number:'1Z999AA10123456784', tracking_email_sent:true, tracking_email_sent_at:'2026-06-30', linked_partner_id:'p1',
-      integrations_selected:[{key:'chowly',tierKey:'1-2',name:'Chowly (1–2 delivery apps)',price:100,added_at:'2026-08-03'},{key:'marginedge',name:'MarginEdge',price:30,added_at:'2026-06-29'}] },
-    { id:'l8', business_name:'Harbor Grill', contact_name:'Nick Adams', phone:'(616) 555-0111', email:'nick@harborgrill.com', est_volume:'$29k/mo', stage:'install_training', created_at:'2026-06-20', converted_to_account:true, converted_at:'2026-06-21',
-      in_person_install:true, tracking_number:'', linked_partner_id:'p3' },
-    { id:'l9', business_name:'Family Pharmacy', contact_name:'Priya Shah', phone:'(517) 555-0198', email:'priya@familypharmacy.com', est_volume:'$47k/mo', stage:'converted_active', created_at:'2026-06-10', converted_to_account:true, converted_at:'2026-06-11' },
-    // Envision ATM demo leads — same pipeline/stage structure as EPAY, tagged brand:'atm' explicitly
-    { id:'l10', business_name:'Lakeside Liquor Store', contact_name:'Carl Jennings', phone:'(312) 555-0271', email:'carl@lakesideliquor.com', est_volume:'ATM placement', stage:'inbound_placement', created_at:'2026-08-02', converted_to_account:false, converted_at:null,
-      lead_source:'Referral partner', brand:'atm', linked_partner_id:'p4' },
-    { id:'l11', business_name:'Route 9 Truck Stop', contact_name:'Beverly Aunt', phone:'(216) 555-0288', email:'bev@route9truckstop.com', est_volume:'ATM placement', stage:'on_hold_waiting', created_at:'2026-07-27', converted_to_account:false, converted_at:null,
-      lead_source:'Cold Call', brand:'atm' },
-    { id:'l12', business_name:'Uptown Billiards', contact_name:'Reggie Marsh', phone:'(312) 555-0293', email:'reggie@uptownbilliards.com', est_volume:'ATM placement', stage:'create_tid', created_at:'2026-07-18', converted_to_account:false, converted_at:null,
-      brand:'atm', business_address:'450 W Lake St, Chicago, IL 60661', lead_source:'Referral partner', linked_partner_id:'p6', tid:'ATM-88213' },
-    { id:'l13', business_name:'Cedar Point Marina', contact_name:'Olivia Frank', phone:'(216) 555-0301', email:'olivia@cedarpointmarina.com', est_volume:'ATM placement', stage:'installation', created_at:'2026-06-25', converted_to_account:true, converted_at:'2026-06-26',
-      brand:'atm', business_address:'1 Cedar Point Dr, Sandusky, OH 44870', in_person_install:true, tracking_number:'', linked_partner_id:'p6', tid:'ATM-77104', installation_date:'2026-06-26', commission_type:'percentage', commission_value:'12' },
-    { id:'l14', business_name:'Downtown Parking Garage', contact_name:'Sam Ortiz', phone:'(312) 555-0316', email:'sam@downtownparkinggarage.com', est_volume:'ATM placement', stage:'installation', created_at:'2026-06-05', converted_to_account:true, converted_at:'2026-06-08',
-      brand:'atm', business_address:'233 S Wacker Dr, Chicago, IL 60606', tid:'ATM-65590', installation_date:'2026-06-08', commission_type:'dollar', commission_value:'300' },
-  ];
-  return base.map(l => Object.assign(emptyAccountFields(), l));
-}
 // Real data layer for the core pipeline mechanics (load, add, move stage,
 // delete). saveLeads() stays for the many per-field editors not converted
 // yet (sensitive fields, EPAY/ATM-specific fields, notes, documents) — see
@@ -2789,12 +2726,6 @@ async function loadLeadsFromSupabase(){
   return data;
 }
 
-function seedLeadNotes(){
-  return [
-    { id:'ln1', lead_id:'l5', text:'Submitted to underwriting, waiting on bank statements from merchant.', created_by:'admin@epaypos.net', created_at:'2026-07-22' },
-    { id:'ln2', lead_id:'l6', text:'Approved — scheduling equipment install for next week.', created_by:'admin@epaypos.net', created_at:'2026-07-18' },
-  ];
-}
 function saveLeadNotes(list){ localStorage.setItem(LS_LEAD_NOTES_KEY, JSON.stringify(list)); }
 async function loadLeadNotesFromSupabase(){
   const { data, error } = await supa.from('lead_notes').select('*').order('created_at', { ascending: false });
@@ -2853,23 +2784,6 @@ function emptyApplicationFields(){
   };
 }
 
-function seedApplications(){
-  const base = [
-    { id:'app1', source:'wix', submitted_at:'2026-07-16',
-      first_name:'Maria', last_name:'Lopez', email:'maria@downtowncafe.com', phone:'(313) 555-0188',
-      business_type:'Restaurant', pricing_plan:'0% Cash Discount Processing',
-      legal_business_name:'Downtown Cafe LLC', dba_name:'Downtown Cafe', business_address:'118 Woodward Ave, Detroit, MI 48226',
-      business_email:'billing@downtowncafe.com', business_phone:'(313) 555-0189',
-      linked_account_id:'l4', match_status:'auto-matched' },
-    { id:'app2', source:'wix', submitted_at:'2026-07-30',
-      first_name:'Kevin', last_name:'Brandt', email:'kevin@brandtautoparts.com', phone:'(313) 555-0201',
-      business_type:'Retail', pricing_plan:'Free Placement Program',
-      legal_business_name:'Brandt Auto Parts Inc', dba_name:'', business_address:'44 Gratiot Ave, Detroit, MI 48226',
-      business_email:'kevin@brandtautoparts.com', business_phone:'(313) 555-0201',
-      linked_account_id:null, match_status:'unmatched' },
-  ];
-  return base.map(a => Object.assign(emptyApplicationFields(), a));
-}
 // Excludes ssn/drivers_license/business_tax_id/banking — encrypted columns
 // (database/06_applications_schema_fixes.sql), same reasoning as leads.
 // The only place that currently needs them is saveNewApplication() writing
@@ -2938,27 +2852,6 @@ function emptyColdLeadEnrichment(){
     follow_up_date:null, follow_up_method:'none', follow_up_note:'', brand: currentBrand };
 }
 
-function seedColdLeads(){
-  const plus = (n) => { const d = new Date(); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); };
-  const base = [
-    { id:'cl1', business_name:'Northside Auto Repair', contact_name:'Wes Turner', phone:'(313) 555-0233', email:'wes@northsideauto.com', source:'Scraping', source_category:'ai_scraped', temperature:'warm', notes:'Pulled from Google Maps scrape of independent auto shops.', created_at:'2026-08-01', promoted:false,
-      owner_name:'Wes Turner', owner_title:'Owner', cell_phone:'(313) 555-0234', address:'2900 E Jefferson Ave, Detroit, MI 48207', website:'northsideautorepair.com', linkedin_url:'linkedin.com/in/westurner', facebook_url:'facebook.com/northsideautorepair', instagram_url:'',
-      follow_up_date: plus(-2), follow_up_method:'call', follow_up_note:'Left voicemail last week, try again.' },
-    { id:'cl2', business_name:'Bloom Flower Shop', contact_name:'Rita Alvarez', phone:'(616) 555-0244', email:'rita@bloomflowershop.com', source:'Marketing Campaign', source_category:'marketing', temperature:'hot', notes:'Responded to Q3 retail email blast.', created_at:'2026-07-29', promoted:false,
-      follow_up_date: plus(1), follow_up_method:'email', follow_up_note:'Send pricing sheet before the call.' },
-    { id:'cl3', business_name:'Iron Gym Fitness', contact_name:'Trevor Banks', phone:'(517) 555-0255', email:'trevor@irongymfitness.com', source:'Social Media', source_category:'marketing', temperature:'cold', notes:'Commented on Instagram ad, no response to first outreach yet.', created_at:'2026-07-26', promoted:false,
-      follow_up_date: plus(4), follow_up_method:'text', follow_up_note:'' },
-    { id:'cl4', business_name:'Harbor Light Cafe', contact_name:'Dana Fields', phone:'(231) 555-0266', email:'dana@harborlightcafe.com', source:'Cold Call', source_category:'hand_entered', temperature:'warm', notes:'Called in, asked for a follow-up next week.', created_at:'2026-07-30', promoted:false,
-      follow_up_date: plus(-5), follow_up_method:'call', follow_up_note:'Overdue — was supposed to call back Friday.' },
-    { id:'cl5', business_name:'Value Cleaners', contact_name:'Marcus Diallo', phone:'(313) 555-0277', email:'marcus@valuecleaners.com', source:'Referral List', source_category:'hand_entered', temperature:'cold', notes:'', created_at:'2026-07-22', promoted:false,
-      follow_up_date: null, follow_up_method:'none', follow_up_note:'' },
-    { id:'cl6', business_name:'Riverside Bowling Alley', contact_name:'Todd Krueger', phone:'(312) 555-0328', email:'todd@riversidebowling.com', source:'Cold Call', source_category:'hand_entered', temperature:'warm', notes:'Interested in a second ATM near the bar.', created_at:'2026-08-01', promoted:false, brand:'atm',
-      follow_up_date: plus(2), follow_up_method:'call', follow_up_note:'Follow up on surcharge split terms.' },
-    { id:'cl7', business_name:'Foxtail Tavern', contact_name:'Meg ORourke', phone:'(216) 555-0341', email:'meg@foxtailtavern.com', source:'Referral List', source_category:'hand_entered', temperature:'hot', notes:'Current ATM vendor contract expiring next month.', created_at:'2026-07-31', promoted:false, brand:'atm',
-      follow_up_date: plus(-1), follow_up_method:'email', follow_up_note:'Overdue — send the surcharge comparison sheet.' },
-  ];
-  return base.map(c => Object.assign(emptyColdLeadEnrichment(), c));
-}
 // Real data layer — reads/writes the Supabase `cold_leads` table. Field
 // names already match the schema exactly, no mismatches to work around.
 async function loadColdLeadsFromSupabase(){
@@ -3073,55 +2966,6 @@ async function loadCalendarEventsFromSupabase(){
   const { data, error } = await supa.from('calendar_events').select('*').order('date', { ascending: true });
   if(error){ console.error('Failed to load calendar events from Supabase', error); return []; }
   return data;
-}
-
-function seedPartners(){
-  return [
-    { id:'p1', name:'Great Lakes Restaurant Group', contact:'Dana Whitfield', email:'dana@glrg.com', phone:'(313) 555-0142',
-      type:'referral_partner', reseller_type:null, city:'Detroit', state:'MI', address:'2200 Woodward Ave', zip:'48201', website:'glrg.com', lat:42.3314, lng:-83.0458,
-      link_slug:'great-lakes-rg', brand:'epay', leads_submitted:14, deals_closed:5, last_deal_date:'2026-07-18', status:'active', link_clicks:38,
-      next_follow_up:'2026-08-02', auto_followup_days:14,
-      banking:{ bank_name:'Comerica Bank', account_holder:'Great Lakes Restaurant Group LLC', account_type:'checking', routing_number:'072000096', account_number:'4471902358' },
-      general_notes:'Prefers email over calls. Owns 6 restaurant locations across metro Detroit.' },
-    { id:'p2', name:'Midwest Merchant Advisors', contact:'Ray Ostrowski', email:'ray@mwma.co', phone:'(616) 555-0198',
-      type:'referral_partner', reseller_type:null, city:'Grand Rapids', state:'MI', address:'150 Monroe Ave NW', zip:'49503', website:'mwma.co', lat:42.9634, lng:-85.6681,
-      link_slug:'midwest-merchant', brand:'epay', leads_submitted:9, deals_closed:2, last_deal_date:'2026-06-29', status:'active', link_clicks:52,
-      next_follow_up:'2026-07-30', auto_followup_days:null,
-      banking:{ bank_name:'', account_holder:'', account_type:'checking', routing_number:'', account_number:'' },
-      general_notes:'' },
-    { id:'p3', name:'Buckeye POS Consulting', contact:'Lena Marsh', email:'lena@buckeyepos.com', phone:'(614) 555-0110',
-      type:'agent', reseller_type:'authorized_reseller', city:'Columbus', state:'OH', address:'88 E Broad St', zip:'43215', website:'buckeyepos.com', lat:39.9612, lng:-82.9988,
-      link_slug:'buckeye-pos', brand:'epay', leads_submitted:22, deals_closed:11, last_deal_date:'2026-07-25', status:'active', link_clicks:29,
-      next_follow_up:'2026-08-10', auto_followup_days:30, parent_partner_id:'p2',
-      banking:{ bank_name:'Huntington National Bank', account_holder:'Buckeye POS Consulting Inc', account_type:'checking', routing_number:'044000024', account_number:'8820015567' },
-      general_notes:'Top performer this quarter. Discussed bumping to priority commission tier.' },
-    { id:'p4', name:'Windy City Cash Solutions', contact:'Marcus Behan', email:'marcus@wccash.com', phone:'(312) 555-0166',
-      type:'agent', reseller_type:'basic_payments', city:'Chicago', state:'IL', address:'233 S Wacker Dr', zip:'60606', website:'', lat:41.8781, lng:-87.6298,
-      link_slug:'windy-city-cash', brand:'atm', leads_submitted:6, deals_closed:1, last_deal_date:'2026-05-14', status:'active', link_clicks:41,
-      next_follow_up:'2026-07-29', auto_followup_days:null,
-      banking:{ bank_name:'', account_holder:'', account_type:'checking', routing_number:'', account_number:'' },
-      general_notes:'' },
-    { id:'p5', name:'Circle City Referrals', contact:'Priya Nair', email:'priya@circlecity.biz', phone:'(317) 555-0133',
-      type:'referral_partner', reseller_type:null, city:'Indianapolis', state:'IN', address:'', zip:'', website:'', lat:39.7684, lng:-86.1581,
-      link_slug:'circle-city', brand:'epay', leads_submitted:3, deals_closed:0, last_deal_date:null, status:'inactive', link_clicks:15,
-      next_follow_up:null, auto_followup_days:null,
-      banking:{ bank_name:'', account_holder:'', account_type:'checking', routing_number:'', account_number:'' },
-      general_notes:'Went quiet after initial onboarding call — worth a check-in.' },
-    { id:'p6', name:'Lakeshore ATM Partners', contact:'Ben Colangelo', email:'ben@lakeshoreatm.com', phone:'(216) 555-0177',
-      type:'referral_partner', reseller_type:null, city:'Cleveland', state:'OH', address:'900 Euclid Ave', zip:'44115', website:'lakeshoreatm.com', lat:41.4993, lng:-81.6944,
-      link_slug:'lakeshore-atm', brand:'atm', leads_submitted:11, deals_closed:4, last_deal_date:'2026-07-09', status:'active', link_clicks:33,
-      next_follow_up:'2026-08-05', auto_followup_days:60,
-      banking:{ bank_name:'KeyBank', account_holder:'Ben Colangelo', account_type:'savings', routing_number:'041001039', account_number:'5563310042' },
-      general_notes:'' },
-  ];
-}
-
-function seedNotes(){
-  return [
-    { id:'n1', partner_id:'p1', text:'Sent updated commission schedule, waiting on signature.', follow_up_date:'2026-08-02', created_by:'admin@epaypos.net', created_at:'2026-07-21' },
-    { id:'n2', partner_id:'p3', text:'Closed 2 new merchants this month — discussed bumping to priority tier.', follow_up_date:'2026-08-10', created_by:'admin@epaypos.net', created_at:'2026-07-24' },
-    { id:'n3', partner_id:'p2', text:'Left voicemail re: Q3 restaurant push, no response yet.', follow_up_date:'2026-07-30', created_by:'admin@epaypos.net', created_at:'2026-07-25' },
-  ];
 }
 
 // Real data layer — reads the Supabase `partners` table (RLS-scoped: an
@@ -3737,7 +3581,6 @@ async function enterAppAsAuthUser(authUser){
                    sort_order:a.sort_order, is_active:a.is_active }))
       .concat([{ key:'custom', label:'Custom link...', url:'' }]);
   }
-
 
   document.getElementById('login-screen').style.display = 'none';
   enterApp();
@@ -6978,7 +6821,6 @@ async function deleteOffice(officeId){
   PARTNERS.filter(p => p.office_id === officeId).forEach(p => { p.office_id = null; });
   renderTeamStructure();
 }
-
 
 // --- Hierarchy view — recruiting structure (parent_partner_id), grouped by
 // office so every office's tree is visible together on one page. A node
@@ -10674,7 +10516,6 @@ function sampleAiPartnerResults(role, location, count, platforms, enrich){
     notes: `Matches "${roleLabel}" near ${locLabel} — found via ${platformNames.join(', ') || 'general search'}.`,
   }));
 }
-
 
 /* =========================================================================
    LIVE COST ESTIMATE — rough planning numbers for what a real (non-demo)
