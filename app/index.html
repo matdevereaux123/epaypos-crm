@@ -4938,7 +4938,10 @@ async function refreshMyOnboarding(){
 
 function renderOnboardingBanner(){
   let bar = document.getElementById('onboardingBanner');
-  const needed = myOnboarding && ['invited','submitted'].includes(myOnboarding.status);
+  // Only while we are still waiting on them. Once submitted the banner has
+  // nothing left to ask for, and a standing "we received it" notice on every
+  // page is noise — the state lives on their record, which staff read there.
+  const needed = myOnboarding && myOnboarding.status === 'invited';
 
   if(!needed){ if(bar) bar.remove(); return; }
 
@@ -4950,21 +4953,12 @@ function renderOnboardingBanner(){
     main.insertBefore(bar, main.firstChild);
   }
 
-  if(myOnboarding.status === 'submitted'){
-    bar.className = 'onboarding-banner is-submitted';
-    bar.innerHTML =
-      '<span class="ob-dot"></span>' +
-      '<span class="ob-text"><strong>Application received.</strong> We are reviewing it and will be in touch. ' +
-      'You can still make corrections until it is approved.</span>' +
-      '<button type="button" class="btn btn-sm" onclick="openOnboardingForm()">Review answers</button>';
-  } else {
-    bar.className = 'onboarding-banner';
-    bar.innerHTML =
-      '<span class="ob-dot"></span>' +
-      '<span class="ob-text"><strong>Finish setting up your account.</strong> ' +
-      'We need a few details before you can start submitting deals.</span>' +
-      '<button type="button" class="btn btn-accent btn-sm" onclick="openOnboardingForm()">Complete application</button>';
-  }
+  bar.className = 'onboarding-banner';
+  bar.innerHTML =
+    '<span class="ob-dot"></span>' +
+    '<span class="ob-text"><strong>Finish setting up your account.</strong> ' +
+    'We need a few details before you can start submitting deals.</span>' +
+    '<button type="button" class="btn btn-accent btn-sm" onclick="openOnboardingForm()">Complete application</button>';
 }
 
 async function openOnboardingForm(){
@@ -5129,7 +5123,7 @@ async function submitOnboardingForm(){
 
     myOnboarding.status = 'submitted';
     closeOnboardingDrawer();
-    renderOnboardingBanner();
+    renderOnboardingBanner();   // status is no longer 'invited', so this removes it
     showToast('Application submitted \u2014 we will review it shortly', 'success');
   } catch(e){
     err.textContent = e.message || 'Something went wrong saving your application.';
