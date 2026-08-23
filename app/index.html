@@ -5165,6 +5165,15 @@ function currentPartnerIsOwn(p){
   return !!(p.email && currentUser.email && p.email.toLowerCase() === currentUser.email.toLowerCase());
 }
 
+// The email is what separates two people with the same name, so it belongs in
+// the label rather than in a tooltip nobody hovers.
+function assigneeOptionHtml(u, selectedId){
+  const parts = [u.name || '(no name)'];
+  if(u.email) parts.push(u.email);
+  parts.push(roleOf(u).label);
+  return `<option value="${u.id}" ${selectedId === u.id ? 'selected' : ''}>${parts.join(' \u00b7 ')}</option>`;
+}
+
 function buildApplicationSectionHTML(p, sens){
   const has = p.owner_first_name || p.legal_business_name || p.business_address
            || p.personal_address || p.mailing_address;
@@ -8883,8 +8892,8 @@ async function openLeadDetail(id){
       <label>Assigned to</label>
       <select id="leadAssignedTo" onchange="saveLeadAssignment('${l.id}', this.value)">
         <option value="">Unassigned</option>
-        ${internalUsers.length ? `<optgroup label="Employees">${internalUsers.map(u => `<option value="${u.id}" ${l.assigned_to===u.id?'selected':''}>${u.name} — ${roleOf(u).label}</option>`).join('')}</optgroup>` : ''}
-        ${portalUsers.length ? `<optgroup label="Agents &amp; partners">${portalUsers.map(u => `<option value="${u.id}" ${l.assigned_to===u.id?'selected':''}>${u.name} — ${roleOf(u).label}</option>`).join('')}</optgroup>` : ''}
+        ${internalUsers.length ? `<optgroup label="Employees">${internalUsers.map(u => assigneeOptionHtml(u, l.assigned_to)).join('')}</optgroup>` : ''}
+        ${portalUsers.length ? `<optgroup label="Agents &amp; partners">${portalUsers.map(u => assigneeOptionHtml(u, l.assigned_to)).join('')}</optgroup>` : ''}
       </select>
       <p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">Who owns working this lead. Assigning an agent or partner is what gives them access to it — they see nothing they haven't been given.</p>
     </div>
