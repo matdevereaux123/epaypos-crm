@@ -4183,16 +4183,40 @@ async function initAuth(){
    this page. Submitting it writes a real Lead, genuinely sitting in the
    Inbound Lead stage and attributed to that partner.
    ========================================================================= */
-const APPLICATION_LINK_FIELDS = [
-  { id:'alBusinessName',     label:'Business name',            required:true },
-  { id:'alContactName',      label:'Your name',                required:true },
-  { id:'alEmail',            label:'Email',                    type:'email' },
-  { id:'alPhone',            label:'Phone',                    type:'tel' },
-  { id:'alBusinessAddress',  label:'Business address' },
-  { id:'alBusinessType',     label:'What does the business do?' },
-  { id:'alMonthlyVolume',    label:'Average monthly card volume' },
-  { id:'alAverageTicket',    label:'Average ticket size' },
-  { id:'alCurrentProcessor', label:'Who processes your payments today?' }
+// The merchant application, matching epaypos.net/copy-of-free-processing.
+// Grouped so a long form reads as four short ones.
+const APPLICATION_LINK_SECTIONS = [
+  { title: 'About you', fields: [
+    { id:'alFirstName',   label:'First name', required:true },
+    { id:'alLastName',    label:'Last name',  required:true },
+    { id:'alEmail',       label:'Email', type:'email', required:true },
+    { id:'alPhone',       label:'Phone', type:'tel' },
+    { id:'alDob',         label:'Date of birth', type:'date' },
+    { id:'alSsn',         label:'Social security number' },
+    { id:'alDl',          label:'Driver\u2019s licence number' },
+    { id:'alDlState',     label:'Driver\u2019s licence state' }
+  ]},
+  { title: 'Your business', fields: [
+    { id:'alLegalName',   label:'Legal business name', required:true },
+    { id:'alDba',         label:'DBA name (if applicable)' },
+    { id:'alBizAddress',  label:'Business address' },
+    { id:'alBizEmail',    label:'Business email', type:'email' },
+    { id:'alBizPhone',    label:'Business phone', type:'tel' },
+    { id:'alBizStart',    label:'Business start date', type:'date' },
+    { id:'alTaxId',       label:'Business tax ID number' },
+    { id:'alBizType',     label:'Business type' },
+    { id:'alServices',    label:'Business type and services provided', textarea:true }
+  ]},
+  { title: 'Your volume', fields: [
+    { id:'alMonthly',     label:'Monthly sales average' },
+    { id:'alHighest',     label:'Highest sale amount' },
+    { id:'alAverage',     label:'Average sale amount' }
+  ]},
+  { title: 'Where we deposit your money', fields: [
+    { id:'alBankName',    label:'Bank name' },
+    { id:'alRouting',     label:'Business account routing number' },
+    { id:'alAccount',     label:'Business account number' }
+  ]}
 ];
 
 /* -----------------------------------------------------------------------
@@ -4427,18 +4451,35 @@ async function renderApplicationLandingPage(slug){
     <div id="alError" class="form-error" style="display:none;margin-bottom:14px;padding:10px 12px;background:#FDECEC;border:1px solid #F3C6C6;border-radius:8px;color:var(--red);font-size:13px;"></div>
 
     <form id="applicationLinkForm" novalidate>
-      ${APPLICATION_LINK_FIELDS.map(f => `
-        <div class="field">
-          <label>${f.label}${f.required ? '' : ' <span style="color:var(--slate-300);font-weight:400;">(optional)</span>'}</label>
-          <input id="${f.id}" type="${f.type || 'text'}">
-        </div>`).join('')}
+      ${APPLICATION_LINK_SECTIONS.map(sec => `
+        <div class="section-label" style="margin-top:20px;">${sec.title}</div>
+        ${sec.fields.map(f => `
+          <div class="field">
+            <label>${f.label}${f.required ? '' : ' <span style="color:var(--slate-300);font-weight:400;">(optional)</span>'}</label>
+            ${f.textarea
+              ? `<textarea id="${f.id}" rows="3"></textarea>`
+              : `<input id="${f.id}" type="${f.type || 'text'}">`}
+          </div>`).join('')}
+      `).join('')}
+
+      <div class="section-label" style="margin-top:20px;">Pricing</div>
       <div class="field">
-        <label>Anything else we should know? <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
-        <textarea id="alNotes" rows="3"></textarea>
+        <label>Choose your pricing</label>
+        <select id="alPricing">
+          <option value="Free Processing">Free Processing</option>
+          <option value="Interchange Plus">Interchange Plus</option>
+        </select>
       </div>
-      <button type="submit" class="btn btn-accent" id="alSubmitBtn" style="width:100%;margin-top:6px;">Submit application</button>
+
+      <label style="display:flex;gap:9px;align-items:flex-start;margin:16px 0 0;font-size:12.5px;color:var(--slate-500);line-height:1.5;">
+        <input type="checkbox" id="alTerms" style="width:auto;margin-top:2px;flex-shrink:0;">
+        <span>I confirm the information above is accurate and I am authorised to apply on behalf of this business.</span>
+      </label>
+
+      <button type="submit" class="btn btn-accent" id="alSubmitBtn" style="width:100%;margin-top:16px;">Submit application</button>
       <p style="font-size:10.5px;color:var(--slate-300);margin:10px 0 0;text-align:center;">
         Submitting does not run a credit check or commit you to anything.
+        Your details are encrypted and only visible to EPAY staff.
       </p>
     </form>`;
 
@@ -4454,8 +4495,18 @@ async function submitApplicationLink(slug){
   const btn = document.getElementById('alSubmitBtn');
   err.style.display = 'none';
 
-  if(!v('alBusinessName') || !v('alContactName')){
-    err.textContent = 'Please give us the business name and your name.';
+  const missing = [];
+  APPLICATION_LINK_SECTIONS.forEach(sec => sec.fields.forEach(f => {
+    if(f.required && !v(f.id)) missing.push(f.label);
+  }));
+  if(missing.length){
+    err.textContent = 'Please fill in: ' + missing.join(', ') + '.';
+    err.style.display = 'block';
+    document.getElementById('alError').scrollIntoView({ block:'center', behavior:'smooth' });
+    return;
+  }
+  if(!document.getElementById('alTerms').checked){
+    err.textContent = 'Please confirm the information is accurate before submitting.';
     err.style.display = 'block';
     return;
   }
@@ -4466,16 +4517,31 @@ async function submitApplicationLink(slug){
 
   const { error } = await supa.rpc('public_submit_application', {
     p_slug: slug,
-    p_business_name: v('alBusinessName'),
-    p_contact_name: v('alContactName'),
+    p_first_name: v('alFirstName'),
+    p_last_name: v('alLastName'),
     p_email: v('alEmail'),
     p_phone: v('alPhone'),
-    p_business_address: v('alBusinessAddress'),
-    p_business_type: v('alBusinessType'),
-    p_monthly_volume: v('alMonthlyVolume'),
-    p_average_ticket: v('alAverageTicket'),
-    p_current_processor: v('alCurrentProcessor'),
-    p_notes: v('alNotes')
+    p_dob: v('alDob'),
+    p_ssn: v('alSsn'),
+    p_drivers_license: v('alDl'),
+    p_drivers_license_state: v('alDlState'),
+    p_legal_business_name: v('alLegalName'),
+    p_dba_name: v('alDba'),
+    p_business_address: v('alBizAddress'),
+    p_business_email: v('alBizEmail'),
+    p_business_phone: v('alBizPhone'),
+    p_business_start_date: v('alBizStart'),
+    p_business_tax_id: v('alTaxId'),
+    p_business_type: v('alBizType'),
+    p_business_type_services: v('alServices'),
+    p_monthly_sales_average: v('alMonthly'),
+    p_highest_sale_amount: v('alHighest'),
+    p_average_sale_amount: v('alAverage'),
+    p_bank_name: v('alBankName'),
+    p_routing_number: v('alRouting'),
+    p_account_number: v('alAccount'),
+    p_pricing_plan: v('alPricing'),
+    p_terms_accepted: document.getElementById('alTerms').checked
   });
 
   btn.disabled = false;
@@ -4497,6 +4563,7 @@ async function submitApplicationLink(slug){
     <p class="landing-sub" style="text-align:center;">
       Someone will be in touch shortly. There is nothing else you need to do.
     </p>`;
+  window.scrollTo(0, 0);
 }
 
 async function renderReferralLandingPage(slug){
