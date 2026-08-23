@@ -4388,9 +4388,25 @@ function scopedPartnersForCurrentUser(){
     // their row by the database and then filtered back out here, so the portal
     // showed them nothing at all. Falling back to the email match keeps any
     // account that predates linked_partner_id being set working.
-    scoped = currentUser.linked_partner_id
-      ? scoped.filter(p => p.id === currentUser.linked_partner_id)
-      : scoped.filter(p => p.email && p.email.toLowerCase() === currentUser.email.toLowerCase());
+    // Own record plus anyone beneath them in the recruiting tree. RLS decides
+    // what actually arrives (see database/26_downline_visibility.sql); this
+    // mirrors the same rule so the list doesn't filter out rows the database
+    // deliberately returned.
+    const ownId = currentUser.linked_partner_id;
+    if(ownId){
+      const inDownline = new Set();
+      (function walk(parentId, depth){
+        if(depth > 20) return;
+        PARTNERS.filter(x => x.parent_partner_id === parentId).forEach(child => {
+          if(inDownline.has(child.id)) return;   // guards a cycle in the data
+          inDownline.add(child.id);
+          walk(child.id, depth + 1);
+        });
+      })(ownId, 0);
+      scoped = scoped.filter(p => p.id === ownId || inDownline.has(p.id));
+    } else {
+      scoped = scoped.filter(p => p.email && p.email.toLowerCase() === currentUser.email.toLowerCase());
+    }
   }
   return scoped;
 }
@@ -4722,6 +4738,7 @@ let unlockedSensitiveFields = new Set();   // same keying, for edit mode
 // whenever a sensitive field is actually saved, so the next render re-fetches.
 let decryptedLeadCache = {};
 let decryptedPartnerBankingCache = {};
+let decryptedPartnerSensitiveCache = {};
 
 function canViewSensitive(){ return roleOf(currentUser).perms.viewBanking === true; }
 function canEditSensitive(){ return roleOf(currentUser).perms.editBanking === true; }
@@ -5143,6 +5160,57 @@ function partnerAdmitPacket(partnerId){
   return PARTNER_DOCUMENTS.find(d => d.partner_id === partnerId && d.doc_type === 'admit_packet') || null;
 }
 
+/* -----------------------------------------------------------------------
+   What the agent submitted, shown on their record.
+   The intake and the storage existed without this — the data was going in
+   and there was nowhere to read it.
+   ----------------------------------------------------------------------- */
+function currentPartnerIsOwn(p){
+  if(!p || !currentUser) return false;
+  if(currentUser.linked_partner_id) return currentUser.linked_partner_id === p.id;
+  return !!(p.email && currentUser.email && p.email.toLowerCase() === currentUser.email.toLowerCase());
+}
+
+function buildApplicationSectionHTML(p, sens){
+  const has = p.owner_first_name || p.legal_business_name || p.business_address
+           || p.personal_address || p.mailing_address;
+  if(!has) return '';
+
+  const row = (k, v) => v
+    ? `<div class="detail-row"><span class="k">${k}</span><span class="v">${v}</span></div>`
+    : '';
+
+  // Same rule the rest of the drawer uses: a value is shown only to someone
+  // allowed to see sensitive data, or to the record's own portal login.
+  const mayReveal = canViewSensitive() || currentPartnerIsOwn(p);
+  const secret = (k, v) => {
+    if(!mayReveal) return v ? `<div class="detail-row"><span class="k">${k}</span><span class="v" style="color:var(--slate-300);">On file</span></div>` : '';
+    return row(k, v);
+  };
+
+  const taxLabel = p.tax_id_type === 'ein' ? 'EIN' : 'Social security number';
+  const taxValue = p.tax_id_type === 'ein' ? (sens && sens.tax_id) : (sens && sens.ssn);
+
+  return `
+    <hr style="border:none;border-top:1px solid var(--line);margin:20px 0;">
+    <label style="display:block;font-size:11.5px;text-transform:uppercase;color:var(--slate-500);margin-bottom:10px;">Application</label>
+    ${row('Name', [p.owner_first_name, p.owner_last_name].filter(Boolean).join(' '))}
+    ${secret('Date of birth', sens && sens.dob)}
+    ${secret(taxLabel, taxValue)}
+    ${secret('Driver\u2019s licence', sens && sens.drivers_license)}
+    ${row('Licence state', p.drivers_license_state)}
+    ${row('Home address', p.personal_address)}
+    ${row('Mailing address (1099)', p.mailing_address)}
+    ${row('Legal business name', p.legal_business_name)}
+    ${row('DBA', p.dba_name)}
+    ${row('Business address', p.business_address)}
+    ${row('Business phone', p.business_phone)}
+    ${row('Business email', p.business_email)}
+    ${row('Business start date', p.business_start_date ? formatDate(p.business_start_date) : '')}
+    ${row('What the business does', p.business_type_services)}
+  `;
+}
+
 function buildOnboardingSectionHTML(p){
   // Portal logins have no business seeing their own onboarding controls.
   if(!roleOf(currentUser).perms.editPartners) return '';
@@ -5359,6 +5427,13 @@ async function openReferralDetail(id){
       decryptedPartnerBankingCache[id] = banking;
     }
     if(decryptedPartnerBankingCache[id]) p.banking = decryptedPartnerBankingCache[id];
+
+    // The application's own encrypted fields come back through their own RPC,
+    // cached the same way so re-rendering the drawer doesn't re-hit it.
+    if(!decryptedPartnerSensitiveCache.hasOwnProperty(id)){
+      const { data: sd } = await supa.rpc('reveal_partner_sensitive', { p_partner_id: id });
+      decryptedPartnerSensitiveCache[id] = sd || null;
+    }
   }
   const baseUrl = currentBrand === 'atm' ? 'envisionatm.com/r/' : 'epaypos.net/r/';
   const notesForPartner = NOTES.filter(n=>n.partner_id===id).sort((a,b)=> new Date(b.created_at)-new Date(a.created_at));
@@ -5382,6 +5457,8 @@ async function openReferralDetail(id){
       <div class="detail-row"><span class="k">Phone</span><span class="v">${p.phone}</span></div>
       <div class="detail-row"><span class="k">Website</span><span class="v">${p.website || '—'}</span></div>
       <div class="detail-row"><span class="k">Address</span><span class="v">${p.address ? p.address + ', ' : ''}${p.city}, ${p.state}${p.zip ? ' ' + p.zip : ''}</span></div>
+
+      ${buildApplicationSectionHTML(p, decryptedPartnerSensitiveCache[p.id])}
 
       ${buildOnboardingSectionHTML(p)}
 
