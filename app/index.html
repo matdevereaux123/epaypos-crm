@@ -4393,6 +4393,38 @@ function partnerMatchesBrand(p, brand){ return p.brand === brand || p.brand === 
    Keep these in step with the policies. If one says fullDashboard and the
    other does not, the preview quietly lies.
    ----------------------------------------------------------------------- */
+// Everyone beneath a partner in the recruiting tree. Mirrors
+// partner_downline_ids() in database/26_downline_visibility.sql, including
+// its depth cap — parent_partner_id is a plain self-reference and nothing
+// stops a cycle in the data.
+function partnerDownlineIds(partnerId){
+  const seen = new Set();
+  (function walk(pid, depth){
+    if(depth > 20) return;
+    PARTNERS.filter(x => x.parent_partner_id === pid).forEach(child => {
+      if(seen.has(child.id)) return;
+      seen.add(child.id);
+      walk(child.id, depth + 1);
+    });
+  })(partnerId, 0);
+  return seen;
+}
+
+// Who the current user may hand work to. Staff assign freely; everyone else
+// gets themselves plus their downline, matching the trigger in
+// database/27_assignment_scope.sql. Offering more than that would just
+// produce a refusal from the database.
+function assignableUsers(){
+  const perms = roleOf(currentUser).perms;
+  if(perms.fullDashboard) return USERS.slice();
+
+  const ownPartner = currentUser.linked_partner_id;
+  const downline = ownPartner ? partnerDownlineIds(ownPartner) : new Set();
+  return USERS.filter(u =>
+    u.id === currentUser.id ||
+    (u.linked_partner_id && downline.has(u.linked_partner_id)));
+}
+
 function scopedLeads(){
   const perms = roleOf(currentUser).perms;
   if(perms.fullDashboard) return LEADS;
@@ -5185,6 +5217,23 @@ const ONBOARDING_LABELS = {
   active:         { label: 'Active',                cls: 'pill-status-active' }
 };
 
+// What the partner's own type implies, used as the default rather than the
+// decision — the same inference partner creation used to make silently.
+function suggestedRoleForPartner(p){
+  if(p.type === 'referral_partner') return 'referral_partner';
+  return p.reseller_type === 'authorized_reseller' ? 'epay_reseller' : 'agent';
+}
+
+// Every portal-scoped role, including any custom ones built in Settings, so
+// the list reflects how this business actually works rather than the three
+// built-ins.
+function invitableRoleOptions(p){
+  return Object.keys(ROLES)
+    .filter(k => ROLES[k].portal_scope === 'own')
+    .map(k => ({ key: k, label: ROLES[k].label }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+}
+
 function partnerAdmitPacket(partnerId){
   return PARTNER_DOCUMENTS.find(d => d.partner_id === partnerId && d.doc_type === 'admit_packet') || null;
 }
@@ -5283,6 +5332,15 @@ function buildOnboardingSectionHTML(p){
     </button>
 
     ${alreadyMovedOn ? '' : `
+      <div class="field" style="margin-top:12px;">
+        <label>Invite them as</label>
+        <select id="inviteRoleChoice">
+          ${invitableRoleOptions(p).map(r => `<option value="${r.key}" ${r.key === suggestedRoleForPartner(p) ? 'selected' : ''}>${r.label}</option>`).join('')}
+        </select>
+        <p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">
+          Sets what they can see and do in the portal. Changeable later under Settings &rarr; Team access.
+        </p>
+      </div>
       <button class="btn btn-accent" style="width:100%;margin-top:8px;"
               ${canInvite ? '' : 'disabled'}
               onclick="sendPartnerInvite('${p.id}')">
@@ -5347,18 +5405,28 @@ async function sendPartnerInvite(partnerId){
   if(!p) return;
   if(!p.email){ showToast('This partner has no email address on file.', 'error'); return; }
 
-  const { error: gateErr } = await supa.rpc('mark_partner_invited', { p_partner_id: partnerId });
-  if(gateErr){ showToast(gateErr.message, 'error'); return; }
-
-  // The edge function takes the users-table id, not the partner or the email —
-  // it looks the address up itself with the service role. Passing anything
-  // else gets "userId is required" back and no email is sent.
+  // Resolved before the gate so the role update below can use it.
   const portalUser = USERS.find(u => u.linked_partner_id === partnerId);
   if(!portalUser){
     showToast('No portal login exists for this partner yet, so there is nothing to invite. Re-save the partner with an email address to create one.', 'error');
     return;
   }
 
+  const { error: gateErr } = await supa.rpc('mark_partner_invited', { p_partner_id: partnerId });
+  if(gateErr){ showToast(gateErr.message, 'error'); return; }
+
+  // Whatever was chosen on the drawer, applied before the invite goes out so
+  // they land in the portal already holding the right permissions.
+  const chosenRole = (document.getElementById('inviteRoleChoice') || {}).value;
+  if(chosenRole && portalUser && chosenRole !== portalUser.role){
+    const { error: roleErr } = await supa.from('users')
+      .update({ role: chosenRole }).eq('id', portalUser.id);
+    if(roleErr){ showToast('Could not set their role: ' + roleErr.message, 'error'); return; }
+    portalUser.role = chosenRole;
+  }
+
+  // The edge function takes the users-table id, not the partner or the email —
+  // it looks the address up itself with the service role.
   const { data: fnData, error: fnErr } = await supa.functions.invoke('invite-user', {
     body: { userId: portalUser.id }
   });
@@ -8910,12 +8978,13 @@ async function openLeadDetail(id){
   }).join('');
 
   const relevantPartners = PARTNERS.filter(p => partnerMatchesBrand(p, l.brand || 'epay')).slice().sort((a,b)=> a.name.localeCompare(b.name));
-  const internalUsers = USERS.filter(u => roleOf(u).portal_scope === 'internal').slice().sort((a,b)=> a.name.localeCompare(b.name));
+  const assignable = assignableUsers();
+  const internalUsers = assignable.filter(u => roleOf(u).portal_scope === 'internal').slice().sort((a,b)=> a.name.localeCompare(b.name));
   // Portal logins (agents, referral partners, resellers) are assignable too.
   // The RLS policy already grants access on assigned_to regardless of role —
   // this dropdown was the only thing keeping it internal-only, which meant a
   // lead could never actually be handed to the agent working it.
-  const portalUsers = USERS.filter(u => roleOf(u).portal_scope === 'own').slice().sort((a,b)=> a.name.localeCompare(b.name));
+  const portalUsers = assignable.filter(u => roleOf(u).portal_scope === 'own').slice().sort((a,b)=> a.name.localeCompare(b.name));
   const overviewBody = `
     <div class="detail-row"><span class="k">Contact</span><span class="v">${l.contact_name}</span></div>
     <div class="detail-row"><span class="k">Phone</span><span class="v">${l.phone}</span></div>
