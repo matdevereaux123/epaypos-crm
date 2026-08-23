@@ -3368,17 +3368,24 @@ function applyRolePermissions(){
   const calendarNav = document.getElementById('navCalendarItem');
   if(calendarNav) calendarNav.style.display = isInternal ? 'flex' : 'none';
 
+  // Reports are admin-only, a tighter bar than Calendar: in-house sales keep
+  // the calendar but not the subscription and collections reports.
   const reportsToggle = document.getElementById('reportsSectionToggle');
   const reportsItems = document.getElementById('reportsSectionItems');
-  if(reportsToggle) reportsToggle.style.display = isInternal ? 'flex' : 'none';
-  if(reportsItems) reportsItems.style.display = isInternal ? 'block' : 'none';
+  if(reportsToggle) reportsToggle.style.display = isAdmin ? 'flex' : 'none';
+  if(reportsItems) reportsItems.style.display = isAdmin ? 'block' : 'none';
 
   // Same reasoning as the admin-only check above: hiding a nav item is not the
   // same as being unable to reach the view, so bounce anyone already sitting
-  // on one when their role says they shouldn't be.
-  const onInternalOnlyView = ['view-calendar','view-reportsubs','view-collections']
+  // on one when their role says they shouldn't be. The two lists differ
+  // because the two bars differ.
+  const calendarEl = document.getElementById('view-calendar');
+  if(!isInternal && calendarEl && calendarEl.style.display !== 'none'){
+    showView('dashboard');
+  }
+  const onReportView = ['view-reportsubs','view-collections']
     .some(id => { const el = document.getElementById(id); return el && el.style.display !== 'none'; });
-  if(!isInternal && onInternalOnlyView){
+  if(!isAdmin && onReportView){
     showView('dashboard');
   }
 }
