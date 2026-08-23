@@ -3057,12 +3057,27 @@ async function sendOutboundEmail(opts){
     }
   });
 
-  // invoke() reports transport failures in error; the function's own refusals
-  // come back as a body with an error field, which would otherwise read as
-  // success.
-  const failure = error ? error.message : (data && data.error);
+  // supabase-js reports any non-2xx as the useless "Edge Function returned a
+  // non-2xx status code" and puts the actual response on error.context. The
+  // function always answers with {error: "..."} saying what went wrong —
+  // missing config, not authorised, whatever Resend said — so read it rather
+  // than showing the wrapper's message.
+  let failure = null;
+  if(error){
+    failure = error.message;
+    if(error.context && typeof error.context.json === 'function'){
+      try {
+        const body = await error.context.json();
+        if(body && body.error) failure = body.error;
+      } catch(e){ /* not JSON — keep the wrapper message */ }
+    }
+  } else if(data && data.error){
+    failure = data.error;
+  }
+
   if(failure){
     showToast('Email failed: ' + failure, 'error');
+    console.error('send-email failed:', failure);
     return false;
   }
   showToast('Sent to ' + opts.to, 'success');
