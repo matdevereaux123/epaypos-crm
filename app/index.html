@@ -2667,11 +2667,19 @@ function leadSourceOptionsFor(current){
   return list;
 }
 
-let APPLICATION_LINKS = [
+// The three ways to send an application, plus a free-text escape hatch.
+// 'portal' has no fixed url: it generates a one-off link to this CRM's own
+// landing page for the specific lead, so the submission comes back attributed
+// rather than arriving anonymously the way the marketing-site forms do.
+const BUILTIN_APPLICATION_LINKS = [
   { key:'free_processing', label:'Free Processing Application', url:'https://www.epaypos.net/copy-of-free-processing' },
-  { key:'sign_up', label:'Sign Up', url:'https://www.epaypos.net/sign-up' },
-  { key:'custom', label:'Custom link...', url:'' },
+  { key:'sign_up',         label:'Sign Up',                     url:'https://www.epaypos.net/sign-up' },
+  { key:'portal',          label:'Portal application page (tracked)', url:'' },
 ];
+
+let APPLICATION_LINKS = BUILTIN_APPLICATION_LINKS.concat([
+  { key:'custom', label:'Custom link...', url:'' },
+]);
 
 function emptyAccountFields(){
   return {
@@ -3070,15 +3078,32 @@ async function emailApplicationLink(leadId){
     return;
   }
 
-  const label = l.business_name || 'Application';
-  const { data: token, error } = await supa.from('application_link_tokens').insert({
-    slug: applicationLinkSlug(label),
-    label: label,
-    brand: (l.brand === 'atm') ? 'atm' : 'epay',
-    created_by: currentUser.id
-  }).select().single();
-  if(error){ showToast('Could not create the link: ' + error.message, 'error'); return; }
-  APPLICATION_LINK_TOKENS.unshift(token);
+  // Whichever link was chosen on this lead. Only the portal option needs a
+  // token generating; the marketing-site links and a custom URL are sent as
+  // they are.
+  const choice = l.application_link_choice || 'portal';
+  let url = '';
+
+  if(choice === 'portal' || !choice){
+    const label = l.business_name || 'Application';
+    const existing = APPLICATION_LINK_TOKENS.find(x => x.label === label && x.is_active);
+    if(existing){
+      url = applicationShareUrl(existing.slug);
+    } else {
+      const { data: token, error } = await supa.from('application_link_tokens').insert({
+        slug: applicationLinkSlug(label),
+        label: label,
+        brand: (l.brand === 'atm') ? 'atm' : 'epay',
+        created_by: currentUser.id
+      }).select().single();
+      if(error){ showToast('Could not create the link: ' + error.message, 'error'); return; }
+      APPLICATION_LINK_TOKENS.unshift(token);
+      url = applicationShareUrl(token.slug);
+    }
+  } else {
+    url = applicationLinkUrl(l);
+    if(!url){ showToast('That application link has no URL set.', 'error'); return; }
+  }
 
   const brandName = l.brand === 'atm' ? 'Envision ATM' : 'EPAY POS';
   const ok = await sendOutboundEmail({
@@ -3091,7 +3116,7 @@ async function emailApplicationLink(leadId){
         + 'Here is the application for ' + (l.business_name || 'your business') + '. '
         + 'It takes a couple of minutes and there is no obligation \u2014 we will come back to you with pricing once we have it.',
     buttonLabel: 'Open my application',
-    buttonUrl: applicationShareUrl(token.slug)
+    buttonUrl: url
   });
 
   if(ok){
@@ -3774,10 +3799,19 @@ async function enterAppAsAuthUser(authUser){
   // null means the read failed — keep the hardcoded fallback rather than
   // leaving the dropdown empty. An empty array is a real answer (someone
   // deactivated every link) and is respected.
-  if(applicationLinks){
-    APPLICATION_LINKS = applicationLinks
-      .map(a => ({ key:a.key, label:a.label, url:a.url, brand:a.brand, id:a.id,
-                   sort_order:a.sort_order, is_active:a.is_active }))
+  // An empty array is truthy, so an unseeded table used to replace the whole
+  // list with nothing but "Custom link..." — the dropdown went blank and the
+  // built-ins were lost. Rows from the table are added to the built-ins rather
+  // than replacing them.
+  if(applicationLinks && applicationLinks.length){
+    const fromDb = applicationLinks.map(a => ({
+      key:a.key, label:a.label, url:a.url, brand:a.brand, id:a.id,
+      sort_order:a.sort_order, is_active:a.is_active
+    }));
+    const dbKeys = new Set(fromDb.map(a => a.key));
+    APPLICATION_LINKS = BUILTIN_APPLICATION_LINKS
+      .filter(b => !dbKeys.has(b.key))
+      .concat(fromDb)
       .concat([{ key:'custom', label:'Custom link...', url:'' }]);
   }
 
@@ -8409,13 +8443,24 @@ function buildDocsSectionHTML(l){
     </div>
     <div class="field">
       <label>Document type</label>
-      <select id="acDocType">
+      <select id="acDocType" onchange="toggleEfilePicker('${l.id}')">
         <option value="paper">Paper application</option>
         <option value="efiled">E-filed application</option>
         <option value="other">Other document</option>
       </select>
     </div>
-    <button class="btn btn-accent" style="width:100%;" onclick="attachAccountDocument('${l.id}')">Attach document</button>
+
+    <!-- An e-filed application already exists as a record under Applications;
+         there is no file to upload. Picking it links the record instead. -->
+    <div class="field" id="acEfilePickerWrap" style="display:none;">
+      <label>Which application?</label>
+      <select id="acEfilePicker"></select>
+      <p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">
+        Links an application that has already come in. No file needed.
+      </p>
+    </div>
+
+    <button class="btn btn-accent" style="width:100%;" id="acAttachBtn" onclick="attachAccountDocument('${l.id}')">Attach document</button>
     <div style="margin-top:12px;">
       ${docsForLead.length ? docsForLead.map(d => `
         <div class="note-item" style="display:flex;justify-content:space-between;align-items:center;">
@@ -8526,7 +8571,68 @@ async function saveAccountBanking(id){
 }
 
 const MAX_DOC_SIZE = 20 * 1024 * 1024; // 20MB — Supabase Storage default upload limit on the free tier
+// E-filed applications are records, not files. Choosing that type swaps the
+// file input for a picker of applications already in the system.
+function toggleEfilePicker(leadId){
+  const type = (document.getElementById('acDocType') || {}).value;
+  const wrap = document.getElementById('acEfilePickerWrap');
+  const fileField = document.getElementById('acDocFile');
+  const btn = document.getElementById('acAttachBtn');
+  if(!wrap) return;
+
+  const isEfile = type === 'efiled';
+  wrap.style.display = isEfile ? 'block' : 'none';
+  if(fileField && fileField.parentElement) fileField.parentElement.style.display = isEfile ? 'none' : 'block';
+  if(btn) btn.textContent = isEfile ? 'Link this application' : 'Attach document';
+
+  if(!isEfile) return;
+
+  const lead = LEADS.find(x => x.id === leadId);
+  const alreadyLinked = APPLICATIONS.filter(a => a.linked_account_id === leadId);
+  // Unattached ones, plus any already on this account so the current state is
+  // visible rather than the list looking empty once something is linked.
+  const options = APPLICATIONS
+    .filter(a => !a.linked_account_id || a.linked_account_id === leadId)
+    .slice()
+    .sort((a,b) => String(b.submitted_at || '').localeCompare(String(a.submitted_at || '')));
+
+  const name = a => [a.legal_business_name, a.dba_name, a.business_name,
+                     [a.first_name, a.last_name].filter(Boolean).join(' ')]
+    .filter(Boolean)[0] || '(no name)';
+
+  const picker = document.getElementById('acEfilePicker');
+  picker.innerHTML = options.length
+    ? options.map(a => `<option value="${a.id}">${name(a)}${a.submitted_at ? ' \u00b7 ' + formatDate(a.submitted_at) : ''}${a.linked_account_id === leadId ? ' \u00b7 already linked' : ''}</option>`).join('')
+    : '<option value="">No applications available to link</option>';
+
+  const btn2 = document.getElementById('acAttachBtn');
+  if(btn2) btn2.disabled = options.length === 0;
+}
+
+async function linkEfiledApplication(leadId){
+  const appId = (document.getElementById('acEfilePicker') || {}).value;
+  if(!appId){ showToast('There is no application to link.', 'error'); return; }
+
+  const a = APPLICATIONS.find(x => x.id === appId);
+  if(a && a.linked_account_id === leadId){
+    showToast('That application is already linked to this account.', 'error');
+    return;
+  }
+
+  const { error } = await supa.from('applications')
+    .update({ linked_account_id: leadId, match_status: 'manual' }).eq('id', appId);
+  if(error){ showToast('Could not link that application: ' + error.message, 'error'); return; }
+
+  if(a){ a.linked_account_id = leadId; a.match_status = 'manual'; }
+  showToast('Application linked to this account', 'success');
+  openLeadDetail(leadId);
+}
+
 async function attachAccountDocument(id){
+  // E-filed means "link an existing record", which has nothing to upload.
+  if((document.getElementById('acDocType') || {}).value === 'efiled'){
+    return linkEfiledApplication(id);
+  }
   const fileInput = document.getElementById('acDocFile');
   const file = fileInput.files[0];
   if(!file) return;
@@ -9415,8 +9521,15 @@ async function sendPartnerInviteEmail(userId){
    ========================================================================= */
 function applicationLinkUrl(l){
   if(l.application_link_choice === 'custom') return l.application_link_custom || '';
+  // The portal option points at a link generated for this specific lead. If
+  // one has not been made yet the email flow creates it; this returns blank so
+  // a preview does not show a URL that does not exist.
+  if(l.application_link_choice === 'portal'){
+    const t = APPLICATION_LINK_TOKENS.find(x => x.label === (l.business_name || '') && x.is_active);
+    return t ? applicationShareUrl(t.slug) : '';
+  }
   const found = APPLICATION_LINKS.find(a => a.key === l.application_link_choice);
-  return found ? found.url : APPLICATION_LINKS[0].url;
+  return found ? found.url : (APPLICATION_LINKS[0] ? APPLICATION_LINKS[0].url : '');
 }
 
 function openApplicationEmailPreview(id){
