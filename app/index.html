@@ -5740,6 +5740,28 @@ async function saveNewReferral(){
   // didn't before Partners was converted — see git history).
   if(newPartner.email && newPartner.email !== '—'){
     const existingUser = USERS.find(u => u.email.toLowerCase() === newPartner.email.toLowerCase());
+
+    // A user row already on this address used to be left completely alone,
+    // which quietly produced a partner with no portal login attached: nothing
+    // was created and nothing was linked. Everything downstream keys off
+    // users.linked_partner_id — who can invite them, current_partner_is_own(),
+    // what the portal shows them — so the partner ends up unreachable.
+    if(existingUser && !existingUser.linked_partner_id){
+      const { error: linkErr } = await supa.from('users')
+        .update({ linked_partner_id: newPartner.id }).eq('id', existingUser.id);
+      if(linkErr){
+        showToast('Partner saved, but their existing login could not be linked: ' + linkErr.message, 'error');
+      } else {
+        existingUser.linked_partner_id = newPartner.id;
+        showToast(`Linked the existing login for ${newPartner.email} to this partner.`, 'success');
+      }
+    } else if(existingUser && existingUser.linked_partner_id !== newPartner.id){
+      // Already tied to a different partner — linking would silently move
+      // their access, so say so and leave it alone.
+      const other = PARTNERS.find(x => x.id === existingUser.linked_partner_id);
+      showToast(`${newPartner.email} already has a login linked to ${other ? other.name : 'another partner'}. Sort that out before inviting.`, 'error');
+    }
+
     if(!existingUser){
       const role = type === 'referral_partner' ? 'referral_partner'
         : (newPartner.reseller_type === 'authorized_reseller' ? 'epay_reseller' : 'agent');
