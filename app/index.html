@@ -1863,9 +1863,9 @@
             <p class="subtext">Applications from the Wix sign-up form, auto-linked to accounts by email, phone, or business name. EPAY POS only.</p>
           </div>
           <div class="topbar-actions">
-            <button class="btn btn-sm" id="applicationLinksBtn" onclick="openApplicationLinksDrawer()">
+            <button class="btn btn-accent btn-sm" id="applicationLinksBtn" onclick="openApplicationLinksDrawer()">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-              Application Links
+              Send an application
             </button>
             <button class="btn btn-sm" id="addPaperApplicationBtn">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -2169,11 +2169,12 @@
 
         <div class="panel">
           <div class="panel-head">
-            <h2>Application links</h2>
-            <button class="btn btn-accent btn-sm" onclick="openApplicationLinkEditor()">+ Add link</button>
+            <h2>Application link presets</h2>
+            <button class="btn btn-accent btn-sm" onclick="openApplicationLinkEditor()">+ Add preset</button>
           </div>
           <p style="padding:0 20px;margin:0 0 4px;font-size:12.5px;color:var(--slate-500);">
-            The options offered when sending a merchant their application email.
+            Outside URLs &mdash; your marketing-site forms &mdash; offered in the dropdown when sending a merchant their application.
+            To create a tracked link that submits straight into this portal, use Send an application on the Applications tab instead.
           </p>
           <table>
             <thead><tr><th>Label</th><th>URL</th><th>Brand</th><th>Status</th><th></th></tr></thead>
@@ -4225,17 +4226,22 @@ function renderApplicationLinksDrawer(){
   const rows = APPLICATION_LINK_TOKENS;
   document.getElementById('applicationLinksDrawer').innerHTML = `
     <div class="drawer-head">
-      <div><h2>Application links</h2>
+      <div><h2>Send an application</h2>
         <p style="font-size:11.5px;color:var(--slate-500);margin:4px 0 0;">
-          Send one of these to a prospect. What they submit arrives here under Applications.</p></div>
+          Creates a tracked link to this portal's own application page. What they submit arrives under Applications.</p></div>
       <button class="drawer-close" onclick="closeApplicationLinksDrawer()">&times;</button>
     </div>
     <div class="drawer-body">
+      <div class="section-label">Email it to someone</div>
       <div class="field">
-        <label>Name this link</label>
-        <input id="newAppLinkLabel" placeholder="e.g. Spring mailer, Trade show, Joe's referrals">
+        <label>Their email</label>
+        <input id="newAppLinkEmail" type="email" placeholder="owner@business.com">
+      </div>
+      <div class="field">
+        <label>Business name</label>
+        <input id="newAppLinkLabel" placeholder="e.g. Riverside Diner">
         <p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">
-          Only you see this. It is how you tell your links apart when the applications come in.
+          Names the link so you can tell submissions apart when they come in.
         </p>
       </div>
       <div class="field">
@@ -4245,9 +4251,18 @@ function renderApplicationLinksDrawer(){
           <option value="atm">Envision ATM</option>
         </select>
       </div>
-      <button class="btn btn-accent" style="width:100%;" onclick="createApplicationLink()">Create link</button>
+      <button class="btn btn-accent" style="width:100%;" onclick="createAndEmailApplicationLink()">
+        Create link &amp; email it
+      </button>
+      <button class="btn" style="width:100%;margin-top:8px;" onclick="createApplicationLink()">
+        Just create the link and copy it
+      </button>
+      <p style="font-size:10.5px;color:var(--slate-300);margin:8px 0 0;">
+        Emailing needs Outbound Email switched on under Settings &rarr; Integrations. Copying the link always works.
+      </p>
 
       <hr style="border:none;border-top:1px solid var(--line);margin:20px 0;">
+      <div class="section-label">Links you have made</div>
 
       ${rows.length === 0
         ? '<p style="font-size:13px;color:var(--slate-500);">No links yet. Create one above and send it to a prospect.</p>'
@@ -4289,6 +4304,50 @@ async function createApplicationLinkForLead(leadId){
   APPLICATION_LINK_TOKENS.unshift(data);
   copyLink(applicationShareUrl(data.slug));
   showToast('Application link for ' + label + ' copied to your clipboard', 'success');
+}
+
+async function createAndEmailApplicationLink(){
+  const email = (document.getElementById('newAppLinkEmail').value || '').trim();
+  const label = (document.getElementById('newAppLinkLabel').value || '').trim();
+  const brand = document.getElementById('newAppLinkBrand').value;
+
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+    showToast('Enter a valid email address to send it to.', 'error');
+    return;
+  }
+  if(!label){
+    showToast('Give the business a name so you can tell submissions apart.', 'error');
+    return;
+  }
+
+  const { data, error } = await supa.from('application_link_tokens').insert({
+    slug: applicationLinkSlug(label),
+    label: label,
+    brand: brand,
+    created_by: currentUser.id
+  }).select().single();
+  if(error){ showToast('Could not create the link: ' + error.message, 'error'); return; }
+  APPLICATION_LINK_TOKENS.unshift(data);
+  renderApplicationLinksDrawer();
+
+  const brandName = brand === 'atm' ? 'Envision ATM' : 'EPAY POS';
+  const sent = await sendOutboundEmail({
+    kind: 'application_link',
+    to: email,
+    subject: 'Your ' + brandName + ' application',
+    heading: 'Your application is ready',
+    body: 'Here is the application for ' + label + '. It takes a couple of minutes and there is no '
+        + 'obligation \u2014 we will come back to you with pricing once we have it.',
+    buttonLabel: 'Open my application',
+    buttonUrl: applicationShareUrl(data.slug)
+  });
+
+  // The link exists either way. If sending failed the toast said why, so put
+  // it on the clipboard rather than leaving them with nothing to show for it.
+  if(!sent){
+    copyLink(applicationShareUrl(data.slug));
+    showToast('Link created and copied \u2014 send it manually for now.', 'error');
+  }
 }
 
 async function createApplicationLink(){
