@@ -41,6 +41,11 @@ alter table email_log enable row level security;
 -- Internal staff read it; nobody writes from the browser. The edge function
 -- inserts with the service role, which bypasses RLS, so there is deliberately
 -- no insert policy here at all.
+-- Dropped first so this file can be re-run. Postgres has no
+-- "create policy if not exists", and a duplicate aborts the whole script —
+-- which is how the integrations seed below got skipped the first time.
+drop policy if exists "email_log_select" on email_log;
+
 create policy "email_log_select" on email_log
   for select to authenticated
   using (current_app_has_perm('fullDashboard'));
