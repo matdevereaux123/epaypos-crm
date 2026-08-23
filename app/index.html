@@ -515,6 +515,49 @@
   .tc-avatar-inhouse{background:linear-gradient(135deg, var(--navy-500), var(--navy-700));}
   .pill-inhouse{background:var(--accent-soft);color:var(--brand-accent-2);}
   .pill-commission{background:var(--warn-bg);color:var(--warn-text);}
+  /* Centred modal. The drawers slide in from the right, which is right for
+     working a record; this interrupts an action mid-drag, so it sits in the
+     middle where the eye already is. */
+  .modal-overlay{
+    display:none;position:fixed;inset:0;z-index:60;
+    background:rgba(11,27,56,0.5);
+    align-items:center;justify-content:center;padding:24px;
+  }
+  .modal-overlay.open{display:flex;}
+  .modal-card{
+    position:relative;width:520px;max-width:100%;
+    max-height:min(78vh, 720px);
+    display:flex;flex-direction:column;
+    background:var(--card);border:1px solid var(--line);
+    border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,.28);
+    padding:24px 26px 20px;
+  }
+  .smm-head{flex-shrink:0;padding-right:28px;}
+  .smm-title{font-size:17px;font-weight:600;color:var(--navy-700);margin-bottom:8px;}
+  .smm-route{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .smm-arrow{color:var(--slate-300);font-size:14px;}
+  .smm-sub{margin:12px 0 0;font-size:13px;color:var(--slate-500);line-height:1.5;}
+  /* The list scrolls, not the modal — the heading and the buttons stay put
+     however many stages are being crossed. */
+  .smm-list{
+    flex:1;min-height:0;overflow-y:auto;
+    margin:16px 0;padding:4px 2px;
+    border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+  }
+  .smm-item{display:flex;gap:11px;padding:11px 4px;border-bottom:1px solid var(--line);}
+  .smm-item:last-child{border-bottom:none;}
+  .smm-mark{
+    width:19px;height:19px;border-radius:50%;flex-shrink:0;margin-top:1px;
+    display:flex;align-items:center;justify-content:center;
+    font-size:11px;font-weight:700;
+  }
+  .smm-item.is-done .smm-mark{background:var(--ok-bg);color:var(--ok-text);}
+  .smm-item.is-missing .smm-mark{background:var(--err-bg);color:var(--err-text);}
+  .smm-stage{font-size:13px;font-weight:600;color:var(--navy-700);}
+  .smm-detail{font-size:12.5px;color:var(--slate-500);line-height:1.45;margin-top:2px;}
+  .smm-item.is-missing .smm-detail{color:var(--red);}
+  .smm-empty{font-size:13px;color:var(--slate-500);padding:14px 4px;}
+  .smm-actions{display:flex;gap:8px;justify-content:flex-end;flex-shrink:0;flex-wrap:wrap;}
   .onboarding-banner{
     display:flex;align-items:center;gap:12px;flex-wrap:wrap;
     margin:0 0 18px;padding:13px 16px;border-radius:10px;
@@ -2209,6 +2252,14 @@
 <!-- ================= DRAWER: AGENT ONBOARDING APPLICATION ================= -->
 <div class="overlay" id="onboardingOverlay">
   <div class="drawer" id="onboardingDrawer"></div>
+</div>
+
+<!-- ================= MODAL: STAGE MOVE CHECKLIST ================= -->
+<div class="modal-overlay" id="stageMoveOverlay">
+  <div class="modal-card" id="stageMoveCard">
+    <button class="drawer-close" onclick="closeStageMoveModal()" style="position:absolute;top:14px;right:16px;">&times;</button>
+    <div id="stageMoveBody"></div>
+  </div>
 </div>
 
 <!-- ================= DRAWER: APPLICATION LINKS ================= -->
@@ -7730,9 +7781,20 @@ function handleStageDrop(e){
   e.preventDefault();
   e.currentTarget.classList.remove('drag-over');
   const stageKey = e.currentTarget.dataset.stage;
-  if(_draggingLeadId){
-    moveLeadToStage(_draggingLeadId, stageKey);
+  if(!_draggingLeadId) return;
+
+  const lead = LEADS.find(l => l.id === _draggingLeadId);
+  const isForward = lead && stageIndex(stageKey) > stageIndex(lead.stage);
+  const isJump = lead && (stageIndex(stageKey) - stageIndex(lead.stage)) > 1;
+
+  // A single step forward keeps its existing behaviour — one gate, one toast,
+  // no ceremony. The checklist is for the jumps, where the old code checked
+  // only the stage being left and let everything in between pass unnoticed.
+  if(isForward && isJump){
+    openStageMoveModal(_draggingLeadId, stageKey);
+    return;
   }
+  moveLeadToStage(_draggingLeadId, stageKey);
 }
 
 function maybeConvertToAccount(lead){
@@ -7806,6 +7868,103 @@ function getAtmStageRequirementError(lead, stageKey){
 }
 function stageRequirementErrorFor(lead, stageKey){
   return (lead.brand === 'atm') ? getAtmStageRequirementError(lead, stageKey) : getStageRequirementError(lead, stageKey);
+}
+
+/* =========================================================================
+   STAGE MOVE CHECKLIST
+   Dragging a lead several stages forward used to check only the stage it was
+   leaving, so a long jump skipped every gate in between and then failed one
+   at a time on the way back through. This gathers every requirement between
+   where the lead is and where it is going, shows them together, and lets the
+   move happen once they are all satisfied.
+   ========================================================================= */
+function requirementsBetween(lead, targetStageKey){
+  const list = stagesForBrand(lead.brand || 'epay');
+  const from = stageIndex(lead.stage);
+  const to = stageIndex(targetStageKey);
+  const out = [];
+  // Moving backwards to correct something has never been gated, and should
+  // not start being.
+  if(to <= from) return out;
+  for(let i = from; i < to; i++){
+    const st = list[i];
+    if(!st) continue;
+    out.push({ key: st.key, label: st.label, error: stageRequirementErrorFor(lead, st.key) });
+  }
+  return out;
+}
+
+let _pendingStageMove = null;
+
+function openStageMoveModal(leadId, targetStageKey){
+  const lead = LEADS.find(l => l.id === leadId);
+  if(!lead) return;
+  const target = stageInfo(targetStageKey);
+  const items = requirementsBetween(lead, targetStageKey);
+  const outstanding = items.filter(i => i.error);
+  _pendingStageMove = { leadId, targetStageKey };
+
+  document.getElementById('stageMoveBody').innerHTML = `
+    <div class="smm-head">
+      <div class="smm-title">${lead.business_name || 'This lead'}</div>
+      <div class="smm-route">
+        <span class="pill" style="background:var(--hover);color:var(--slate-500);">${stageInfo(lead.stage).label}</span>
+        <span class="smm-arrow">&rarr;</span>
+        <span class="pill pill-referral">${target.label}</span>
+      </div>
+      <p class="smm-sub">
+        ${outstanding.length === 0
+          ? 'Everything needed for this move is on file.'
+          : outstanding.length + ' thing' + (outstanding.length === 1 ? '' : 's') + ' still needed before this lead can move.'}
+      </p>
+    </div>
+
+    <div class="smm-list">
+      ${items.length === 0
+        ? '<p class="smm-empty">No requirements between these two stages.</p>'
+        : items.map(i => `
+          <div class="smm-item ${i.error ? 'is-missing' : 'is-done'}">
+            <span class="smm-mark">${i.error ? '' : '&#10003;'}</span>
+            <div>
+              <div class="smm-stage">${i.label}</div>
+              <div class="smm-detail">${i.error ? i.error : 'Requirements met'}</div>
+            </div>
+          </div>`).join('')}
+    </div>
+
+    <div class="smm-actions">
+      <button type="button" class="btn" onclick="closeStageMoveModal()">Cancel</button>
+      <button type="button" class="btn" onclick="openLeadFromStageModal()">Open this lead</button>
+      <button type="button" class="btn btn-accent" ${outstanding.length ? 'disabled' : ''}
+              onclick="confirmStageMove()">
+        ${outstanding.length ? 'Cannot move yet' : 'Move to ' + target.label}
+      </button>
+    </div>`;
+
+  document.getElementById('stageMoveOverlay').classList.add('open');
+}
+
+function closeStageMoveModal(){
+  document.getElementById('stageMoveOverlay').classList.remove('open');
+  _pendingStageMove = null;
+  // The card was dragged out of its column; put the board back as it was.
+  renderLeadsBoard();
+}
+
+function openLeadFromStageModal(){
+  const id = _pendingStageMove && _pendingStageMove.leadId;
+  closeStageMoveModal();
+  if(id) openLeadDetail(id);
+}
+
+async function confirmStageMove(){
+  if(!_pendingStageMove) return;
+  const { leadId, targetStageKey } = _pendingStageMove;
+  document.getElementById('stageMoveOverlay').classList.remove('open');
+  _pendingStageMove = null;
+  // Already checked every gate between here and there, so the per-stage
+  // validation inside moveLeadToStage would only repeat it.
+  await moveLeadToStage(leadId, targetStageKey, { skipValidation: true });
 }
 
 // Returns true if the move happened, false if it was blocked by a stage requirement.
