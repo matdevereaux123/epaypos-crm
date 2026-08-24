@@ -3040,46 +3040,52 @@ function outboundEmailReady(){
 
 async function sendOutboundEmail(opts){
   if(!outboundEmailReady()){
-    showToast('Outbound email is not switched on yet — Settings \u2192 Integrations.', 'error');
+    showToast('Outbound email is not switched on yet \u2014 Settings \u2192 Integrations.', 'error');
     return false;
   }
 
-  const { data, error } = await supa.functions.invoke('send-email', {
-    body: {
-      kind: opts.kind,
-      to: opts.to,
-      subject: opts.subject,
-      heading: opts.heading,
-      body: opts.body,
-      buttonLabel: opts.buttonLabel || null,
-      buttonUrl: opts.buttonUrl || null,
-      leadId: opts.leadId || null
-    }
-  });
-
-  // supabase-js reports any non-2xx as the useless "Edge Function returned a
-  // non-2xx status code" and puts the actual response on error.context. The
-  // function always answers with {error: "..."} saying what went wrong —
-  // missing config, not authorised, whatever Resend said — so read it rather
-  // than showing the wrapper's message.
-  let failure = null;
-  if(error){
-    failure = error.message;
-    if(error.context && typeof error.context.json === 'function'){
-      try {
-        const body = await error.context.json();
-        if(body && body.error) failure = body.error;
-      } catch(e){ /* not JSON — keep the wrapper message */ }
-    }
-  } else if(data && data.error){
-    failure = data.error;
-  }
-
-  if(failure){
-    showToast('Email failed: ' + failure, 'error');
-    console.error('send-email failed:', failure);
+  // Called with fetch rather than supa.functions.invoke() on purpose. invoke()
+  // reports every non-2xx as "Edge Function returned a non-2xx status code"
+  // and by the time the error surfaces the response body has been consumed,
+  // so the actual reason — missing config, not authorised, whatever Resend
+  // said — is unrecoverable. The function always answers with
+  // {error: "..."} and this reads it.
+  let res, raw = '', parsed = null;
+  try {
+    const { data: { session } } = await supa.auth.getSession();
+    res = await fetch(SUPABASE_URL + '/functions/v1/send-email', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + (session ? session.access_token : SUPABASE_ANON_KEY)
+      },
+      body: JSON.stringify({
+        kind: opts.kind,
+        to: opts.to,
+        subject: opts.subject,
+        heading: opts.heading,
+        body: opts.body,
+        buttonLabel: opts.buttonLabel || null,
+        buttonUrl: opts.buttonUrl || null,
+        leadId: opts.leadId || null
+      })
+    });
+    raw = await res.text();
+    try { parsed = JSON.parse(raw); } catch(e){ /* not JSON, keep raw */ }
+  } catch(e){
+    showToast('Email failed: could not reach the mail service. ' + (e.message || ''), 'error');
+    console.error('send-email transport failure:', e);
     return false;
   }
+
+  if(!res.ok){
+    const why = (parsed && parsed.error) || raw || ('HTTP ' + res.status);
+    showToast('Email failed: ' + why, 'error');
+    console.error('send-email failed', { status: res.status, body: raw });
+    return false;
+  }
+
   showToast('Sent to ' + opts.to, 'success');
   return true;
 }
