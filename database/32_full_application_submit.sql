@@ -20,7 +20,8 @@
 -- =============================================================================
 
 -- Different argument list means a new overload rather than a replacement, so
--- the old signatures have to go or PostgREST cannot choose between them.
+-- the old signature has to go or PostgREST cannot choose between them. Safe
+-- to re-run: the 26-argument version below is a create-or-replace.
 drop function if exists public_submit_application(
   text, text, text, text, text, text, text, text, text, text, text
 );
@@ -90,8 +91,12 @@ begin
   end;
 
   insert into applications (
-    -- legacy display columns the Applications list reads
-    business_name, contact_name, email, phone,
+    -- NOTE: there is no business_name/contact_name on this table. An earlier
+    -- migration replaced them with legal_business_name and first_name/
+    -- last_name, and plpgsql only resolves column names at runtime — so
+    -- naming them here created cleanly and would have failed on the first
+    -- real submission.
+    email, phone,
     -- applicant
     first_name, last_name, drivers_license_state,
     -- business
@@ -107,8 +112,6 @@ begin
     ssn, dob, drivers_license, business_tax_id, banking,
     raw_payload
   ) values (
-    trim(p_legal_business_name),
-    trim(p_first_name) || ' ' || trim(p_last_name),
     nullif(trim(coalesce(p_email, '')), ''),
     nullif(trim(coalesce(p_phone, '')), ''),
 
