@@ -9,3 +9,28 @@
 
 [build]
   publish = "app"
+
+# ---------------------------------------------------------------------------
+# Pretty routes for the public pages.
+#
+#   /r/<slug>      a partner's referral link
+#   /apply/<slug>  an application or lead form
+#
+# status 200 is a rewrite, not a redirect: the browser keeps showing
+# /r/joe-smith while Netlify serves index.html underneath. A 301 would work
+# too but the address bar would flip to /?ref=joe-smith, which is exactly the
+# thing these routes exist to avoid — a partner hands this link out on
+# printed material.
+#
+# Because the URL never changes, the app reads the slug from the PATH rather
+# than a query string. See initAuth() in app/index.html.
+# ---------------------------------------------------------------------------
+[[redirects]]
+  from = "/r/*"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/apply/*"
+  to = "/index.html"
+  status = 200

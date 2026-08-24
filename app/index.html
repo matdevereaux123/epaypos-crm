@@ -16,7 +16,8 @@
     // one reads as a different company. Decided here rather than after load
     // so a dark-mode visitor never sees a flash of it.
     var params = new URLSearchParams(window.location.search);
-    if(params.get('ref') || params.get('app')){
+    var path = window.location.pathname || '';
+    if(params.get('ref') || params.get('app') || /^\/(r|apply)\//.test(path)){
       document.documentElement.setAttribute('data-theme', 'light');
       document.documentElement.setAttribute('data-public-page', 'true');
       return;
@@ -4182,7 +4183,17 @@ initAuth();
 async function initAuth(){
   // Public referral landing page (?ref=slug) is unrelated to login —
   // handle it first and stop, same as before.
-  const refSlug = new URLSearchParams(window.location.search).get('ref');
+  // Pretty routes come through as a path because netlify.toml rewrites them
+  // with status 200 — the address bar keeps /r/joe-smith, so there is no query
+  // string to read. The ?ref= and ?app= forms still work: links already sent
+  // out have to keep working, and the rewrite only exists on the Netlify site.
+  const pathParts = (window.location.pathname || '').split('/').filter(Boolean);
+  const pathKind = pathParts[0];
+  const pathSlug = pathParts.length > 1 ? decodeURIComponent(pathParts[1]) : null;
+
+  const refSlug = pathSlug && pathKind === 'r'
+    ? pathSlug
+    : new URLSearchParams(window.location.search).get('ref');
   if(refSlug){
     renderReferralLandingPage(refSlug);
     return;
@@ -4191,7 +4202,9 @@ async function initAuth(){
   // Application links land here the same way referral links do — a public
   // page reached before any session check, talking only to the two
   // SECURITY DEFINER functions in database/28_application_links.sql.
-  const appSlug = new URLSearchParams(window.location.search).get('app');
+  const appSlug = pathSlug && pathKind === 'apply'
+    ? pathSlug
+    : new URLSearchParams(window.location.search).get('app');
   if(appSlug){
     renderApplicationLandingPage(appSlug);
     return;
@@ -4284,8 +4297,31 @@ async function loadApplicationLinkTokensFromSupabase(){
 // Named distinctly from applicationLinkUrl(lead) further down, which returns
 // the marketing URL chosen on a lead. Two functions with the same name means
 // the later definition silently wins — this one was being shadowed.
+/* -----------------------------------------------------------------------
+   REFERRAL LINK BASE
+   These used to read 'epaypos.net/r/' regardless — a link that 404s, because
+   that domain is Wix and knows nothing about /r/. Partners were being handed
+   addresses that did not work.
+
+   Now it points at wherever the CRM is actually served, where netlify.toml
+   rewrites /r/* to the app. To move to the marketing domain later, set a
+   redirect on Wix from /r/* to this origin and change PREFERRED_LINK_HOST
+   below — every link in the app follows from here.
+   ----------------------------------------------------------------------- */
+const PREFERRED_LINK_HOST = null;   // e.g. 'https://www.epaypos.net' once Wix redirects /r/*
+
+function referralLinkBase(){
+  const origin = PREFERRED_LINK_HOST || window.location.origin;
+  return origin.replace(/^https?:\/\//, '') + '/r/';
+}
+
 function applicationShareUrl(slug){
-  return window.location.origin + '/?app=' + encodeURIComponent(slug);
+  return window.location.origin + '/apply/' + encodeURIComponent(slug);
+}
+
+// A partner's referral link. Same shape, different route.
+function referralShareUrl(slug){
+  return window.location.origin + '/r/' + encodeURIComponent(slug);
 }
 
 // Readable rather than random: a label of "Spring mailer" becomes
@@ -5495,7 +5531,7 @@ function renderReferralTable(filterText){
   else if(sortBy === 'conversion') rows.sort((a,b)=> (linkConversionRate(b)||0) - (linkConversionRate(a)||0));
   else if(sortBy === 'name') rows.sort((a,b)=> a.name.localeCompare(b.name));
 
-  const baseUrl = currentBrand === 'atm' ? 'envisionatm.com/r/' : 'epaypos.net/r/';
+  const baseUrl = referralLinkBase();
 
   document.getElementById('referralSelectAll').checked = false;
   updateBulkDeleteBar('referrals');
@@ -6350,7 +6386,7 @@ async function openReferralDetail(id){
       decryptedPartnerSensitiveCache[id] = sd || null;
     }
   }
-  const baseUrl = currentBrand === 'atm' ? 'envisionatm.com/r/' : 'epaypos.net/r/';
+  const baseUrl = referralLinkBase();
   const notesForPartner = NOTES.filter(n=>n.partner_id===id).sort((a,b)=> new Date(b.created_at)-new Date(a.created_at));
   const bank = p.banking || { bank_name:'', account_holder:'', account_type:'checking', routing_number:'', account_number:'' };
   const linkedLeads = scopedLeads().filter(l => l.linked_partner_id === id && !l.converted_to_account);
@@ -7210,7 +7246,7 @@ function setResellersActivityFilter(key){
 
 function renderAgentsTable(filterText){
   const q = (filterText || (document.getElementById('agentsSearch') ? document.getElementById('agentsSearch').value : '') || '').toLowerCase();
-  const baseUrl = currentBrand === 'atm' ? 'envisionatm.com/r/' : 'epaypos.net/r/';
+  const baseUrl = referralLinkBase();
 
   const all = scopedPartnersForCurrentUser().filter(p => p.type === 'agent');
   // Stats count every agent, not the filtered slice — otherwise choosing
@@ -7252,7 +7288,7 @@ document.getElementById('agentsSearch').addEventListener('input', e => renderAge
 
 function renderResellersTable(filterText){
   const q = (filterText || (document.getElementById('resellersSearch') ? document.getElementById('resellersSearch').value : '') || '').toLowerCase();
-  const baseUrl = currentBrand === 'atm' ? 'envisionatm.com/r/' : 'epaypos.net/r/';
+  const baseUrl = referralLinkBase();
 
   const all = scopedPartnersForCurrentUser()
     .filter(p => p.type === 'agent' && p.reseller_type === 'authorized_reseller');
