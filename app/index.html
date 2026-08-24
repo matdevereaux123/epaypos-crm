@@ -1803,6 +1803,10 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
               Boarding Portal
             </a>
+            <button class="btn btn-sm" id="leadFormLinksBtn" onclick="openLeadFormDrawer()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+              Send a lead form
+            </button>
             <button class="btn btn-sm" id="uploadLeadsBtn">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
               Upload Leads
@@ -2262,6 +2266,11 @@
     <button class="drawer-close" onclick="closeStageMoveModal()" style="position:absolute;top:14px;right:16px;">&times;</button>
     <div id="stageMoveBody"></div>
   </div>
+</div>
+
+<!-- ================= DRAWER: LEAD FORM LINKS ================= -->
+<div class="overlay" id="leadFormOverlay">
+  <div class="drawer" id="leadFormDrawer"></div>
 </div>
 
 <!-- ================= DRAWER: APPLICATION LINKS ================= -->
@@ -4257,6 +4266,161 @@ function applicationLinkSlug(label){
   return base + '-' + suffix;
 }
 
+/* -----------------------------------------------------------------------
+   LEAD FORM LINKS
+   The short version of the application link: name, business, how to reach
+   them. Creates a lead at the front of the pipeline rather than an
+   application, so it can go to someone who has not decided anything yet.
+   Same token table, distinguished by kind.
+   ----------------------------------------------------------------------- */
+let LEAD_FORM_TOKENS = [];
+
+async function loadLeadFormTokens(){
+  const { data, error } = await supa.from('application_link_tokens')
+    .select('*').eq('kind', 'lead').order('created_at', { ascending: false });
+  if(error){ console.error('Failed to load lead forms', error); return []; }
+  return data;
+}
+
+async function openLeadFormDrawer(){
+  LEAD_FORM_TOKENS = await loadLeadFormTokens();
+  renderLeadFormDrawer();
+  document.getElementById('leadFormOverlay').classList.add('open');
+}
+
+function closeLeadFormDrawer(){
+  document.getElementById('leadFormOverlay').classList.remove('open');
+}
+
+function renderLeadFormDrawer(){
+  const rows = LEAD_FORM_TOKENS;
+  document.getElementById('leadFormDrawer').innerHTML = `
+    <div class="drawer-head">
+      <div><h2>Send a lead form</h2>
+        <p style="font-size:11.5px;color:var(--slate-500);margin:4px 0 0;">
+          A short form &mdash; name, business, how to reach them. What they submit arrives as a new lead at Inbound Lead.</p></div>
+      <button class="drawer-close" onclick="closeLeadFormDrawer()">&times;</button>
+    </div>
+    <div class="drawer-body">
+      <div class="section-label">Email it to someone</div>
+      <div class="field">
+        <label>Their email</label>
+        <input id="newLeadFormEmail" type="email" placeholder="owner@business.com">
+      </div>
+      <div class="field">
+        <label>Name this form</label>
+        <input id="newLeadFormLabel" placeholder="e.g. Trade show, Cold call follow-up">
+        <p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">
+          Becomes the lead source on anything that comes in, so you can see which channel works.
+        </p>
+      </div>
+      <div class="field">
+        <label>Brand</label>
+        <select id="newLeadFormBrand">
+          <option value="epay">EPAY POS</option>
+          <option value="atm">Envision ATM</option>
+        </select>
+      </div>
+      <button class="btn btn-accent" style="width:100%;" onclick="createAndEmailLeadForm()">
+        Create form &amp; email it
+      </button>
+      <button class="btn" style="width:100%;margin-top:8px;" onclick="createLeadForm()">
+        Just create the form and copy the link
+      </button>
+
+      <hr style="border:none;border-top:1px solid var(--line);margin:20px 0;">
+      <div class="section-label">Forms you have made</div>
+      ${rows.length === 0
+        ? '<p style="font-size:13px;color:var(--slate-500);">None yet. Create one above and send it to a prospect.</p>'
+        : rows.map(t => `
+          <div style="padding:12px 0;border-bottom:1px solid var(--line);">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+              <div>
+                <div style="font-weight:600;font-size:13.5px;color:var(--navy-700);">${t.label}</div>
+                <div class="sub">${t.brand === 'atm' ? 'Envision ATM' : 'EPAY POS'} · ${t.submissions} lead${t.submissions === 1 ? '' : 's'}${t.is_active ? '' : ' · retired'}</div>
+              </div>
+              <span class="pill ${t.is_active ? 'pill-status-active' : ''}" style="${t.is_active ? '' : 'background:var(--hover);color:var(--slate-500);'}">${t.is_active ? 'Active' : 'Retired'}</span>
+            </div>
+            <span class="link-chip mono" style="width:100%;margin-top:8px;">${applicationShareUrl(t.slug)}
+              <button onclick="copyLink('${applicationShareUrl(t.slug)}')">Copy</button>
+              <button onclick="window.open('${applicationShareUrl(t.slug)}','_blank','noopener')">Preview</button>
+            </span>
+            <button class="btn btn-xs" style="margin-top:8px;" onclick="toggleLeadFormLink('${t.id}')">
+              ${t.is_active ? 'Retire this form' : 'Make active again'}
+            </button>
+          </div>`).join('')}
+    </div>`;
+}
+
+async function createLeadFormToken(label, brand){
+  return await supa.from('application_link_tokens').insert({
+    slug: applicationLinkSlug(label),
+    label: label,
+    brand: brand,
+    kind: 'lead',
+    created_by: currentUser.id
+  }).select().single();
+}
+
+async function createLeadForm(){
+  const label = (document.getElementById('newLeadFormLabel').value || '').trim();
+  if(!label){ showToast('Give the form a name so you can tell submissions apart.', 'error'); return; }
+  const brand = document.getElementById('newLeadFormBrand').value;
+
+  const { data, error } = await createLeadFormToken(label, brand);
+  if(error){ showToast('Could not create the form: ' + error.message, 'error'); return; }
+  LEAD_FORM_TOKENS.unshift(data);
+  renderLeadFormDrawer();
+  copyLink(applicationShareUrl(data.slug));
+  showToast('Lead form created and copied to your clipboard', 'success');
+}
+
+async function createAndEmailLeadForm(){
+  const email = (document.getElementById('newLeadFormEmail').value || '').trim();
+  const label = (document.getElementById('newLeadFormLabel').value || '').trim();
+  const brand = document.getElementById('newLeadFormBrand').value;
+
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+    showToast('Enter a valid email address to send it to.', 'error'); return;
+  }
+  if(!label){
+    showToast('Give the form a name so you can tell submissions apart.', 'error'); return;
+  }
+
+  const { data, error } = await createLeadFormToken(label, brand);
+  if(error){ showToast('Could not create the form: ' + error.message, 'error'); return; }
+  LEAD_FORM_TOKENS.unshift(data);
+  renderLeadFormDrawer();
+
+  const brandName = brand === 'atm' ? 'Envision ATM' : 'EPAY POS';
+  const sent = await sendOutboundEmail({
+    kind: 'general',
+    to: email,
+    subject: 'A few quick questions from ' + brandName,
+    heading: 'Tell us about your business',
+    body: 'It takes about a minute and costs nothing to ask \u2014 once we know roughly what you '
+        + 'process we can come back to you with real numbers.',
+    buttonLabel: 'Answer a few questions',
+    buttonUrl: applicationShareUrl(data.slug)
+  });
+
+  if(!sent){
+    copyLink(applicationShareUrl(data.slug));
+    showToast('Form created and copied \u2014 send it manually for now.', 'error');
+  }
+}
+
+async function toggleLeadFormLink(id){
+  const t = LEAD_FORM_TOKENS.find(x => x.id === id);
+  if(!t) return;
+  const { error } = await supa.from('application_link_tokens')
+    .update({ is_active: !t.is_active }).eq('id', id);
+  if(error){ showToast('Could not update the form: ' + error.message, 'error'); return; }
+  t.is_active = !t.is_active;
+  renderLeadFormDrawer();
+  showToast(t.is_active ? 'Form is active again' : 'Form retired', 'success');
+}
+
 async function openApplicationLinksDrawer(){
   APPLICATION_LINK_TOKENS = await loadApplicationLinkTokensFromSupabase();
   renderApplicationLinksDrawer();
@@ -4446,6 +4610,14 @@ async function renderApplicationLandingPage(slug){
   }
 
   const brandName = link.brand === 'atm' ? 'Envision ATM' : 'EPAY POS';
+
+  // Two forms behind one slug space. A lead form asks the short set and makes
+  // a lead; an application asks everything and makes an application.
+  if(link.kind === 'lead'){
+    renderLeadFormLandingPage(slug, link, brandName);
+    return;
+  }
+
   document.getElementById('landingContent').innerHTML = `
     ${link.partner_name ? `<div class="landing-referrer-badge">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/></svg>
@@ -4493,6 +4665,99 @@ async function renderApplicationLandingPage(slug){
     e.preventDefault();
     submitApplicationLink(slug);
   });
+}
+
+const LEAD_FORM_FIELDS = [
+  { id:'lfBusinessName',  label:'Business name', required:true },
+  { id:'lfContactName',   label:'Your name',     required:true },
+  { id:'lfEmail',         label:'Email', type:'email' },
+  { id:'lfPhone',         label:'Phone', type:'tel' },
+  { id:'lfBusinessAddress', label:'Business address' },
+  { id:'lfBusinessType',  label:'What does the business do?' },
+  { id:'lfVolume',        label:'Roughly what do you process a month?' }
+];
+
+function renderLeadFormLandingPage(slug, link, brandName){
+  document.getElementById('landingContent').innerHTML = `
+    ${link.partner_name ? `<div class="landing-referrer-badge">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/></svg>
+      Sent by <b>${link.partner_name}</b>
+    </div>` : ''}
+    <h1 class="landing-h1">Tell us about your business</h1>
+    <p class="landing-sub">A minute of questions and we can come back to you with real numbers. No credit check, no commitment.</p>
+
+    <div id="lfError" class="form-error" style="display:none;margin-bottom:14px;padding:10px 12px;background:#FDECEC;border:1px solid #F3C6C6;border-radius:8px;color:var(--red);font-size:13px;"></div>
+
+    <form id="leadFormLanding" novalidate>
+      ${LEAD_FORM_FIELDS.map(f => `
+        <div class="field">
+          <label>${f.label}${f.required ? '' : ' <span style="color:var(--slate-300);font-weight:400;">(optional)</span>'}</label>
+          <input id="${f.id}" type="${f.type || 'text'}">
+        </div>`).join('')}
+      <div class="field">
+        <label>Anything else we should know? <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
+        <textarea id="lfNotes" rows="3"></textarea>
+      </div>
+      <button type="submit" class="btn btn-accent" id="lfSubmitBtn" style="width:100%;margin-top:6px;">Send it over</button>
+      <p style="font-size:10.5px;color:var(--slate-300);margin:10px 0 0;text-align:center;">
+        We will only use this to get back to you about ${brandName} processing.
+      </p>
+    </form>`;
+
+  document.getElementById('leadFormLanding').addEventListener('submit', function(e){
+    e.preventDefault();
+    submitLeadFormLanding(slug);
+  });
+}
+
+async function submitLeadFormLanding(slug){
+  const v = id => ((document.getElementById(id) || {}).value || '').trim();
+  const err = document.getElementById('lfError');
+  const btn = document.getElementById('lfSubmitBtn');
+  err.style.display = 'none';
+
+  if(!v('lfBusinessName') || !v('lfContactName')){
+    err.textContent = 'Please give us the business name and your name.';
+    err.style.display = 'block';
+    return;
+  }
+
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.textContent = 'Sending\u2026';
+
+  const { error } = await supa.rpc('public_submit_lead_form', {
+    p_slug: slug,
+    p_business_name: v('lfBusinessName'),
+    p_contact_name: v('lfContactName'),
+    p_email: v('lfEmail'),
+    p_phone: v('lfPhone'),
+    p_business_address: v('lfBusinessAddress'),
+    p_business_type: v('lfBusinessType'),
+    p_est_volume: v('lfVolume'),
+    p_notes: v('lfNotes')
+  });
+
+  btn.disabled = false;
+  btn.textContent = original;
+
+  if(error){
+    err.textContent = error.message || 'Something went wrong. Please try again.';
+    err.style.display = 'block';
+    return;
+  }
+
+  document.getElementById('landingContent').innerHTML = `
+    <div class="sent-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="20 6 9 17 4 12"/>
+      </svg>
+    </div>
+    <h1 class="landing-h1" style="text-align:center;">Thank you \u2014 we have it</h1>
+    <p class="landing-sub" style="text-align:center;">
+      Someone will be in touch shortly.
+    </p>`;
+  window.scrollTo(0, 0);
 }
 
 async function submitApplicationLink(slug){
