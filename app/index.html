@@ -2061,6 +2061,10 @@
                 <option value="agent_basic">Add as Agent — Basic Payments</option>
                 <option value="agent_auth">Add as Agent — Authorized Reseller</option>
               </select>
+              <select id="aiAssignTo" style="padding:7px 10px;border-radius:7px;border:1px solid var(--line);font-size:12.5px;max-width:230px;">
+                <option value="">Assign to: nobody</option>
+              </select>
+              <button class="btn btn-sm" id="pushAllAiBtn">Push all</button>
               <button class="btn btn-accent btn-sm" id="pushSelectedAiBtn">Push selected to Cold Leads</button>
             </div>
           </div>
@@ -11707,6 +11711,7 @@ function socialIconsHtml(r){
 
 function renderAiResults(){
   document.getElementById('aiResultsCount').textContent = `(${_aiScrapeResults.length})`;
+  renderAiAssignToOptions();
 
   if(aiSearchMode === 'partner'){
     document.getElementById('aiResultsBody').innerHTML = _aiScrapeResults.map(r => {
@@ -11759,9 +11764,38 @@ document.getElementById('aiSelectAll').addEventListener('change', function(){
   document.querySelectorAll('.ai-result-check').forEach(cb => cb.checked = this.checked);
 });
 
-document.getElementById('pushSelectedAiBtn').addEventListener('click', async function(){
+// Who a scraped batch can be handed to. Same rule as every other assignment:
+// staff assign freely, everyone else gets themselves and their downline —
+// enforced by the trigger in database/27_assignment_scope.sql, so offering
+// more here would only produce a refusal.
+function renderAiAssignToOptions(){
+  const sel = document.getElementById('aiAssignTo');
+  if(!sel) return;
+  const current = sel.value;
+  const people = assignableUsers()
+    .slice()
+    .sort((a,b) => String(a.name).localeCompare(String(b.name)));
+  sel.innerHTML = '<option value="">Assign to: nobody</option>' +
+    people.map(u => `<option value="${u.id}">Assign to: ${u.name}${u.email ? ' \u00b7 ' + u.email : ''}</option>`).join('');
+  if(current) sel.value = current;
+}
+
+document.getElementById('pushAllAiBtn').addEventListener('click', function(){
+  if(_aiScrapeResults.length === 0){ showToast('There are no results to push.', 'error'); return; }
+  pushAiResults(_aiScrapeResults.map(r => r._id));
+});
+
+document.getElementById('pushSelectedAiBtn').addEventListener('click', function(){
   const checked = Array.from(document.querySelectorAll('.ai-result-check:checked')).map(cb => cb.dataset.id);
-  if(checked.length === 0){ alert('Select at least one result first.'); return; }
+  if(checked.length === 0){ showToast('Select at least one result first, or use Push all.', 'error'); return; }
+  pushAiResults(checked);
+});
+
+async function pushAiResults(checked){
+  if(!checked || checked.length === 0) return;
+  // Empty string means nobody, which is a legitimate choice — a scraped batch
+  // can sit unassigned until someone decides who works it.
+  const assignTo = (document.getElementById('aiAssignTo') || {}).value || null;
 
   if(aiSearchMode === 'partner'){
     // AI Lead Scraper itself still runs on canned sample results
@@ -11803,7 +11837,7 @@ document.getElementById('pushSelectedAiBtn').addEventListener('click', async fun
 
     _aiScrapeResults = _aiScrapeResults.filter(r => !checked.includes(r._id));
     renderAiResults();
-    alert(`${checked.length} ${checked.length===1?'person':'people'} pushed to Partners.`);
+    showToast(`${checked.length} ${checked.length===1?'person':'people'} pushed to Partners.`, 'success');
     return;
   }
 
@@ -11815,6 +11849,10 @@ document.getElementById('pushSelectedAiBtn').addEventListener('click', async fun
     temperature: 'cold',
     source_category: 'ai_scraped',
     source: 'AI Lead Scraper',
+    // This is the access grant, not just a label: cold_leads_select in
+    // database/15_assignment_access.sql matches on assigned_to, so a batch
+    // assigned to an agent appears in their Cold Leads and nobody else's.
+    assigned_to: assignTo,
     notes: r.notes,
     promoted: false,
     owner_name: r.owner_name && !r.owner_name.startsWith('Unknown') ? r.owner_name : '',
@@ -11833,8 +11871,13 @@ document.getElementById('pushSelectedAiBtn').addEventListener('click', async fun
 
   _aiScrapeResults = _aiScrapeResults.filter(r => !checked.includes(r._id));
   renderAiResults();
-  alert(`${checked.length} lead${checked.length===1?'':'s'} pushed to Cold Leads.`);
-});
+
+  const who = assignTo ? (USERS.find(u => u.id === assignTo) || {}).name : null;
+  showToast(
+    `${checked.length} lead${checked.length===1?'':'s'} pushed to Cold Leads` +
+    (who ? ` and assigned to ${who}` : ''),
+    'success');
+}
 
 /* =========================================================================
    COLD EMAIL (Instantly tracking)
