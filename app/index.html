@@ -178,6 +178,14 @@
   .login-alt{text-align:center;margin:16px 0 0;font-size:12.5px;color:var(--slate-500);}
   .login-alt a{color:var(--brand-accent-2);font-weight:600;text-decoration:none;}
   .login-alt a:hover{text-decoration:underline;}
+  .terms-row{
+    display:flex;gap:10px;align-items:flex-start;margin:18px 0 0;
+    padding:12px 14px;border:1px solid var(--line);border-radius:9px;
+    background:var(--surface-2);
+    font-size:12.5px;color:var(--slate-500);line-height:1.55;
+  }
+  .terms-row input[type="checkbox"]{width:auto;margin-top:2px;flex-shrink:0;}
+  .terms-row a{color:var(--brand-accent-2);font-weight:600;text-decoration:underline;}
   .sent-mark{
     width:52px;height:52px;border-radius:50%;margin:0 auto 18px;
     display:flex;align-items:center;justify-content:center;
@@ -4245,39 +4253,64 @@ async function initAuth(){
    ========================================================================= */
 // The merchant application, matching epaypos.net/copy-of-free-processing.
 // Grouped so a long form reads as four short ones.
+// Your terms of service. Stored against each acceptance rather than assumed,
+// so a record still says which document that person actually agreed to even
+// after the page is rewritten or moved.
+const TERMS_URL = 'https://www.epaypos.net/terms-of-service-agreement';
+
+// The merchant application, matching epaypos.net/copy-of-free-processing.
+// Almost everything is required: this is an underwriting document, and a half
+// -filled one costs more to chase than it saves the applicant. DBA is the
+// only genuinely optional field, since plenty of businesses do not have one.
 const APPLICATION_LINK_SECTIONS = [
   { title: 'About you', fields: [
     { id:'alFirstName',   label:'First name', required:true },
     { id:'alLastName',    label:'Last name',  required:true },
     { id:'alEmail',       label:'Email', type:'email', required:true },
-    { id:'alPhone',       label:'Phone', type:'tel' },
-    { id:'alDob',         label:'Date of birth', type:'date' },
-    { id:'alSsn',         label:'Social security number' },
-    { id:'alDl',          label:'Driver\u2019s licence number' },
-    { id:'alDlState',     label:'Driver\u2019s licence state' }
+    { id:'alPhone',       label:'Phone', type:'tel', required:true },
+    { id:'alDob',         label:'Date of birth', type:'date', required:true },
+    { id:'alSsn',         label:'Social security number', required:true },
+    { id:'alDl',          label:'Driver\u2019s licence number', required:true },
+    { id:'alDlState',     label:'Driver\u2019s licence state', required:true }
   ]},
   { title: 'Your business', fields: [
     { id:'alLegalName',   label:'Legal business name', required:true },
     { id:'alDba',         label:'DBA name (if applicable)' },
-    { id:'alBizAddress',  label:'Business address' },
-    { id:'alBizEmail',    label:'Business email', type:'email' },
-    { id:'alBizPhone',    label:'Business phone', type:'tel' },
-    { id:'alBizStart',    label:'Business start date', type:'date' },
-    { id:'alTaxId',       label:'Business tax ID number' },
-    { id:'alBizType',     label:'Business type' },
-    { id:'alServices',    label:'Business type and services provided', textarea:true }
+    { id:'alBizAddress',  label:'Business address', required:true },
+    { id:'alBizEmail',    label:'Business email', type:'email', required:true },
+    { id:'alBizPhone',    label:'Business phone', type:'tel', required:true },
+    { id:'alBizStart',    label:'Business start date', type:'date', required:true },
+    { id:'alTaxId',       label:'Business tax ID', required:true },
+    { id:'alBizType',     label:'Business type', required:true },
+    { id:'alServices',    label:'Business services being provided', textarea:true, required:true }
   ]},
   { title: 'Your volume', fields: [
-    { id:'alMonthly',     label:'Monthly sales average' },
-    { id:'alHighest',     label:'Highest sale amount' },
-    { id:'alAverage',     label:'Average sale amount' }
+    { id:'alMonthly',     label:'Monthly sales average', required:true },
+    { id:'alHighest',     label:'Highest sale amount', required:true },
+    { id:'alAverage',     label:'Average sale amount', required:true }
   ]},
   { title: 'Where we deposit your money', fields: [
-    { id:'alBankName',    label:'Bank name' },
-    { id:'alRouting',     label:'Business account routing number' },
-    { id:'alAccount',     label:'Business account number' }
+    { id:'alBankName',    label:'Bank name', required:true },
+    { id:'alRouting',     label:'Bank account routing number', required:true },
+    { id:'alAccount',     label:'Business account number', required:true }
   ]}
 ];
+
+// One checkbox, used on all three public forms. Required only on the
+// application — a lead form is an enquiry, not an agreement, and gating it
+// behind a contract would cost enquiries for no benefit.
+function termsCheckboxHtml(id, required){
+  return `
+    <label class="terms-row">
+      <input type="checkbox" id="${id}">
+      <span>
+        I agree to the
+        <a href="${TERMS_URL}" target="_blank" rel="noopener noreferrer">EPAY POS Terms of Service</a>${required ? '' : ' (optional)'},
+        and confirm the information above is accurate and that I am authorised
+        to submit it on behalf of this business.
+      </span>
+    </label>`;
+}
 
 /* -----------------------------------------------------------------------
    APPLICATION LINKS (internal side)
@@ -4717,15 +4750,13 @@ async function renderApplicationLandingPage(slug){
       <div class="field">
         <label>Choose your pricing</label>
         <select id="alPricing">
+          <option value="">Select a plan...</option>
           <option value="Free Processing">Free Processing</option>
           <option value="Interchange Plus">Interchange Plus</option>
         </select>
       </div>
 
-      <label style="display:flex;gap:9px;align-items:flex-start;margin:16px 0 0;font-size:12.5px;color:var(--slate-500);line-height:1.5;">
-        <input type="checkbox" id="alTerms" style="width:auto;margin-top:2px;flex-shrink:0;">
-        <span>I confirm the information above is accurate and I am authorised to apply on behalf of this business.</span>
-      </label>
+      ${termsCheckboxHtml('alTerms', true)}
 
       <button type="submit" class="btn btn-accent" id="alSubmitBtn" style="width:100%;margin-top:16px;">Submit application</button>
       <p style="font-size:10.5px;color:var(--slate-300);margin:10px 0 0;text-align:center;">
@@ -4771,6 +4802,7 @@ function renderLeadFormLandingPage(slug, link, brandName){
         <label>Anything else we should know? <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
         <textarea id="lfNotes" rows="3"></textarea>
       </div>
+      ${termsCheckboxHtml('lfTerms', false)}
       <button type="submit" class="btn btn-accent" id="lfSubmitBtn" style="width:100%;margin-top:6px;">Send it over</button>
       <p style="font-size:10.5px;color:var(--slate-300);margin:10px 0 0;text-align:center;">
         We will only use this to get back to you about ${brandName} processing.
@@ -4808,7 +4840,11 @@ async function submitLeadFormLanding(slug){
     p_business_address: v('lfBusinessAddress'),
     p_business_type: v('lfBusinessType'),
     p_est_volume: v('lfVolume'),
-    p_notes: v('lfNotes')
+    p_notes: v('lfNotes'),
+    // Recorded if ticked, but not required — a lead form is an enquiry rather
+    // than an agreement, and gating it would cost enquiries for no benefit.
+    p_terms_accepted: !!(document.getElementById('lfTerms') || {}).checked,
+    p_terms_url: TERMS_URL
   });
 
   btn.disabled = false;
@@ -4849,9 +4885,15 @@ async function submitApplicationLink(slug){
     document.getElementById('alError').scrollIntoView({ block:'center', behavior:'smooth' });
     return;
   }
-  if(!document.getElementById('alTerms').checked){
-    err.textContent = 'Please confirm the information is accurate before submitting.';
+  if(!v('alPricing')){
+    err.textContent = 'Please choose a pricing plan.';
     err.style.display = 'block';
+    return;
+  }
+  if(!document.getElementById('alTerms').checked){
+    err.textContent = 'Please read and agree to the Terms of Service before submitting.';
+    err.style.display = 'block';
+    document.getElementById('alTerms').closest('.terms-row').scrollIntoView({ block:'center', behavior:'smooth' });
     return;
   }
 
@@ -4885,7 +4927,11 @@ async function submitApplicationLink(slug){
     p_routing_number: v('alRouting'),
     p_account_number: v('alAccount'),
     p_pricing_plan: v('alPricing'),
-    p_terms_accepted: document.getElementById('alTerms').checked
+    p_terms_accepted: document.getElementById('alTerms').checked,
+    // The IP is read server-side from the request headers — a page cannot know
+    // its own public address, and anything it sent could be edited. Only which
+    // document was shown comes from here.
+    p_terms_url: TERMS_URL
   });
 
   btn.disabled = false;
@@ -4944,6 +4990,7 @@ async function renderReferralLandingPage(slug){
     <div class="landing-field"><label>Business address (optional)</label><input id="lpAddress" placeholder="Street, city, state, ZIP"></div>
     <div class="landing-field"><label>Estimated monthly card volume (optional)</label><input id="lpVolume" placeholder="e.g. $20k/mo"></div>
     <div class="landing-field"><label>Tell us about your business (optional)</label><textarea id="lpNotes" placeholder="What do you sell, how do you currently take payments, anything we should know before we call"></textarea></div>
+    ${termsCheckboxHtml('lpTerms', false)}
     <button class="landing-submit" onclick="submitReferralLead('${partner.id}')">Submit</button>
   `;
 }
@@ -4962,6 +5009,10 @@ async function submitReferralLead(partnerId){
     p_business_address: document.getElementById('lpAddress').value.trim(),
     p_est_volume: document.getElementById('lpVolume').value.trim(),
     p_notes: document.getElementById('lpNotes').value.trim(),
+    // Recorded when ticked, not required — a referral is an introduction, not
+    // an agreement. The IP behind it is read server-side.
+    p_terms_accepted: !!(document.getElementById('lpTerms') || {}).checked,
+    p_terms_url: TERMS_URL,
   });
   if(error){ alert('Something went wrong submitting this — please try again: ' + error.message); return; }
 
