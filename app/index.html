@@ -1708,10 +1708,24 @@
           </div>
           <button class="btn btn-accent" id="addAgentBtn">+ Add Agent</button>
         </div>
+        <div class="cards-row" id="agentsStats"></div>
+
+        <div class="cal-toolbar">
+          <div class="phase-toggle" id="agentsActivityFilter"></div>
+        </div>
+
         <div class="panel">
           <div class="panel-head">
             <h2>All agents</h2>
-            <input class="search-input" placeholder="Search by name or city..." id="agentsSearch">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <select id="agentsSort" style="padding:8px 10px;border-radius:7px;border:1px solid var(--line);font-size:12.5px;">
+                <option value="last_deal">Sort: Last deal</option>
+                <option value="leads">Sort: Leads submitted</option>
+                <option value="conversion">Sort: Link conversion</option>
+                <option value="name">Sort: Name</option>
+              </select>
+              <input class="search-input" placeholder="Search by name or city..." id="agentsSearch">
+            </div>
           </div>
           <table>
             <thead><tr><th>Agent</th><th>Reseller tier</th><th>Activity</th><th>Custom link</th><th>Leads</th><th>Last deal</th></tr></thead>
@@ -1730,10 +1744,24 @@
           </div>
           <button class="btn btn-accent" id="addResellerBtn">+ Add Authorized Reseller</button>
         </div>
+        <div class="cards-row" id="resellersStats"></div>
+
+        <div class="cal-toolbar">
+          <div class="phase-toggle" id="resellersActivityFilter"></div>
+        </div>
+
         <div class="panel">
           <div class="panel-head">
             <h2>Authorized resellers</h2>
-            <input class="search-input" placeholder="Search by name or city..." id="resellersSearch">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <select id="resellersSort" style="padding:8px 10px;border-radius:7px;border:1px solid var(--line);font-size:12.5px;">
+                <option value="last_deal">Sort: Last deal</option>
+                <option value="leads">Sort: Leads submitted</option>
+                <option value="conversion">Sort: Link conversion</option>
+                <option value="name">Sort: Name</option>
+              </select>
+              <input class="search-input" placeholder="Search by name or city..." id="resellersSearch">
+            </div>
           </div>
           <table>
             <thead><tr><th>Agent</th><th>Activity</th><th>Custom link</th><th>Leads</th><th>Last deal</th></tr></thead>
@@ -5442,13 +5470,8 @@ function renderReferralStats(){
 }
 
 function renderReferralFilters(){
-  const activityChips = [
-    { key:'all', label:'All activity' }, { key:'active', label:'Active' }, { key:'slowing', label:'Slowing' },
-    { key:'dormant', label:'Dormant' }, { key:'new', label:'New' },
-  ];
-  document.getElementById('referralActivityFilter').innerHTML = activityChips.map(c => `
-    <button type="button" class="${referralActivityFilter===c.key?'active':''}" onclick="setReferralActivityFilter('${c.key}')">${c.label}</button>
-  `).join('');
+  // Shares the one list, so the three tabs cannot drift apart.
+  renderPartnerActivityChips('referralActivityFilter', referralActivityFilter, 'setReferralActivityFilter');
 }
 function setReferralActivityFilter(key){ referralActivityFilter = key; renderReferralTable(); }
 
@@ -5514,6 +5537,15 @@ function renderReferralTable(filterText){
   }).join('');
 }
 document.getElementById('referralSearch').addEventListener('input', e => renderReferralTable(e.target.value));
+// Agents and resellers get the same wiring their referral counterpart has.
+['agentsSort','agentsSearch'].forEach(id => {
+  const el = document.getElementById(id);
+  if(el) el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', () => renderAgentsTable());
+});
+['resellersSort','resellersSearch'].forEach(id => {
+  const el = document.getElementById(id);
+  if(el) el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', () => renderResellersTable());
+});
 document.getElementById('referralSort').addEventListener('change', () => renderReferralTable());
 document.getElementById('referralSelectAll').addEventListener('change', function(){
   document.querySelectorAll('.row-check-referrals').forEach(cb => cb.checked = this.checked);
@@ -7110,13 +7142,85 @@ function renderFollowups(){
    Resellers narrows further to reseller_type==='authorized_reseller'.
    Search matches name OR city, so you can find everyone in a given area.
    ========================================================================= */
+/* -----------------------------------------------------------------------
+   AGENT / RESELLER FILTERS
+   The same activity chips, stats and sort the Referral Partners tab has.
+   Written once and pointed at a different slice of PARTNERS, rather than
+   copied three times — the three views differ only in which records they
+   cover and what the counts are called.
+   ----------------------------------------------------------------------- */
+let agentsActivityFilter = 'all';
+let resellersActivityFilter = 'all';
+
+// partnerActivityStatus() can also return 'inactive' — for a partner whose
+// status is not 'active' — and none of the three tabs had a chip for it, so a
+// deactivated partner could not be filtered for anywhere.
+const PARTNER_ACTIVITY_CHIPS = [
+  { key:'all', label:'All activity' }, { key:'active', label:'Active' },
+  { key:'slowing', label:'Slowing' }, { key:'dormant', label:'Dormant' },
+  { key:'new', label:'New' }, { key:'inactive', label:'Inactive' }
+];
+
+function renderPartnerActivityChips(elId, current, setter){
+  const el = document.getElementById(elId);
+  if(!el) return;
+  el.innerHTML = PARTNER_ACTIVITY_CHIPS.map(c => `
+    <button type="button" class="${current === c.key ? 'active' : ''}" onclick="${setter}('${c.key}')">${c.label}</button>
+  `).join('');
+}
+
+function renderPartnerStats(elId, rows, nounSingular){
+  const el = document.getElementById(elId);
+  if(!el) return;
+  const active = rows.filter(p => partnerActivityStatus(p).key === 'active').length;
+  const totalLeads = rows.reduce((sum, p) => sum + (p.leads_submitted || 0), 0);
+  const withClicks = rows.filter(p => p.link_clicks);
+  const avgConversion = withClicks.length
+    ? Math.round(withClicks.reduce((sum, p) => sum + linkConversionRate(p), 0) / withClicks.length)
+    : 0;
+  el.innerHTML = `
+    <div class="stat-card"><div class="label">Total ${nounSingular}s</div><div class="value">${rows.length}</div></div>
+    <div class="stat-card"><div class="label">Active</div><div class="value">${active}</div></div>
+    <div class="stat-card"><div class="label">Leads submitted</div><div class="value">${totalLeads}</div></div>
+    <div class="stat-card"><div class="label">Avg. link conversion</div><div class="value">${avgConversion}%</div></div>`;
+}
+
+// Sorting is identical across the three, so it lives in one place.
+function sortPartnerRows(rows, sortBy){
+  const out = rows.slice();
+  if(sortBy === 'last_deal') out.sort((a,b) => (b.last_deal_date||'0000-00-00').localeCompare(a.last_deal_date||'0000-00-00'));
+  else if(sortBy === 'leads') out.sort((a,b) => (b.leads_submitted||0) - (a.leads_submitted||0));
+  else if(sortBy === 'conversion') out.sort((a,b) => (linkConversionRate(b)||0) - (linkConversionRate(a)||0));
+  else out.sort((a,b) => a.name.localeCompare(b.name));
+  return out;
+}
+
+function setAgentsActivityFilter(key){
+  agentsActivityFilter = key;
+  renderAgentsTable();
+}
+function setResellersActivityFilter(key){
+  resellersActivityFilter = key;
+  renderResellersTable();
+}
+
 function renderAgentsTable(filterText){
   const q = (filterText || (document.getElementById('agentsSearch') ? document.getElementById('agentsSearch').value : '') || '').toLowerCase();
   const baseUrl = currentBrand === 'atm' ? 'envisionatm.com/r/' : 'epaypos.net/r/';
-  const rows = scopedPartnersForCurrentUser()
-    .filter(p => p.type === 'agent')
-    .filter(p => !q || p.name.toLowerCase().includes(q) || p.city.toLowerCase().includes(q))
-    .sort((a,b)=> a.name.localeCompare(b.name));
+
+  const all = scopedPartnersForCurrentUser().filter(p => p.type === 'agent');
+  // Stats count every agent, not the filtered slice — otherwise choosing
+  // "Dormant" would report a total of however many are dormant.
+  renderPartnerStats('agentsStats', all, 'agent');
+  renderPartnerActivityChips('agentsActivityFilter', agentsActivityFilter, 'setAgentsActivityFilter');
+
+  const sortBy = document.getElementById('agentsSort') ? document.getElementById('agentsSort').value : 'name';
+  let rows = all
+    .filter(p => !q || p.name.toLowerCase().includes(q) || (p.city||'').toLowerCase().includes(q));
+  if(agentsActivityFilter !== 'all'){
+    rows = rows.filter(p => partnerActivityStatus(p).key === agentsActivityFilter);
+  }
+  rows = sortPartnerRows(rows, sortBy);
 
   if(rows.length === 0){
     document.getElementById('agentsTableBody').innerHTML = '';
@@ -7145,10 +7249,19 @@ document.getElementById('agentsSearch').addEventListener('input', e => renderAge
 function renderResellersTable(filterText){
   const q = (filterText || (document.getElementById('resellersSearch') ? document.getElementById('resellersSearch').value : '') || '').toLowerCase();
   const baseUrl = currentBrand === 'atm' ? 'envisionatm.com/r/' : 'epaypos.net/r/';
-  const rows = scopedPartnersForCurrentUser()
-    .filter(p => p.type === 'agent' && p.reseller_type === 'authorized_reseller')
-    .filter(p => !q || p.name.toLowerCase().includes(q) || p.city.toLowerCase().includes(q))
-    .sort((a,b)=> a.name.localeCompare(b.name));
+
+  const all = scopedPartnersForCurrentUser()
+    .filter(p => p.type === 'agent' && p.reseller_type === 'authorized_reseller');
+  renderPartnerStats('resellersStats', all, 'reseller');
+  renderPartnerActivityChips('resellersActivityFilter', resellersActivityFilter, 'setResellersActivityFilter');
+
+  const sortBy = document.getElementById('resellersSort') ? document.getElementById('resellersSort').value : 'name';
+  let rows = all
+    .filter(p => !q || p.name.toLowerCase().includes(q) || (p.city||'').toLowerCase().includes(q));
+  if(resellersActivityFilter !== 'all'){
+    rows = rows.filter(p => partnerActivityStatus(p).key === resellersActivityFilter);
+  }
+  rows = sortPartnerRows(rows, sortBy);
 
   if(rows.length === 0){
     document.getElementById('resellersTableBody').innerHTML = '';
