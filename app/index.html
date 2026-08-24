@@ -4308,7 +4308,12 @@ async function loadApplicationLinkTokensFromSupabase(){
    redirect on Wix from /r/* to this origin and change PREFERRED_LINK_HOST
    below — every link in the app follows from here.
    ----------------------------------------------------------------------- */
-const PREFERRED_LINK_HOST = null;   // e.g. 'https://www.epaypos.net' once Wix redirects /r/*
+// go.epaypos.net is a CNAME to the Netlify site, so it serves this app with
+// the /r/ and /apply/ rewrites and its own certificate. Set here rather than
+// left to window.location.origin so a link copied while working on
+// epaycrm.epaypos.net still reads go.epaypos.net — the partner-facing address
+// should not depend on which host the person generating it happened to use.
+const PREFERRED_LINK_HOST = 'https://go.epaypos.net';
 
 function referralLinkBase(){
   const origin = PREFERRED_LINK_HOST || window.location.origin;
@@ -4316,12 +4321,12 @@ function referralLinkBase(){
 }
 
 function applicationShareUrl(slug){
-  return window.location.origin + '/apply/' + encodeURIComponent(slug);
+  return (PREFERRED_LINK_HOST || window.location.origin) + '/apply/' + encodeURIComponent(slug);
 }
 
 // A partner's referral link. Same shape, different route.
 function referralShareUrl(slug){
-  return window.location.origin + '/r/' + encodeURIComponent(slug);
+  return (PREFERRED_LINK_HOST || window.location.origin) + '/r/' + encodeURIComponent(slug);
 }
 
 // Readable rather than random: a label of "Spring mailer" becomes
