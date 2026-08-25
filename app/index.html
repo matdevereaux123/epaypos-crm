@@ -1484,7 +1484,11 @@
             <button class="btn btn-sm" id="calNextBtn">&rarr;</button>
             <button class="btn btn-sm" id="calTodayBtn">Today</button>
           </div>
-          <div class="phase-toggle" id="calCalendarFilter"></div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span id="calSyncStatus" style="font-size:11.5px;color:var(--slate-400);"></span>
+            <button class="btn btn-sm" id="calSyncBtn">Sync Google</button>
+            <div class="phase-toggle" id="calCalendarFilter"></div>
+          </div>
         </div>
 
         <div class="panel">
@@ -3247,7 +3251,16 @@ const MEETING_TYPES = {
   zoom_meeting: { label:'Zoom Meeting', color:'var(--ok-text)' },
   zoom_demo: { label:'Zoom Demo', color:'var(--warn-text)' },
   in_person: { label:'In-Person Install/Training', color:'#7C3AED' },
+  // Pulled in from someone's Google Calendar rather than booked here.
+  external: { label:'From Google Calendar', color:'var(--slate-400)' },
 };
+
+// The grid reads .color straight off the lookup, so an unrecognised type used
+// to be a crash rather than a blank chip. Imported events arrive with whatever
+// Google had, so this can no longer assume the set is closed.
+function meetingType(t){
+  return MEETING_TYPES[t] || { label:'Meeting', color:'var(--slate-400)' };
+}
 
 function todayISO(){ return new Date().toISOString().slice(0,10); }
 
@@ -9805,7 +9818,7 @@ function stagePanelHtml(l){
       <div class="stage-panel">
         <h3>Install &amp; Training Call</h3>
         <p class="stage-panel-desc">Schedule the follow-up call for installation and training — phone, Zoom, or in-person.</p>
-        <div class="detail-row"><span class="k">Call scheduled?</span><span class="v">${meetings.length ? 'Yes — '+formatDate(meetings[0].date)+' ('+(MEETING_TYPES[meetings[0].type]||{}).label+')' : 'Not yet'}</span></div>
+        <div class="detail-row"><span class="k">Call scheduled?</span><span class="v">${meetings.length ? 'Yes — '+formatDate(meetings[0].date)+' ('+meetingType(meetings[0].type).label+')' : 'Not yet'}</span></div>
         <button class="btn btn-accent" style="width:100%;margin-top:8px;margin-bottom:8px;" onclick="${detailRenderMode==='drawer'?"closeLeadDrawer(); ":""}openMeetingDrawer(null, todayISO(), null, '${l.id}');">Schedule Install/Training Call</button>
         <button class="btn" style="width:100%;" onclick="convertToActiveAccount('${l.id}')">Convert to Active Account →</button>
         <p style="font-size:10.5px;color:var(--slate-300);margin-top:8px;">Once converted, this record moves out of the Leads pipeline entirely and lives only in Accounts from here on.</p>
@@ -11175,7 +11188,7 @@ function openColdLeadDetail(id){
           return `
           <div style="margin-top:14px;">
             ${linkedMeetings.map(e => {
-              const mt = MEETING_TYPES[e.type];
+              const mt = meetingType(e.type);
               return `<div class="note-item" style="cursor:pointer;" onclick="${detailRenderMode==='drawer'?"closeColdLeadDrawer(); ":""}openMeetingDrawer('${e.id}');">
                 <div class="meta">${formatDate(e.date)} at ${e.time} · <span style="color:${mt.color};">${mt.label}</span></div>
                 <div class="txt">${e.title}</div>
@@ -12462,7 +12475,7 @@ function maskApiKey(key){
 
 function renderIntegrationsList(){
   document.getElementById('integrationsList').innerHTML = INTEGRATION_DEFS.map(def => {
-    const state = INTEGRATIONS[def.key] || { connected:false, values:{} };
+    const state = integrationState(def.key);
     return `
     <div class="integration-row">
       <span class="integration-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${def.icon}</svg></span>
@@ -12651,9 +12664,19 @@ function googleCalendarDrawerHtml(){
   </div>`;
 }
 
+// Google Calendar has nothing to save, so saveIntegrationConfig() never runs
+// and INTEGRATIONS.google_calendar.connected stayed false forever — the card
+// read "Not connected" while the calendar was linked and syncing. Its status
+// is the OAuth link, not a row in a settings table.
+function integrationState(key){
+  const stored = INTEGRATIONS[key] || { connected:false, values:{} };
+  if(key === 'google_calendar') return { connected: !!myConnectedCalendar(), values: stored.values || {} };
+  return stored;
+}
+
 function openIntegrationConfig(key){
   const def = INTEGRATION_DEFS.find(d => d.key === key);
-  const state = INTEGRATIONS[key] || { connected:false, values:{} };
+  const state = integrationState(key);
 
   document.getElementById('integrationDrawer').innerHTML = `
     <div class="drawer-head">
@@ -12757,22 +12780,25 @@ function renderCalendar(){
     cells.push({ day: cells.length - (startDow+daysInMonth) + 1, outside:true, dateStr:null });
   }
 
-  const scoped = CALENDAR_EVENTS.filter(e => calFilter === 'all' || e.calendar === calFilter);
+  // Events carry calendar_id. This read e.calendar, which is undefined on
+  // every row, so picking any single calendar showed an empty month.
+  const scoped = CALENDAR_EVENTS.filter(e => calFilter === 'all' || e.calendar_id === calFilter);
 
   document.getElementById('calGrid').innerHTML = cells.map(c => {
     if(c.outside){
       return `<div class="cal-day outside"><span class="cal-day-num">${c.day}</span></div>`;
     }
-    const dayEvents = scoped.filter(e => e.date === c.dateStr).sort((a,b)=> a.time.localeCompare(b.time));
+    const dayEvents = scoped.filter(e => e.date === c.dateStr).sort(compareEventTime);
     const isToday = c.dateStr === todayStr;
     const visible = dayEvents.slice(0,3);
     const overflow = dayEvents.length - visible.length;
     return `
-      <div class="cal-day ${isToday?'today':''}" onclick="openMeetingDrawer(null, '${c.dateStr}')">
+      <div class="cal-day ${isToday?'today':''}" onclick="openDayDrawer('${c.dateStr}')">
         <span class="cal-day-num">${c.day}</span>
         ${visible.map(e => {
-          const mt = MEETING_TYPES[e.type];
-          return `<span class="cal-event-chip" style="background:${mt.color}22;color:${mt.color};" onclick="event.stopPropagation(); openMeetingDrawer('${e.id}');">${e.time} ${e.title}</span>`;
+          const mt = meetingType(e.type);
+          const when = (e.all_day || !e.time) ? 'All day' : e.time;
+          return `<span class="cal-event-chip" style="background:${mt.color}22;color:${mt.color};" onclick="event.stopPropagation(); openDayDrawer('${c.dateStr}');">${when} ${e.title}</span>`;
         }).join('')}
         ${overflow > 0 ? `<div class="cal-event-more">+${overflow} more</div>` : ''}
       </div>`;
@@ -12787,6 +12813,7 @@ document.getElementById('calNextBtn').addEventListener('click', function(){
   calViewDate = new Date(calViewDate.getFullYear(), calViewDate.getMonth()+1, 1);
   renderCalendar();
 });
+document.getElementById('calSyncBtn').addEventListener('click', function(){ syncGoogleCalendar(false); });
 document.getElementById('calTodayBtn').addEventListener('click', function(){
   calViewDate = new Date();
   renderCalendar();
@@ -12811,7 +12838,12 @@ function meetingFormHtml(ev, prefillDate, prefillColdLead, prefillLead){
       <div class="field">
         <label>Type</label>
         <select id="mtType">
-          ${Object.keys(MEETING_TYPES).map(k=>`<option value="${k}" ${ev.type===k?'selected':''}>${MEETING_TYPES[k].label}</option>`).join('')}
+          ${Object.keys(MEETING_TYPES)
+              // 'external' describes where an event came from, not something
+              // you can choose. Kept in the list only if this event already is
+              // one, so editing an imported event does not silently retype it.
+              .filter(k => k !== 'external' || ev.type === 'external')
+              .map(k=>`<option value="${k}" ${ev.type===k?'selected':''}>${MEETING_TYPES[k].label}</option>`).join('')}
         </select>
       </div>
     </div>
@@ -12840,11 +12872,139 @@ function meetingFormHtml(ev, prefillDate, prefillColdLead, prefillLead){
   `;
 }
 
+/* -------------------------------------------------------------------------
+   DAY VIEW
+   Clicking a date used to open an empty New Meeting form, which meant the
+   month grid was the only way to see what was on a day — and it only showed
+   the first three. This opens the day itself: everything on it, in order,
+   CRM meetings and Google events together.
+   ------------------------------------------------------------------------- */
+let calOpenDay = null;
+
+// All-day first, then by clock time. Blank times sort with all-day rather
+// than landing at midnight and reading as a 00:00 booking.
+//
+// The || '' matters: the grid used to call a.time.localeCompare(b.time)
+// directly, and `time` is nullable. One imported all-day event with a null
+// time would have thrown here and blanked the whole month.
+function compareEventTime(a, b){
+  const at = a.all_day ? '' : (a.time || '');
+  const bt = b.all_day ? '' : (b.time || '');
+  if(!at && !bt) return (a.title || '').localeCompare(b.title || '');
+  if(!at) return -1;
+  if(!bt) return 1;
+  return at.localeCompare(bt);
+}
+
+function eventsOnDay(dateStr){
+  return CALENDAR_EVENTS
+    .filter(e => e.date === dateStr && (calFilter === 'all' || e.calendar_id === calFilter))
+    .sort(compareEventTime);
+}
+
+function prettyDay(dateStr){
+  // Parsed as local parts, not Date(dateStr) — that treats a bare date as UTC
+  // and shows the previous day for anyone west of Greenwich.
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-US',
+    { weekday:'long', month:'long', day:'numeric', year:'numeric' });
+}
+
+function timeLabel(e){
+  if(e.all_day || !e.time) return 'All day';
+  const [h, m] = e.time.split(':').map(Number);
+  const suffix = h >= 12 ? 'PM' : 'AM';
+  const hr = h % 12 === 0 ? 12 : h % 12;
+  return hr + ':' + String(m).padStart(2, '0') + ' ' + suffix;
+}
+
+function openDayDrawer(dateStr){
+  calOpenDay = dateStr;
+  const events = eventsOnDay(dateStr);
+  document.getElementById('meetingDrawer').innerHTML = `
+    <div class="drawer-head">
+      <div>
+        <h2>${prettyDay(dateStr)}</h2>
+        <span style="font-size:12px;color:var(--slate-400);">${events.length} ${events.length === 1 ? 'event' : 'events'}</span>
+      </div>
+      <button class="drawer-close" onclick="closeMeetingDrawer()">&times;</button>
+    </div>
+    <div class="drawer-body">
+      ${events.length === 0
+        ? `<div class="stub-panel" style="padding:34px 20px;">Nothing scheduled.</div>`
+        : events.map(e => {
+            const mt = meetingType(e.type);
+            const fromGoogle = e.google_origin === true;
+            return `
+            <div onclick="openMeetingDrawer('${e.id}')"
+                 style="display:flex;gap:12px;padding:11px 12px;border:1px solid var(--slate-200);border-radius:9px;margin-bottom:8px;cursor:pointer;align-items:flex-start;">
+              <div style="width:3px;align-self:stretch;border-radius:2px;background:${mt.color};flex:none;"></div>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:13px;font-weight:600;margin-bottom:2px;">${e.title || '(no title)'}</div>
+                <div style="font-size:11.5px;color:var(--slate-500);">
+                  ${timeLabel(e)}${e.all_day || !e.time ? '' : ' &middot; ' + (e.duration || 30) + ' min'} &middot; ${mt.label}
+                </div>
+                ${e.google_sync_error
+                  ? `<div style="font-size:11px;color:var(--red);margin-top:3px;">Not on Google: ${e.google_sync_error}</div>`
+                  : (fromGoogle ? '' : (e.google_event_id ? `<div style="font-size:11px;color:var(--ok-text);margin-top:3px;">On your Google Calendar</div>` : ''))}
+              </div>
+              ${fromGoogle ? `<span class="integration-status not-connected" style="flex:none;">Google</span>` : ''}
+            </div>`;
+          }).join('')}
+    </div>
+    <div class="drawer-footer">
+      <button class="btn" style="flex:1;" onclick="closeMeetingDrawer()">Close</button>
+      <button class="btn btn-accent" style="flex:1;" onclick="openMeetingDrawer(null, '${dateStr}')">New meeting</button>
+    </div>
+  `;
+  document.getElementById('meetingOverlay').classList.add('open');
+}
+
+/* -------------------------------------------------------------------------
+   PULL FROM GOOGLE
+   Push already worked. Without this, moving a meeting in Google left the two
+   calendars disagreeing while both looked authoritative.
+   ------------------------------------------------------------------------- */
+async function syncGoogleCalendar(silent){
+  const btn = document.getElementById('calSyncBtn');
+  const status = document.getElementById('calSyncStatus');
+  if(!myConnectedCalendar()){
+    if(!silent) showToast('Connect your Google Calendar first, under Settings \u2192 Integrations.', 'info');
+    return;
+  }
+  if(btn){ btn.disabled = true; btn.textContent = 'Syncing\u2026'; }
+
+  const out = await callGoogleCalendar('import_events');
+
+  if(btn){ btn.disabled = false; btn.textContent = 'Sync Google'; }
+  if(out.error){
+    if(status) status.textContent = 'Sync failed';
+    if(!silent) showToast(out.error, 'error');
+    return;
+  }
+
+  CALENDAR_EVENTS = await loadCalendarEventsFromSupabase();
+  CONNECTED_CALENDARS = await loadConnectedCalendarsFromSupabase();
+  renderCalendar();
+  if(calOpenDay && document.getElementById('meetingOverlay').classList.contains('open')) openDayDrawer(calOpenDay);
+
+  const changed = (out.imported || 0) + (out.updated || 0) + (out.removed || 0);
+  if(status) status.textContent = 'Synced ' + new Date().toLocaleTimeString([], { hour:'numeric', minute:'2-digit' });
+  if(!silent){
+    showToast(changed === 0
+      ? 'Already up to date.'
+      : `Synced \u2014 ${out.imported||0} new, ${out.updated||0} updated, ${out.removed||0} removed.`, 'success');
+  }
+}
+
 function openMeetingDrawer(eventId, prefillDate, prefillColdLead, prefillLead){
   const ev = eventId ? CALENDAR_EVENTS.find(e => e.id === eventId) : null;
   document.getElementById('meetingDrawer').innerHTML = `
     <div class="drawer-head">
-      <div><h2>${ev ? 'Edit meeting' : 'New meeting'}</h2></div>
+      <div>
+        <h2>${ev ? 'Edit meeting' : 'New meeting'}</h2>
+        ${calOpenDay ? `<button type="button" onclick="openDayDrawer('${calOpenDay}')" style="background:none;border:none;padding:0;margin-top:2px;font-size:12px;color:var(--accent);cursor:pointer;">&larr; Back to ${prettyDay(calOpenDay)}</button>` : ''}
+      </div>
       <button class="drawer-close" onclick="closeMeetingDrawer()">&times;</button>
     </div>
     <div class="drawer-body">
@@ -12859,6 +13019,7 @@ function openMeetingDrawer(eventId, prefillDate, prefillColdLead, prefillLead){
 }
 function closeMeetingDrawer(){
   document.getElementById('meetingOverlay').classList.remove('open');
+  calOpenDay = null;
 }
 
 async function saveMeeting(eventId){
@@ -12887,8 +13048,8 @@ async function saveMeeting(eventId){
     CALENDAR_EVENTS.unshift(data);
     savedId = data.id;
   }
-  closeMeetingDrawer();
   renderCalendar();
+  if(calOpenDay) openDayDrawer(calOpenDay); else closeMeetingDrawer();
 
   // The meeting is saved either way. Pushing it to Google is a second,
   // failable step, so it happens after the drawer closes and a failure is
@@ -12915,8 +13076,8 @@ async function deleteMeeting(eventId){
   const { error } = await supa.from('calendar_events').delete().eq('id', eventId);
   if(error){ showToast('Could not delete meeting: ' + error.message, 'error'); return; }
   CALENDAR_EVENTS = CALENDAR_EVENTS.filter(e => e.id !== eventId);
-  closeMeetingDrawer();
   renderCalendar();
+  if(calOpenDay) openDayDrawer(calOpenDay); else closeMeetingDrawer();
 
   if(googleEventId && myConnectedCalendar()){
     const out = await callGoogleCalendar('delete_event', { googleEventId });

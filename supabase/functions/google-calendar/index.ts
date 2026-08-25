@@ -4,7 +4,8 @@
 // (JWT verification ON — every action here is on behalf of a signed-in user.)
 //
 // Everything the browser is allowed to ask about a Google Calendar link.
-// Actions: connect_url | complete_oauth | status | disconnect | push_event | delete_event
+// Actions: connect_url | complete_oauth | status | disconnect | push_event |
+//          delete_event | import_events
 //
 // Google redirects to a small page on the CRM's own domain (/oauth/google),
 // which hands the code back to the already-signed-in CRM window; that window
@@ -150,6 +151,43 @@ function toGoogleTimes(date: string, time: string, durationMinutes: number, tz: 
   return endDate
     ? { start: { dateTime: start, timeZone: tz }, end: { dateTime: `${endDate}T${endTime}:00`, timeZone: tz } }
     : { start: { dateTime: start, timeZone: tz }, end: { dateTime: `${date}T23:59:00`, timeZone: tz } };
+}
+
+// Google gives either dateTime (timed) or date (all-day). Everything here
+// stays in the calendar's local wall-clock terms, matching how the CRM stores
+// dates — a date string and an HH:MM string, no zone.
+function fromGoogleEvent(ev: Record<string, any>, calendarId: string) {
+  const s = ev.start ?? {};
+  const e = ev.end ?? {};
+  const allDay = !!s.date && !s.dateTime;
+
+  const date = allDay ? String(s.date) : String(s.dateTime ?? '').slice(0, 10);
+  const time = allDay ? '' : String(s.dateTime ?? '').slice(11, 16);
+
+  let duration = 30;
+  if (!allDay && s.dateTime && e.dateTime) {
+    const mins = Math.round((new Date(e.dateTime).getTime() - new Date(s.dateTime).getTime()) / 60000);
+    // Clamp rather than trust: a malformed pair should not write a negative
+    // duration that the UI then tries to render.
+    if (Number.isFinite(mins) && mins > 0 && mins <= 60 * 24) duration = mins;
+  }
+
+  return {
+    title: String(ev.summary ?? '(no title)').slice(0, 300),
+    date,
+    time,
+    duration: String(duration),
+    all_day: allDay,
+    type: 'external',
+    calendar_id: calendarId,
+    zoom_link: ev.hangoutLink ?? ev.location ?? null,
+    notes: ev.description ? String(ev.description).slice(0, 4000) : null,
+    google_event_id: ev.id,
+    google_origin: true,
+    google_updated_at: ev.updated ?? null,
+    google_synced_at: new Date().toISOString(),
+    google_sync_error: null,
+  };
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -391,6 +429,126 @@ Deno.serve(async (req) => {
       }).eq('id', eventId);
 
       return json({ success: true, googleEventId: out.id, htmlLink: out.htmlLink ?? null }, 200);
+    }
+
+    case 'import_events': {
+      const got = await accessTokenFor(admin, userId);
+      if (got.error) return json({ error: got.error }, 400);
+
+      const { data: cal } = await admin
+        .from('connected_calendars')
+        .select('id, google_sync_token')
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (!cal) return json({ error: 'No Google Calendar is linked to this account.' }, 400);
+
+      const force = payload.full === true;
+      let syncToken: string | null = force ? null : (cal.google_sync_token as string | null);
+      let pageToken: string | null = null;
+      let nextSyncToken: string | null = null;
+      const items: Record<string, any>[] = [];
+
+      // Page until Google stops offering a nextPageToken. Capped so a calendar
+      // with years of history cannot spin here forever on a first import; the
+      // remainder arrives on the next sync.
+      for (let page = 0; page < 20; page++) {
+        const u = new URL('https://www.googleapis.com/calendar/v3/calendars/primary/events');
+        u.searchParams.set('maxResults', '250');
+        u.searchParams.set('singleEvents', 'true');       // expand recurrences
+        u.searchParams.set('showDeleted', 'true');        // needed to learn about deletions
+        if (syncToken) {
+          u.searchParams.set('syncToken', syncToken);
+        } else {
+          // First run, or after an expired token: a bounded window rather than
+          // the whole history.
+          const from = new Date(); from.setDate(from.getDate() - 30);
+          const to = new Date();   to.setDate(to.getDate() + 180);
+          u.searchParams.set('timeMin', from.toISOString());
+          u.searchParams.set('timeMax', to.toISOString());
+          u.searchParams.set('orderBy', 'startTime');
+        }
+        if (pageToken) u.searchParams.set('pageToken', pageToken);
+
+        const res = await fetch(u.toString(), { headers: { Authorization: `Bearer ${got.token}` } });
+
+        // 410 GONE means the sync token is too old to be useful. Google's
+        // documented recovery is to throw it away and do a full sync, which is
+        // exactly what clearing it and restarting the loop does.
+        if (res.status === 410 && syncToken) {
+          syncToken = null; pageToken = null; items.length = 0;
+          await admin.from('connected_calendars').update({ google_sync_token: null }).eq('id', cal.id);
+          continue;
+        }
+        if (!res.ok) {
+          const out = await res.json().catch(() => ({}));
+          return json({ error: out?.error?.message || `Google returned ${res.status}` }, 502);
+        }
+
+        const body = await res.json();
+        items.push(...(body.items ?? []));
+        nextSyncToken = body.nextSyncToken ?? nextSyncToken;
+        pageToken = body.nextPageToken ?? null;
+        if (!pageToken) break;
+      }
+
+      let imported = 0, updated = 0, removed = 0;
+
+      for (const ev of items) {
+        if (!ev.id) continue;
+
+        if (ev.status === 'cancelled') {
+          // Deleted in Google. Only rows that came FROM Google are removed —
+          // a CRM meeting whose Google copy was deleted keeps its own record
+          // here, because this system is the source of truth for its own work.
+          const { data: gone } = await admin.from('calendar_events')
+            .delete()
+            .eq('calendar_id', cal.id).eq('google_event_id', ev.id).eq('google_origin', true)
+            .select('id');
+          removed += (gone?.length ?? 0);
+          continue;
+        }
+
+        const row = fromGoogleEvent(ev, cal.id as string);
+        if (!row.date) continue;   // nothing usable to place it on
+
+        const { data: existing } = await admin.from('calendar_events')
+          .select('id, google_origin, google_updated_at')
+          .eq('calendar_id', cal.id).eq('google_event_id', ev.id)
+          .maybeSingle();
+
+        if (!existing) {
+          const { error } = await admin.from('calendar_events').insert(row);
+          if (!error) imported++;
+          continue;
+        }
+
+        // A meeting the CRM created and pushed. Google is the mirror, not the
+        // master, so its copy does not overwrite the CRM's own fields — only
+        // the sync bookkeeping is refreshed.
+        if (existing.google_origin !== true) {
+          await admin.from('calendar_events')
+            .update({ google_synced_at: new Date().toISOString(), google_updated_at: row.google_updated_at })
+            .eq('id', existing.id);
+          continue;
+        }
+
+        // Unchanged since we last saw it — skip the write entirely.
+        if (existing.google_updated_at && row.google_updated_at
+            && new Date(existing.google_updated_at as string).getTime()
+               >= new Date(row.google_updated_at as string).getTime()) {
+          continue;
+        }
+
+        const { error } = await admin.from('calendar_events').update(row).eq('id', existing.id);
+        if (!error) updated++;
+      }
+
+      await admin.from('connected_calendars').update({
+        google_sync_token: nextSyncToken,
+        last_synced_at: new Date().toISOString(),
+      }).eq('id', cal.id);
+
+      return json({ success: true, imported, updated, removed, seen: items.length }, 200);
     }
 
     case 'delete_event': {
