@@ -4729,7 +4729,7 @@ async function renderApplicationLandingPage(slug){
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/></svg>
       Sent by <b>${link.partner_name}</b>
     </div>` : ''}
-    <h1 class="landing-h1">Apply for ${brandName} processing</h1>
+    <h1 class="landing-h1">${link.brand === 'atm' ? 'Your Envision ATM agreement' : 'Apply for ' + brandName + ' processing'}</h1>
     <p class="landing-sub">Please complete every field so we can submit this for bank approval. Additional documentation may be required, and we will reach out if we need anything further.</p>
 
     <div id="alError" class="form-error" style="display:none;margin-bottom:14px;padding:10px 12px;background:#FDECEC;border:1px solid #F3C6C6;border-radius:8px;color:var(--red);font-size:13px;"></div>
@@ -4770,6 +4770,39 @@ async function renderApplicationLandingPage(slug){
   });
 }
 
+/* -----------------------------------------------------------------------
+   PUBLIC FORM COPY
+   The two brands sell different things. EPAY POS is card processing; Envision
+   ATM places and services cash machines. The logo already switched on brand
+   and the words did not, so an ATM prospect was being asked what they
+   "process a month" and told there was no credit check — language from the
+   other business entirely.
+   ----------------------------------------------------------------------- */
+const PUBLIC_COPY = {
+  epay: {
+    brandName: 'EPAY POS',
+    leadHeading: 'Tell us about your business',
+    leadSub: 'A few quick questions about how you take payments today. We will look at your current rates and come back with what we can do.',
+    leadVolumeLabel: 'Roughly what do you process a month?',
+    leadFooter: 'We will only use this to get in touch about card processing.',
+    referralHeading: brand => 'Let\u2019s get your business set up with ' + brand,
+    referralSub: 'Tell us about how you take payments today and we will reach out to walk you through your options.'
+  },
+  atm: {
+    brandName: 'Envision ATM',
+    leadHeading: 'Tell us about your location',
+    leadSub: 'A few quick questions about your site. We will look at whether an ATM makes sense there and what it could earn you.',
+    leadVolumeLabel: 'Roughly how many people come through a week?',
+    leadFooter: 'We will only use this to get in touch about ATM placement.',
+    referralHeading: brand => 'Let\u2019s get an ATM into your location',
+    referralSub: 'Tell us about your site and we will reach out to walk you through placement and what it could earn.'
+  }
+};
+
+function publicCopyFor(brand){
+  return PUBLIC_COPY[brand === 'atm' ? 'atm' : 'epay'];
+}
+
 const LEAD_FORM_FIELDS = [
   { id:'lfBusinessName',  label:'Business name', required:true },
   { id:'lfContactName',   label:'Your name',     required:true },
@@ -4777,24 +4810,26 @@ const LEAD_FORM_FIELDS = [
   { id:'lfPhone',         label:'Phone', type:'tel', required:true },
   { id:'lfBusinessAddress', label:'Business address' },
   { id:'lfBusinessType',  label:'What does the business do?' },
-  { id:'lfVolume',        label:'Roughly what do you process a month?' }
+  // Label is replaced per brand at render time — see publicCopyFor().
+  { id:'lfVolume',        label:'Roughly what do you process a month?', brandLabel:'leadVolumeLabel' }
 ];
 
 function renderLeadFormLandingPage(slug, link, brandName){
+  const copy = publicCopyFor(link.brand);
   document.getElementById('landingContent').innerHTML = `
     ${link.partner_name ? `<div class="landing-referrer-badge">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/></svg>
       Sent by <b>${link.partner_name}</b>
     </div>` : ''}
-    <h1 class="landing-h1">Tell us about your business</h1>
-    <p class="landing-sub">A minute of questions and we can come back to you with real numbers. No credit check, no commitment.</p>
+    <h1 class="landing-h1">${copy.leadHeading}</h1>
+    <p class="landing-sub">${copy.leadSub}</p>
 
     <div id="lfError" class="form-error" style="display:none;margin-bottom:14px;padding:10px 12px;background:#FDECEC;border:1px solid #F3C6C6;border-radius:8px;color:var(--red);font-size:13px;"></div>
 
     <form id="leadFormLanding" novalidate>
       ${LEAD_FORM_FIELDS.map(f => `
         <div class="field">
-          <label>${f.label}${f.required ? '' : ' <span style="color:var(--slate-300);font-weight:400;">(optional)</span>'}</label>
+          <label>${f.brandLabel ? copy[f.brandLabel] : f.label}${f.required ? '' : ' <span style="color:var(--slate-300);font-weight:400;">(optional)</span>'}</label>
           <input id="${f.id}" type="${f.type || 'text'}">
         </div>`).join('')}
       <div class="field">
@@ -4804,7 +4839,7 @@ function renderLeadFormLandingPage(slug, link, brandName){
       ${termsCheckboxHtml('lfTerms', false)}
       <button type="submit" class="btn btn-accent" id="lfSubmitBtn" style="width:100%;margin-top:6px;">Send it over</button>
       <p style="font-size:10.5px;color:var(--slate-300);margin:10px 0 0;text-align:center;">
-        We will only use this to get back to you about ${brandName} processing.
+        ${copy.leadFooter}
       </p>
     </form>`;
 
@@ -4975,13 +5010,14 @@ async function renderReferralLandingPage(slug){
   }
 
   const brandName = partner.brand === 'atm' ? 'Envision ATM' : (partner.brand === 'both' ? 'EPAY POS / Envision ATM' : 'EPAY POS');
+  const rcopy = publicCopyFor(partner.brand);
   document.getElementById('landingContent').innerHTML = `
     <div class="landing-referrer-badge">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/></svg>
       Referred by <b>${partner.name}</b>
     </div>
-    <h1 class="landing-h1">Let's get your business set up with ${brandName}</h1>
-    <p class="landing-sub">Tell us a bit about your business and we'll reach out to walk you through options and pricing — no commitment, just a conversation.</p>
+    <h1 class="landing-h1">${rcopy.referralHeading(brandName)}</h1>
+    <p class="landing-sub">${rcopy.referralSub}</p>
 
     <div class="landing-field"><label>Business name</label><input id="lpBusiness" placeholder="e.g. Riverside Pizza Co"></div>
     <div class="landing-field"><label>Your name</label><input id="lpContact" placeholder="e.g. Tony Russo"></div>
