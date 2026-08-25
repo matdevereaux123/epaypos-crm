@@ -4783,16 +4783,18 @@ const PUBLIC_COPY = {
     brandName: 'EPAY POS',
     leadHeading: 'Tell us about your business',
     leadSub: 'A few quick questions about how you take payments today. We will look at your current rates and come back with what we can do.',
-    leadVolumeLabel: 'Roughly what do you process a month?',
+    leadSubmit: 'Send it over',
     leadFooter: 'We will only use this to get in touch about card processing.',
     referralHeading: brand => 'Let\u2019s get your business set up with ' + brand,
     referralSub: 'Tell us about how you take payments today and we will reach out to walk you through your options.'
   },
   atm: {
     brandName: 'Envision ATM',
-    leadHeading: 'Tell us about your location',
-    leadSub: 'A few quick questions about your site. We will look at whether an ATM makes sense there and what it could earn you.',
-    leadVolumeLabel: 'Roughly how many people come through a week?',
+    // Heading, intro and button are the live envisionatm.org/contact-us
+    // wording, so the two front doors read identically.
+    leadHeading: 'Request a Placement',
+    leadSub: 'Use the form to request a placement. We will be in touch to schedule installation and discuss details.',
+    leadSubmit: 'Submit Form',
     leadFooter: 'We will only use this to get in touch about ATM placement.',
     referralHeading: brand => 'Let\u2019s get an ATM into your location',
     referralSub: 'Tell us about your site and we will reach out to walk you through placement and what it could earn.'
@@ -4803,16 +4805,78 @@ function publicCopyFor(brand){
   return PUBLIC_COPY[brand === 'atm' ? 'atm' : 'epay'];
 }
 
-const LEAD_FORM_FIELDS = [
-  { id:'lfBusinessName',  label:'Business name', required:true },
-  { id:'lfContactName',   label:'Your name',     required:true },
-  { id:'lfEmail',         label:'Email', type:'email', required:true },
-  { id:'lfPhone',         label:'Phone', type:'tel', required:true },
-  { id:'lfBusinessAddress', label:'Business address' },
-  { id:'lfBusinessType',  label:'What does the business do?' },
-  // Label is replaced per brand at render time — see publicCopyFor().
-  { id:'lfVolume',        label:'Roughly what do you process a month?', brandLabel:'leadVolumeLabel' }
-];
+/* -----------------------------------------------------------------------
+   The two brands ask different questions.
+
+   EPAY POS wants the business and what it processes. Envision ATM's form is
+   the one already running at envisionatm.org/contact-us — first and last
+   name, phone, email, business address, type of business — and these mirror
+   it field for field so a lead arriving here and a lead arriving there are
+   the same record.
+
+   Two deliberate differences from that page:
+     - Email is required. It is optional over there, but a lead with no way
+       to reach them by mail is close to useless to whoever picks it up, and
+       every other form in here already requires both email and phone.
+     - The trailing notes box. Optional, no equivalent on their page, and it
+       feeds general_follow_up_note.
+
+   Note there is no business-name field on the ATM form. Their own page fills
+   Salesforce's `company` with the contact's name, and leadFormPayload() does
+   the same rather than inventing a question they do not ask.
+   ----------------------------------------------------------------------- */
+const LEAD_FORM_FIELDS = {
+  epay: [
+    { id:'lfBusinessName',  label:'Business name', required:true },
+    { id:'lfContactName',   label:'Your name',     required:true },
+    { id:'lfEmail',         label:'Email', type:'email', required:true },
+    { id:'lfPhone',         label:'Phone', type:'tel', required:true },
+    { id:'lfBusinessAddress', label:'Business address' },
+    { id:'lfBusinessType',  label:'What does the business do?' },
+    { id:'lfVolume',        label:'Roughly what do you process a month?' }
+  ],
+  atm: [
+    { id:'lfFirstName',     label:'First Name', required:true },
+    { id:'lfLastName',      label:'Last Name',  required:true },
+    { id:'lfPhone',         label:'Phone', type:'tel', required:true },
+    { id:'lfEmail',         label:'Email', type:'email', required:true },
+    { id:'lfBusinessAddress', label:'Business Address', required:true },
+    { id:'lfBusinessType',  label:'Type of Business' }
+  ]
+};
+
+function leadFormFields(brand){
+  return LEAD_FORM_FIELDS[brand === 'atm' ? 'atm' : 'epay'];
+}
+
+// Maps whichever field set was shown onto the columns public_submit_lead_form
+// expects. Kept next to the field lists so the two cannot drift apart.
+function leadFormPayload(brand){
+  const v = id => ((document.getElementById(id) || {}).value || '').trim();
+  if(brand === 'atm'){
+    const name = [v('lfFirstName'), v('lfLastName')].filter(Boolean).join(' ');
+    return {
+      // No business-name question on this form, so the contact's name stands
+      // in — exactly what envisionatm.org sends to Salesforce as `company`.
+      p_business_name:    name,
+      p_contact_name:     name,
+      p_email:            v('lfEmail'),
+      p_phone:            v('lfPhone'),
+      p_business_address: v('lfBusinessAddress'),
+      p_business_type:    v('lfBusinessType'),
+      p_est_volume:       ''
+    };
+  }
+  return {
+    p_business_name:    v('lfBusinessName'),
+    p_contact_name:     v('lfContactName'),
+    p_email:            v('lfEmail'),
+    p_phone:            v('lfPhone'),
+    p_business_address: v('lfBusinessAddress'),
+    p_business_type:    v('lfBusinessType'),
+    p_est_volume:       v('lfVolume')
+  };
+}
 
 function renderLeadFormLandingPage(slug, link, brandName){
   const copy = publicCopyFor(link.brand);
@@ -4827,9 +4891,9 @@ function renderLeadFormLandingPage(slug, link, brandName){
     <div id="lfError" class="form-error" style="display:none;margin-bottom:14px;padding:10px 12px;background:#FDECEC;border:1px solid #F3C6C6;border-radius:8px;color:var(--red);font-size:13px;"></div>
 
     <form id="leadFormLanding" novalidate>
-      ${LEAD_FORM_FIELDS.map(f => `
+      ${leadFormFields(link.brand).map(f => `
         <div class="field">
-          <label>${f.brandLabel ? copy[f.brandLabel] : f.label}${f.required ? '' : ' <span style="color:var(--slate-300);font-weight:400;">(optional)</span>'}</label>
+          <label>${f.label}${f.required ? '' : ' <span style="color:var(--slate-300);font-weight:400;">(optional)</span>'}</label>
           <input id="${f.id}" type="${f.type || 'text'}">
         </div>`).join('')}
       <div class="field">
@@ -4837,7 +4901,7 @@ function renderLeadFormLandingPage(slug, link, brandName){
         <textarea id="lfNotes" rows="3"></textarea>
       </div>
       ${termsCheckboxHtml('lfTerms', false)}
-      <button type="submit" class="btn btn-accent" id="lfSubmitBtn" style="width:100%;margin-top:6px;">Send it over</button>
+      <button type="submit" class="btn btn-accent" id="lfSubmitBtn" style="width:100%;margin-top:6px;">${copy.leadSubmit}</button>
       <p style="font-size:10.5px;color:var(--slate-300);margin:10px 0 0;text-align:center;">
         ${copy.leadFooter}
       </p>
@@ -4845,17 +4909,17 @@ function renderLeadFormLandingPage(slug, link, brandName){
 
   document.getElementById('leadFormLanding').addEventListener('submit', function(e){
     e.preventDefault();
-    submitLeadFormLanding(slug);
+    submitLeadFormLanding(slug, link.brand);
   });
 }
 
-async function submitLeadFormLanding(slug){
+async function submitLeadFormLanding(slug, brand){
   const v = id => ((document.getElementById(id) || {}).value || '').trim();
   const err = document.getElementById('lfError');
   const btn = document.getElementById('lfSubmitBtn');
   err.style.display = 'none';
 
-  const missing = LEAD_FORM_FIELDS.filter(f => f.required && !v(f.id)).map(f => f.label);
+  const missing = leadFormFields(brand).filter(f => f.required && !v(f.id)).map(f => f.label);
   if(missing.length){
     err.textContent = 'Please fill in: ' + missing.join(', ') + '.';
     err.style.display = 'block';
@@ -4866,21 +4930,14 @@ async function submitLeadFormLanding(slug){
   const original = btn.textContent;
   btn.textContent = 'Sending\u2026';
 
-  const { error } = await supa.rpc('public_submit_lead_form', {
+  const { error } = await supa.rpc('public_submit_lead_form', Object.assign({
     p_slug: slug,
-    p_business_name: v('lfBusinessName'),
-    p_contact_name: v('lfContactName'),
-    p_email: v('lfEmail'),
-    p_phone: v('lfPhone'),
-    p_business_address: v('lfBusinessAddress'),
-    p_business_type: v('lfBusinessType'),
-    p_est_volume: v('lfVolume'),
     p_notes: v('lfNotes'),
     // Recorded if ticked, but not required — a lead form is an enquiry rather
     // than an agreement, and gating it would cost enquiries for no benefit.
     p_terms_accepted: !!(document.getElementById('lfTerms') || {}).checked,
     p_terms_url: TERMS_URL
-  });
+  }, leadFormPayload(brand)));
 
   btn.disabled = false;
   btn.textContent = original;
