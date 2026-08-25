@@ -3878,6 +3878,7 @@ async function enterAppAsAuthUser(authUser){
   NL_TEMPLATES = nlTemplates;
   CONNECTED_CALENDARS = connectedCalendars;
   CALENDAR_EVENTS = calendarEvents;
+  calFilter = defaultCalendarFilter();
   INSTANTLY_CONTACTS = instantlyContacts;
   PARTNER_DOCUMENTS = partnerDocuments;
   // Null means the read was refused, so the localStorage mirror stands rather
@@ -12740,11 +12741,19 @@ function disconnectIntegration(key){
 /* =========================================================================
    CALENDAR — month grid, filters, meeting create/edit/delete
    ========================================================================= */
+// Opens on your own calendar rather than everyone's. With imported Google
+// events in the mix, "all" is a wall of other people's appointments before it
+// is anything useful.
+function defaultCalendarFilter(){
+  const mine = myConnectedCalendar();
+  return mine ? mine.id : 'all';
+}
+
 function renderCalendarFilter(){
   const connected = CONNECTED_CALENDARS.filter(c => c.connected);
   const chips = [{ id:'all', name:'All calendars' }].concat(connected);
   document.getElementById('calCalendarFilter').innerHTML = chips.map(c => `
-    <button type="button" class="${calFilter===c.id?'active':''}" onclick="setCalFilter('${c.id}')">${c.name}</button>
+    <button type="button" class="${calFilter===c.id?'active':''}" onclick="setCalFilter('${c.id}')">${(c.user_id && c.user_id === currentUser.id) ? 'My calendar' : c.name}</button>
   `).join('');
 }
 function setCalFilter(id){

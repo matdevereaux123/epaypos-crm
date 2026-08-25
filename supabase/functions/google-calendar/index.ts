@@ -156,7 +156,7 @@ function toGoogleTimes(date: string, time: string, durationMinutes: number, tz: 
 // Google gives either dateTime (timed) or date (all-day). Everything here
 // stays in the calendar's local wall-clock terms, matching how the CRM stores
 // dates — a date string and an HH:MM string, no zone.
-function fromGoogleEvent(ev: Record<string, any>, calendarId: string) {
+function fromGoogleEvent(ev: Record<string, any>, calendarId: string, ownerId: string) {
   const s = ev.start ?? {};
   const e = ev.end ?? {};
   const allDay = !!s.date && !s.dateTime;
@@ -180,6 +180,10 @@ function fromGoogleEvent(ev: Record<string, any>, calendarId: string) {
     all_day: allDay,
     type: 'external',
     calendar_id: calendarId,
+    // Stamped here rather than left to the trigger. These rows are written
+    // with the service role, so current_app_user_id() is null at that point —
+    // an unowned personal event would be visible to the whole team.
+    owner_id: ownerId,
     zoom_link: ev.hangoutLink ?? ev.location ?? null,
     notes: ev.description ? String(ev.description).slice(0, 4000) : null,
     google_event_id: ev.id,
@@ -426,6 +430,9 @@ Deno.serve(async (req) => {
         google_event_id: out.id,
         google_synced_at: new Date().toISOString(),
         google_sync_error: null,
+        // Backfills anything created before ownership existed, so a meeting
+        // stops being editable by the whole team the first time it syncs.
+        owner_id: (ev.owner_id as string | null) ?? userId,
       }).eq('id', eventId);
 
       return json({ success: true, googleEventId: out.id, htmlLink: out.htmlLink ?? null }, 200);
@@ -502,13 +509,14 @@ Deno.serve(async (req) => {
           // here, because this system is the source of truth for its own work.
           const { data: gone } = await admin.from('calendar_events')
             .delete()
-            .eq('calendar_id', cal.id).eq('google_event_id', ev.id).eq('google_origin', true)
+            .eq('calendar_id', cal.id).eq('google_event_id', ev.id)
+            .eq('google_origin', true).eq('owner_id', userId)
             .select('id');
           removed += (gone?.length ?? 0);
           continue;
         }
 
-        const row = fromGoogleEvent(ev, cal.id as string);
+        const row = fromGoogleEvent(ev, cal.id as string, userId);
         if (!row.date) continue;   // nothing usable to place it on
 
         const { data: existing } = await admin.from('calendar_events')
