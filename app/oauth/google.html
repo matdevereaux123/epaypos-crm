@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Connecting Google Calendar</title>
+<!--
+  Google redirects here after the user consents.
+
+  This page is deliberately tiny and deliberately dumb. It holds no secret,
+  talks to no API and makes no decision — it reads the one-time code out of
+  the URL, hands it to the CRM window that opened it, and gets out of the way.
+  The window that receives it is already signed in, so it can call the
+  google-calendar function as an authenticated user and let that function do
+  the exchange with the client secret it alone holds.
+
+  Why not let Google redirect straight at the edge function: Supabase's
+  gateway rejects any function request with no JWT before the function runs,
+  so a public callback needs "Verify JWT" off — and that toggle turns itself
+  back on whenever the function is updated (supabase/supabase#43608). Sign-in
+  would break on some unrelated future edit with nothing in the logs. Landing
+  on our own domain instead removes the toggle from the picture entirely.
+
+  The code in the URL is single-use and worthless without the client secret,
+  and it is posted only to this exact origin.
+-->
+<style>
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;
+       background:#F4F7FB;color:#22406F;display:flex;align-items:center;justify-content:center;
+       height:100vh;text-align:center;}
+  .card{background:#fff;border:1px solid #E4E9F2;border-radius:12px;padding:34px 30px;max-width:380px;}
+  h1{margin:0 0 8px;font-size:18px;color:#142850;}
+  p{margin:0 0 18px;font-size:13.5px;line-height:1.55;}
+  a{display:inline-block;padding:10px 22px;border-radius:8px;background:#0558D6;color:#fff;
+    text-decoration:none;font-size:13px;font-weight:600;}
+  .mark{font-size:34px;line-height:1;margin-bottom:12px;}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="mark" id="mark">&#8226;&#8226;&#8226;</div>
+    <h1 id="title">Connecting&hellip;</h1>
+    <p id="msg">Finishing up with Google. This window will close on its own.</p>
+    <a id="back" href="/" style="display:none;">Back to the CRM</a>
+  </div>
+
+<script>
+(function(){
+  var q      = new URLSearchParams(window.location.search);
+  var code   = q.get('code');
+  var state  = q.get('state');
+  var denied = q.get('error');
+
+  function show(ok, title, msg){
+    document.getElementById('mark').innerHTML = ok ? '&#10003;' : '&#33;';
+    document.getElementById('mark').style.color = ok ? '#0F9D58' : '#D93025';
+    document.getElementById('title').textContent = title;
+    document.getElementById('msg').textContent = msg;
+    document.getElementById('back').style.display = 'inline-block';
+  }
+
+  // Same origin only. This page is opened by the CRM and answers to nothing
+  // else, so there is no reason to broadcast to '*'.
+  function tell(payload){
+    if(!window.opener){ return false; }
+    try { window.opener.postMessage(
+      Object.assign({ source:'epay-google-calendar' }, payload), window.location.origin); }
+    catch(e){ return false; }
+    return true;
+  }
+
+  if(denied){
+    tell({ ok:false, reason:denied });
+    show(false, 'Not connected',
+      denied === 'access_denied'
+        ? 'You declined the permission request, so nothing was linked.'
+        : 'Google returned: ' + denied);
+    return;
+  }
+
+  if(!code || !state){
+    show(false, 'Something is missing',
+      'Google did not send back everything needed. Start the connection again from Settings.');
+    return;
+  }
+
+  // The opener does the exchange and then closes this window. If there is no
+  // opener — someone pasted the URL into a normal tab — say so rather than
+  // spinning forever on a promise nobody is going to keep.
+  if(!tell({ ok:true, code:code, state:state })){
+    show(false, 'Open this from the CRM',
+      'This page has to be opened by the Control Center. Go to Settings and press Connect my Google Calendar.');
+    return;
+  }
+
+  // Belt and braces: if the opener never gets back to us, stop looking busy.
+  setTimeout(function(){
+    if(document.getElementById('back').style.display === 'none'){
+      show(false, 'Still waiting',
+        'The CRM window did not respond. Close this and try again from Settings.');
+    }
+  }, 20000);
+})();
+</script>
+</body>
+</html>

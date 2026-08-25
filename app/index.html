@@ -12516,6 +12516,7 @@ async function connectMyGoogleCalendar(){
   // The window has to be opened inside the click, before any await — open it
   // after the fetch resolves and every popup blocker treats it as unsolicited.
   const win = window.open('', 'epayGoogleCalendar', 'width=520,height=680');
+  googleAuthWindow = win;
   if(!win){
     showToast('Your browser blocked the Google sign-in window. Allow popups for this site and try again.', 'error');
     return;
@@ -12531,14 +12532,35 @@ async function connectMyGoogleCalendar(){
   win.location = out.url;
 }
 
-// The callback page posts back when it is done, so the list refreshes without
-// the user having to reload.
+// /oauth/google hands the one-time code back here rather than to a public
+// edge function, so the exchange happens on an authenticated call. See the
+// comment at the top of app/oauth/google.html for why.
+let googleAuthWindow = null;
+
 window.addEventListener('message', async function(e){
+  // Only this origin. The popup is our own page and nothing else has any
+  // business posting into this listener.
+  if(e.origin !== window.location.origin) return;
   if(!e.data || e.data.source !== 'epay-google-calendar') return;
-  if(!e.data.ok) return;
+
+  const closePopup = () => { try { if(googleAuthWindow) googleAuthWindow.close(); } catch(err){} googleAuthWindow = null; };
+
+  if(!e.data.ok){
+    closePopup();
+    showToast(e.data.reason === 'access_denied'
+      ? 'Google sign-in was cancelled, so nothing was linked.'
+      : 'Google sign-in failed: ' + (e.data.reason || 'unknown error'), 'error');
+    return;
+  }
+
+  const out = await callGoogleCalendar('complete_oauth', { code: e.data.code, state: e.data.state });
+  closePopup();
+
+  if(out.error){ showToast(out.error, 'error'); return; }
+
   CONNECTED_CALENDARS = await loadConnectedCalendarsFromSupabase();
   if(document.getElementById('connectedCalendarsList')) renderConnectedCalendarsList();
-  showToast('Google Calendar connected.', 'success');
+  showToast('Google Calendar connected' + (out.email ? ' as ' + out.email : '') + '.', 'success');
 });
 
 async function disconnectMyGoogleCalendar(){

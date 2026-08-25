@@ -34,3 +34,16 @@
   from = "/apply/*"
   to = "/index.html"
   status = 200
+
+# ---------------------------------------------------------------------------
+# Google's OAuth redirect lands here.
+#
+# Netlify would serve app/oauth/google.html at /oauth/google on its own, but
+# Google matches redirect URIs byte for byte and will not follow a redirect —
+# so this is spelled out as a rewrite rather than left to a default that could
+# change or add a trailing slash.
+# ---------------------------------------------------------------------------
+[[redirects]]
+  from = "/oauth/google"
+  to = "/oauth/google.html"
+  status = 200

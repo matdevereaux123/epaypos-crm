@@ -280,23 +280,28 @@ create policy "connected_calendars_delete" on connected_calendars
 
 -- =============================================================================
 -- AFTER RUNNING THIS
---   1. Google Cloud Console → new project → enable the Google Calendar API.
---   2. OAuth consent screen → Internal (if epaypos.net is Workspace) or
---      External. Add scopes:
+--   1. Google Cloud Console -> new project -> enable the Google Calendar API.
+--   2. OAuth consent screen -> Internal (if epaypos.net is Workspace) or
+--      External. Scopes:
 --        https://www.googleapis.com/auth/calendar.events
 --        openid, email
---   3. Credentials → OAuth client ID → Web application. Authorised redirect
+--   3. Credentials -> OAuth client ID -> Web application. Authorised redirect
 --      URI, exactly:
---        https://gfnodfqkidtqjoofvwzr.supabase.co/functions/v1/google-calendar-callback
---   4. Deploy both functions and set on EACH of them:
+--        https://epaycrm.epaypos.net/oauth/google
+--      That is a page on the CRM itself, NOT an edge function. Supabase's
+--      gateway rejects any function call without a JWT before the function
+--      runs, so a public callback would need "Verify JWT" off -- and that
+--      toggle turns itself back on whenever the function is updated
+--      (supabase/supabase#43608), which would break sign-in later with
+--      nothing in the logs.
+--   4. Deploy the google-calendar function and set on the project
+--      (Project Settings -> Edge Functions -> Secrets):
 --        GOOGLE_CLIENT_ID       from step 3
---        GOOGLE_CLIENT_SECRET   from step 3 — never put this in `integrations`,
+--        GOOGLE_CLIENT_SECRET   from step 3 -- never put this in `integrations`,
 --                               that table is readable by anyone with
 --                               manageSettings
 --        APP_URL                https://epaycrm.epaypos.net
---      google-calendar-callback must be deployed with JWT verification OFF;
---      Google calls it directly and has no Supabase token.
---   5. Settings → Integrations → Google Calendar → Connect my calendar.
+--   5. Settings -> Integrations -> Connect my Google Calendar.
 --
 --   Then confirm the browser genuinely cannot read a token:
 --     select * from google_calendar_tokens;   -- as an ordinary logged-in user

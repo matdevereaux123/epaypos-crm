@@ -4,7 +4,22 @@
 // (JWT verification ON — every action here is on behalf of a signed-in user.)
 //
 // Everything the browser is allowed to ask about a Google Calendar link.
-// Actions: connect_url | status | disconnect | push_event | delete_event
+// Actions: connect_url | complete_oauth | status | disconnect | push_event | delete_event
+//
+// Google redirects to a small page on the CRM's own domain (/oauth/google),
+// which hands the code back to the already-signed-in CRM window; that window
+// then calls complete_oauth here. There is deliberately NO public callback
+// endpoint on this project:
+//
+//   * Supabase's gateway rejects any function request without a JWT before
+//     the function runs, so a public callback needs "Verify JWT" turned off —
+//     and that toggle silently turns itself back on every time the function
+//     is updated (supabase/supabase#43608). Sign-in would break on some
+//     future unrelated edit, with nothing in the logs, because the gateway
+//     rejects the call before there is anything to log.
+//   * Doing the exchange from an authenticated call is also strictly safer:
+//     the OAuth state can be checked against the user actually making the
+//     request, which a public callback cannot do.
 //
 // Why a function rather than calling Google from app/index.html: the exchange
 // needs GOOGLE_CLIENT_SECRET, and the stored refresh token is a permanent key
@@ -30,6 +45,28 @@ function json(body: unknown, status: number) {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
+}
+
+// Must be byte-identical in the consent request and the token exchange, or
+// Google rejects the exchange with redirect_uri_mismatch. One function so the
+// two cannot drift.
+function redirectUri(): string {
+  return `${(Deno.env.get('APP_URL') ?? 'https://epaycrm.epaypos.net').replace(/\/+$/, '')}/oauth/google`;
+}
+
+// The id_token comes straight back from Google's token endpoint over TLS, in
+// response to a request carrying our client secret. That is Google's own
+// stated condition for skipping signature verification — this only reads the
+// payload, it is not accepting a token from a caller.
+function emailFromIdToken(idToken?: string): string | null {
+  if (!idToken) return null;
+  try {
+    const part = idToken.split('.')[1];
+    if (!part) return null;
+    return (JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/'))) as { email?: string }).email ?? null;
+  } catch {
+    return null;
+  }
 }
 
 const SCOPES = [
@@ -178,7 +215,7 @@ Deno.serve(async (req) => {
 
       const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
       url.searchParams.set('client_id', clientId);
-      url.searchParams.set('redirect_uri', `${Deno.env.get('SUPABASE_URL')}/functions/v1/google-calendar-callback`);
+      url.searchParams.set('redirect_uri', redirectUri());
       url.searchParams.set('response_type', 'code');
       url.searchParams.set('scope', SCOPES);
       // offline + consent together are what produce a refresh token. Without
@@ -191,6 +228,81 @@ Deno.serve(async (req) => {
       url.searchParams.set('state', state);
 
       return json({ url: url.toString() }, 200);
+    }
+
+    case 'complete_oauth': {
+      const code = String(payload.code ?? '');
+      const state = String(payload.state ?? '');
+      if (!code || !state) return json({ error: 'Google did not return a code' }, 400);
+
+      const clientId = Deno.env.get('GOOGLE_CLIENT_ID');
+      const clientSecret = Deno.env.get('GOOGLE_CLIENT_SECRET');
+      if (!clientId || !clientSecret) {
+        return json({ error: 'Google Calendar is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET on this function.' }, 500);
+      }
+
+      // The state must exist AND belong to the user making this call. Both
+      // halves matter: existence stops a forged callback, and the ownership
+      // check stops one user completing a flow that another user started.
+      const { data: stateRow } = await admin
+        .from('google_oauth_states')
+        .select('state, user_id, expires_at')
+        .eq('state', state)
+        .maybeSingle();
+
+      if (!stateRow || stateRow.user_id !== userId) {
+        return json({ error: 'This connection request was not recognised. Start again from Settings.' }, 400);
+      }
+      // Single use — deleted before the exchange so a replay cannot bind twice.
+      await admin.from('google_oauth_states').delete().eq('state', state);
+      await admin.from('google_oauth_states').delete().lt('expires_at', new Date().toISOString());
+
+      if (new Date(stateRow.expires_at as string).getTime() < Date.now()) {
+        return json({ error: 'This connection request expired. Start again from Settings.' }, 400);
+      }
+
+      let tok: {
+        access_token?: string; refresh_token?: string; expires_in?: number;
+        scope?: string; id_token?: string; error?: string; error_description?: string;
+      };
+      try {
+        const res = await fetch('https://oauth2.googleapis.com/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            code,
+            client_id: clientId,
+            client_secret: clientSecret,
+            redirect_uri: redirectUri(),
+            grant_type: 'authorization_code',
+          }),
+        });
+        tok = await res.json();
+        if (!res.ok) {
+          return json({ error: `Google refused the exchange: ${tok.error_description || tok.error || res.status}` }, 502);
+        }
+      } catch (e) {
+        return json({ error: `Could not reach Google: ${e instanceof Error ? e.message : 'unknown error'}` }, 502);
+      }
+
+      // Without a refresh token the link dies within the hour and cannot renew
+      // itself. connect_url always forces the consent screen, so reaching here
+      // means something is genuinely wrong rather than a routine reconnect.
+      if (!tok.refresh_token) {
+        return json({ error: 'Google did not return a refresh token, so the link would stop working within the hour. Remove EPAY POS at myaccount.google.com/permissions, then connect again.' }, 400);
+      }
+
+      const { error: storeErr } = await admin.rpc('google_calendar_store_tokens', {
+        p_user_id:       userId,
+        p_refresh_token: tok.refresh_token,
+        p_access_token:  tok.access_token ?? null,
+        p_expires_at:    new Date(Date.now() + ((tok.expires_in ?? 3600) * 1000)).toISOString(),
+        p_scope:         tok.scope ?? null,
+        p_google_email:  emailFromIdToken(tok.id_token),
+      });
+      if (storeErr) return json({ error: `Connected to Google, but saving it here failed: ${storeErr.message}` }, 500);
+
+      return json({ success: true, email: emailFromIdToken(tok.id_token) }, 200);
     }
 
     case 'status': {
