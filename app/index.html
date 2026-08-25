@@ -1374,6 +1374,10 @@
           <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
         <div class="nav-collapsible" id="reportsSectionItems">
+          <button class="nav-item" data-view="residuals" id="navResidualsItem">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            Residual Payouts
+          </button>
           <button class="nav-item" data-view="reportsubs" id="navReportSubsItem">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
             Monthly Subscription Add-Ons
@@ -1589,6 +1593,35 @@
       </section>
 
       <!-- REPORT: MONTHLY SUBSCRIPTION ADD-ONS -->
+      <!-- RESIDUAL PAYOUTS -->
+      <section id="view-residuals" class="view" style="display:none;">
+        <div class="topbar">
+          <div>
+            <h1>Residual Payouts</h1>
+            <p class="subtext" id="residualsSubtext"></p>
+          </div>
+          <div class="topbar-actions" id="residualsActions"></div>
+        </div>
+
+        <div class="cards-row" id="residualsStats"></div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h2 id="residualsTableTitle">Payout history</h2>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <select id="residualsYearFilter" style="width:auto;min-width:110px;"></select>
+              <select id="residualsStatusFilter" style="width:auto;min-width:120px;">
+                <option value="all">All statuses</option>
+                <option value="pending">Pending</option>
+                <option value="paid">Paid</option>
+              </select>
+              <button class="btn btn-sm" onclick="downloadResidualsCsv()">Download CSV</button>
+            </div>
+          </div>
+          <div id="residualsTableWrap"></div>
+        </div>
+      </section>
+
       <section id="view-reportsubs" class="view" style="display:none;">
         <div class="topbar">
           <div>
@@ -2370,6 +2403,10 @@
 </div>
 
 <!-- ================= DRAWER: SCHEDULE / EDIT MEETING ================= -->
+<div class="overlay" id="residualOverlay">
+  <div class="drawer" id="residualDrawer"></div>
+</div>
+
 <div class="overlay" id="meetingOverlay">
   <div class="drawer" id="meetingDrawer"></div>
 </div>
@@ -3438,6 +3475,9 @@ function setBrand(brand){
   const reportsToggle = document.getElementById('reportsSectionToggle');
   const reportsItems = document.getElementById('reportsSectionItems');
   navApplications.style.display = (brand === 'epay') ? 'flex' : 'none';
+  // Brand is only half the condition; applyReportsNavVisibility() below
+  // applies the admin half. Left here so the EPAY-only rule stays visible
+  // alongside its siblings.
   navReportSubs.style.display = (brand === 'epay') ? 'flex' : 'none';
   navCalendar.style.display = (brand === 'epay') ? 'flex' : 'none';
   navAuthResellers.style.display = (brand === 'epay') ? 'flex' : 'none';
@@ -3446,8 +3486,9 @@ function setBrand(brand){
   // Reports section itself stays visible on both brands now — Collections
   // applies to ATM units same as EPAY terminals. Only the Subscription
   // report inside it (navReportSubs, just above) stays EPAY-only.
-  reportsToggle.style.display = 'flex';
-  reportsItems.style.display = 'block';
+  // Decided by role, not brand — see applyReportsNavVisibility(). Forcing it
+  // open here showed an in-house salesperson an empty Reports header.
+  applyReportsNavVisibility();
   // navAiScraper/navColdEmail also require admin — applyRolePermissions() already
   // hides them for non-admins; only tighten further here, never loosen past that gate.
   // Newsletter is NOT brand-restricted (both brands have accounts to mail),
@@ -3507,6 +3548,40 @@ function enterApp(){
    (a portal-scoped user should never receive other partners' rows at all,
    not just have them hidden client-side).
    ========================================================================= */
+/* -------------------------------------------------------------------------
+   Who sees the Reports section, and what is inside it.
+
+   Lives in one function because two places decide it — applyRolePermissions()
+   on login and role switch, and setBrand() on every brand change. setBrand()
+   used to force the section visible unconditionally, which would now show an
+   in-house salesperson an empty Reports header: they are not admin, so both
+   internal reports are hidden, and not a partner, so there are no residuals
+   of their own to read.
+   ------------------------------------------------------------------------- */
+function applyReportsNavVisibility(){
+  const perms = roleOf(currentUser).perms || {};
+  const isAdmin = !!perms.manageUsers;
+  // portal_scope 'own' is an agent, reseller, ISO or referral partner — they
+  // get exactly one report, their own residual statements. The RLS in
+  // migration 39 is what makes "their own" true; this only decides the nav.
+  const isPartner = roleOf(currentUser).portal_scope === 'own';
+  const showSection = isAdmin || isPartner;
+
+  const set = (id, show, mode) => {
+    const el = document.getElementById(id);
+    if(el) el.style.display = show ? (mode || 'flex') : 'none';
+  };
+
+  set('reportsSectionToggle', showSection, 'flex');
+  set('reportsSectionItems',  showSection, 'block');
+  set('navResidualsItem',     showSection, 'flex');
+
+  // Subscriptions is also EPAY-only, so it has a second condition setBrand()
+  // owns; this must not widen it.
+  set('navReportSubsItem', isAdmin && currentBrand === 'epay', 'flex');
+  set('navCollectionsItem', isAdmin, 'flex');
+}
+
 function applyRolePermissions(){
   const perms = roleOf(currentUser).perms;
 
@@ -3546,10 +3621,12 @@ function applyRolePermissions(){
 
   // Reports are admin-only, a tighter bar than Calendar: in-house sales keep
   // the calendar but not the subscription and collections reports.
-  const reportsToggle = document.getElementById('reportsSectionToggle');
-  const reportsItems = document.getElementById('reportsSectionItems');
-  if(reportsToggle) reportsToggle.style.display = isAdmin ? 'flex' : 'none';
-  if(reportsItems) reportsItems.style.display = isAdmin ? 'block' : 'none';
+  // Reports used to be admin-only wholesale. Residual Payouts is the first
+  // report a partner is meant to see — their own statements, and only their
+  // own; the RLS in migration 39 is what guarantees the "only their own"
+  // part. So the section header opens up to them while the two internal
+  // reports inside it stay admin-only.
+  applyReportsNavVisibility();
 
   // Same reasoning as the admin-only check above: hiding a nav item is not the
   // same as being unable to reach the view, so bounce anyone already sitting
@@ -3559,6 +3636,7 @@ function applyRolePermissions(){
   if(!isInternal && calendarEl && calendarEl.style.display !== 'none'){
     showView('dashboard');
   }
+  // view-residuals is deliberately absent — a partner belongs on it.
   const onReportView = ['view-reportsubs','view-collections']
     .some(id => { const el = document.getElementById(id); return el && el.style.display !== 'none'; });
   if(!isAdmin && onReportView){
@@ -3843,6 +3921,7 @@ async function enterAppAsAuthUser(authUser){
     loadNlTemplatesFromSupabase(),
     loadConnectedCalendarsFromSupabase(),
     loadCalendarEventsFromSupabase(),
+    loadResidualsFromSupabase(),
     loadInstantlyContactsFromSupabase(),
     loadPartnerDocumentsFromSupabase(),
     loadApplicationLinksFromSupabase(),
@@ -3873,7 +3952,7 @@ async function enterAppAsAuthUser(authUser){
     users, partners, leads, applications, coldLeads, notes, leadNotes,
     leadCallNotes, leadDocuments, offices, lendingLeads, lendingLeadNotes,
     lendingLeadCallNotes, newsletters, nlTemplates, connectedCalendars,
-    calendarEvents, instantlyContacts, partnerDocuments, applicationLinks,
+    calendarEvents, residualPayouts, instantlyContacts, partnerDocuments, applicationLinks,
     integrationsFromDb
   ] = await tablesPromise;
 
@@ -3895,6 +3974,7 @@ async function enterAppAsAuthUser(authUser){
   CONNECTED_CALENDARS = connectedCalendars;
   CALENDAR_EVENTS = calendarEvents;
   calFilter = defaultCalendarFilter();
+  RESIDUALS = residualPayouts;
   INSTANTLY_CONTACTS = instantlyContacts;
   PARTNER_DOCUMENTS = partnerDocuments;
   // Null means the read was refused, so the localStorage mirror stands rather
@@ -5320,6 +5400,578 @@ window.addEventListener('popstate', function(ev){
   showView(view, true);
 });
 
+/* =========================================================================
+   RESIDUAL PAYOUTS
+   partners.residual_percentage says what split someone is on. It says nothing
+   about what they were actually paid. This is that ledger — one row per
+   partner per month, entered internally, readable by that partner and nobody
+   else. The RLS in migration 39 is what enforces that; everything here is the
+   convenient view of it.
+   ========================================================================= */
+let RESIDUALS = [];
+let residualYearFilter = 'all';
+let residualStatusFilter = 'all';
+
+async function loadResidualsFromSupabase(){
+  const { data, error } = await supa.from('residual_payouts')
+    .select('*').order('period_month', { ascending: false });
+  if(error){ console.error('Failed to load residual payouts', error); return []; }
+  return data || [];
+}
+
+function residualsAreMine(){
+  return roleOf(currentUser).portal_scope === 'own';
+}
+
+// Money in, money out. The column is numeric(12,2); this is only ever about
+// how it reads on screen.
+function money(n){
+  const v = Number(n);
+  if(!isFinite(v)) return '—';
+  return v.toLocaleString('en-US', { style:'currency', currency:'USD' });
+}
+
+// '2026-08-01' -> 'August 2026'. Split rather than new Date(str): a bare date
+// string is parsed as UTC, which shows July to anyone west of Greenwich.
+function monthLabel(dateStr){
+  if(!dateStr) return '—';
+  const [y, m] = String(dateStr).split('-').map(Number);
+  return new Date(y, (m || 1) - 1, 1).toLocaleDateString('en-US', { month:'long', year:'numeric' });
+}
+
+function partnerNameById(id){
+  const p = PARTNERS.find(x => x.id === id);
+  return p ? p.name : 'Unknown partner';
+}
+
+function scopedResiduals(){
+  // Mirrors the RLS policy rather than replacing it. The server already
+  // refuses to send another partner's rows; this keeps "Preview as" honest,
+  // where the browser holds an admin's data but is pretending to be an agent.
+  let rows = RESIDUALS;
+  if(residualsAreMine()){
+    rows = rows.filter(r => r.partner_id === currentUser.linked_partner_id);
+  }
+  if(residualYearFilter !== 'all'){
+    rows = rows.filter(r => String(r.period_month || '').slice(0,4) === residualYearFilter);
+  }
+  if(residualStatusFilter !== 'all'){
+    rows = rows.filter(r => r.status === residualStatusFilter);
+  }
+  return rows.slice().sort((a,b) => String(b.period_month).localeCompare(String(a.period_month))
+    || partnerNameById(a.partner_id).localeCompare(partnerNameById(b.partner_id)));
+}
+
+function renderResidualsReport(){
+  const mine = residualsAreMine();
+  const rows = scopedResiduals();
+
+  document.getElementById('residualsSubtext').textContent = mine
+    ? 'Your monthly residual statements. Download any of it for your own records.'
+    : 'Monthly residual payouts by partner. Log one at a time, or paste a whole month at once.';
+
+  document.getElementById('residualsActions').innerHTML = mine ? '' : `
+    <button class="btn" onclick="openResidualUploadDrawer()">Upload a month</button>
+    <button class="btn btn-accent" onclick="openResidualDrawer(null)">+ Log payout</button>`;
+
+  document.getElementById('residualsTableTitle').textContent = mine ? 'Your statements' : 'Payout history';
+
+  // Year filter, built from what actually exists rather than a fixed range.
+  const years = [...new Set(RESIDUALS
+    .filter(r => !mine || r.partner_id === currentUser.linked_partner_id)
+    .map(r => String(r.period_month || '').slice(0,4)).filter(Boolean))].sort().reverse();
+  const yearSel = document.getElementById('residualsYearFilter');
+  yearSel.innerHTML = `<option value="all">All years</option>` +
+    years.map(y => `<option value="${y}" ${residualYearFilter===y?'selected':''}>${y}</option>`).join('');
+
+  renderResidualStats(rows, mine);
+
+  if(rows.length === 0){
+    document.getElementById('residualsTableWrap').innerHTML =
+      `<div class="stub-panel" style="padding:40px 20px;">${mine
+        ? 'No residual statements yet. They appear here once a payout has been posted for you.'
+        : 'Nothing logged yet. Use “Log payout” for a single partner, or “Upload a month” to paste a batch.'}</div>`;
+    return;
+  }
+
+  document.getElementById('residualsTableWrap').innerHTML = `
+    <table>
+      <thead><tr>
+        <th>Month</th>
+        ${mine ? '' : '<th>Partner</th>'}
+        <th>Merchants</th><th>Gross</th><th>Adjustments</th><th>Net payout</th>
+        <th>Status</th><th>Reference</th>${mine ? '' : '<th></th>'}
+      </tr></thead>
+      <tbody>
+        ${rows.map(r => `
+          <tr>
+            <td><b>${monthLabel(r.period_month)}</b></td>
+            ${mine ? '' : `<td>${partnerNameById(r.partner_id)}</td>`}
+            <td>${r.merchant_count == null ? '—' : r.merchant_count}</td>
+            <td>${r.gross_residual == null ? '—' : money(r.gross_residual)}</td>
+            <td>${Number(r.adjustments) ? money(r.adjustments) : '—'}</td>
+            <td><b>${money(r.net_payout)}</b></td>
+            <td><span class="integration-status ${r.status === 'paid' ? 'connected' : 'not-connected'}">${r.status === 'paid' ? 'Paid' + (r.paid_on ? ' ' + formatDate(r.paid_on) : '') : 'Pending'}</span></td>
+            <td>${r.reference || '—'}</td>
+            ${mine ? '' : `<td style="text-align:right;"><button class="btn btn-sm" onclick="openResidualDrawer('${r.id}')">Edit</button></td>`}
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+function renderResidualStats(rows, mine){
+  const total = rows.reduce((sum, r) => sum + (Number(r.net_payout) || 0), 0);
+  const paid = rows.filter(r => r.status === 'paid').reduce((sum, r) => sum + (Number(r.net_payout) || 0), 0);
+  const pending = total - paid;
+  const latest = rows[0];
+
+  document.getElementById('residualsStats').innerHTML = `
+    <div class="stat-card"><div class="label">${mine ? 'Total earned' : 'Total in view'}</div><div class="value">${money(total)}</div>
+      <div class="delta" style="color:var(--slate-500);">${rows.length} ${rows.length === 1 ? 'statement' : 'statements'}</div></div>
+    <div class="stat-card"><div class="label">Paid out</div><div class="value">${money(paid)}</div></div>
+    <div class="stat-card"><div class="label">Pending</div><div class="value">${money(pending)}</div></div>
+    <div class="stat-card"><div class="label">Most recent</div><div class="value" style="font-size:19px;">${latest ? monthLabel(latest.period_month) : '—'}</div>
+      <div class="delta" style="color:var(--slate-500);">${latest ? money(latest.net_payout) : ''}</div></div>`;
+}
+
+/* ---- download ----------------------------------------------------------
+   Built from the same scopedResiduals() the table renders, so what downloads
+   is exactly what is on screen — including the filters. A CSV that quietly
+   contains more than the table showed is a way to leak another partner's
+   numbers.
+   ------------------------------------------------------------------------ */
+function csvCell(v){
+  const str = v == null ? '' : String(v);
+
+  // Excel treats a leading =, +, - or @ as the start of a formula, so a notes
+  // field beginning with '=' would execute when someone opens their own
+  // statement. Prefixing with an apostrophe is the standard defence.
+  //
+  // But a negative amount also starts with '-', and quoting that turns
+  // -120.00 into text: the column stops being numeric and any SUM over it
+  // silently omits every adjustment. So a plain number is left alone and
+  // everything else that could start a formula is not.
+  const isPlainNumber = /^-?\d+(\.\d+)?$/.test(str);
+  const safe = (!isPlainNumber && /^[=+\-@]/.test(str)) ? "'" + str : str;
+
+  return /[",\n\r]/.test(safe) ? '"' + safe.replace(/"/g, '""') + '"' : safe;
+}
+
+function downloadResidualsCsv(){
+  const mine = residualsAreMine();
+  const rows = scopedResiduals();
+  if(rows.length === 0){ showToast('Nothing to download.', 'info'); return; }
+
+  const header = ['Month', ...(mine ? [] : ['Partner']), 'Merchants', 'Gross', 'Adjustments',
+                  'Net payout', 'Status', 'Paid on', 'Reference', 'Notes'];
+  const body = rows.map(r => [
+    monthLabel(r.period_month),
+    ...(mine ? [] : [partnerNameById(r.partner_id)]),
+    r.merchant_count == null ? '' : r.merchant_count,
+    r.gross_residual == null ? '' : Number(r.gross_residual).toFixed(2),
+    Number(r.adjustments || 0).toFixed(2),
+    Number(r.net_payout).toFixed(2),
+    r.status === 'paid' ? 'Paid' : 'Pending',
+    r.paid_on || '',
+    r.reference || '',
+    r.notes || ''
+  ]);
+
+  const csv = [header, ...body].map(line => line.map(csvCell).join(',')).join('\r\n');
+  const who = mine ? (currentUser.name || 'my') : 'all-partners';
+  downloadTextFile(`residuals-${who.toLowerCase().replace(/[^a-z0-9]+/g,'-')}-${todayISO()}.csv`,
+                   csv, 'text/csv;charset=utf-8');
+  showToast(`Downloaded ${rows.length} ${rows.length === 1 ? 'row' : 'rows'}.`, 'success');
+}
+
+function downloadTextFile(filename, contents, mime){
+  // ﻿ so Excel opens it as UTF-8 rather than mangling any non-ASCII name.
+  const blob = new Blob(['﻿' + contents], { type: mime || 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  // Freed on the next tick — revoking synchronously can cancel the download
+  // in some browsers before it has started reading the blob.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/* ---- logging a payout --------------------------------------------------
+   The right-hand drawer, same as every other record in this app.
+   ------------------------------------------------------------------------ */
+function residualPartnerOptions(selectedId){
+  // Agents and resellers get paid residuals; referral partners are commission
+  // and are deliberately not in this list.
+  const eligible = PARTNERS
+    .filter(p => ['agent','reseller','iso'].includes(p.partner_type) || p.residual_percentage)
+    .sort((a,b) => (a.name||'').localeCompare(b.name||''));
+  const list = eligible.length ? eligible : PARTNERS.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  return list.map(p => `<option value="${p.id}" ${p.id===selectedId?'selected':''}>${p.name}${p.residual_percentage ? ' — ' + p.residual_percentage : ''}</option>`).join('');
+}
+
+function thisMonthISO(){
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+
+function openResidualDrawer(payoutId){
+  const r = payoutId ? RESIDUALS.find(x => x.id === payoutId) : null;
+  document.getElementById('residualDrawer').innerHTML = `
+    <div class="drawer-head">
+      <div><h2>${r ? 'Edit payout' : 'Log residual payout'}</h2>
+        ${r ? `<span style="font-size:12px;color:var(--slate-400);">${partnerNameById(r.partner_id)} &middot; ${monthLabel(r.period_month)}</span>` : ''}</div>
+      <button class="drawer-close" onclick="closeResidualDrawer()">&times;</button>
+    </div>
+    <div class="drawer-body">
+      <div id="residualError" style="display:none;margin-bottom:12px;padding:10px 12px;background:var(--danger-bg);border:1px solid var(--danger-border);border-radius:8px;color:var(--red);font-size:12.5px;"></div>
+
+      <div class="field"><label>Partner</label>
+        <select id="rpPartner" ${r ? 'disabled' : ''}>${residualPartnerOptions(r ? r.partner_id : null)}</select>
+        ${r ? `<p style="font-size:11px;color:var(--slate-400);margin:6px 0 0;">The partner and month identify the record. To move it, delete this one and log a new one.</p>` : ''}
+      </div>
+
+      <div class="field"><label>Month</label>
+        <input id="rpMonth" type="month" value="${r ? String(r.period_month).slice(0,7) : thisMonthISO()}" ${r ? 'disabled' : ''}>
+      </div>
+
+      <div class="field"><label>Merchants <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
+        <input id="rpMerchants" type="number" min="0" step="1" value="${r && r.merchant_count != null ? r.merchant_count : ''}"></div>
+
+      <div class="field"><label>Gross residual <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
+        <input id="rpGross" type="number" step="0.01" value="${r && r.gross_residual != null ? r.gross_residual : ''}" placeholder="0.00"></div>
+
+      <div class="field"><label>Adjustments <span style="color:var(--slate-300);font-weight:400;">(chargebacks, corrections — use a negative)</span></label>
+        <input id="rpAdjust" type="number" step="0.01" value="${r ? (r.adjustments || 0) : '0'}" placeholder="0.00"></div>
+
+      <div class="field"><label>Net payout</label>
+        <input id="rpNet" type="number" step="0.01" value="${r ? r.net_payout : ''}" placeholder="0.00">
+        <p style="font-size:11px;color:var(--slate-400);margin:6px 0 0;">This is the figure the partner sees. Fill gross and adjustments and it works itself out.</p>
+      </div>
+
+      <div class="field"><label>Status</label>
+        <select id="rpStatus">
+          <option value="pending" ${!r || r.status==='pending'?'selected':''}>Pending</option>
+          <option value="paid" ${r && r.status==='paid'?'selected':''}>Paid</option>
+        </select></div>
+
+      <div class="field"><label>Paid on <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
+        <input id="rpPaidOn" type="date" value="${r && r.paid_on ? r.paid_on : ''}"></div>
+
+      <div class="field"><label>Reference <span style="color:var(--slate-300);font-weight:400;">(cheque no., ACH ref)</span></label>
+        <input id="rpReference" value="${r && r.reference ? r.reference : ''}"></div>
+
+      <div class="field"><label>Notes <span style="color:var(--slate-300);font-weight:400;">(the partner can see these)</span></label>
+        <textarea id="rpNotes" rows="3">${r && r.notes ? r.notes : ''}</textarea></div>
+    </div>
+    <div class="drawer-footer">
+      ${r ? `<button class="btn" style="flex:1;" onclick="deleteResidualPayout('${r.id}')">Delete</button>`
+          : `<button class="btn" style="flex:1;" onclick="closeResidualDrawer()">Cancel</button>`}
+      <button class="btn btn-accent" style="flex:1;" id="rpSaveBtn" onclick="saveResidualPayout()">${r ? 'Save changes' : 'Log payout'}</button>
+    </div>`;
+
+  // Net follows gross minus adjustments until someone types a net of their
+  // own, at which point it stops guessing and leaves their number alone.
+  const recalc = () => {
+    const net = document.getElementById('rpNet');
+    if(net.dataset.touched === '1') return;
+    const g = parseFloat(document.getElementById('rpGross').value);
+    const a = parseFloat(document.getElementById('rpAdjust').value) || 0;
+    if(isFinite(g)) net.value = (g + a).toFixed(2);
+  };
+  document.getElementById('rpGross').addEventListener('input', recalc);
+  document.getElementById('rpAdjust').addEventListener('input', recalc);
+  document.getElementById('rpNet').addEventListener('input', function(){ this.dataset.touched = '1'; });
+
+  document.getElementById('residualOverlay').classList.add('open');
+}
+
+function closeResidualDrawer(){ document.getElementById('residualOverlay').classList.remove('open'); }
+
+async function saveResidualPayout(){
+  const err = document.getElementById('residualError');
+  const btn = document.getElementById('rpSaveBtn');
+  const val = id => (document.getElementById(id) || {}).value;
+  const num = id => { const v = parseFloat(val(id)); return isFinite(v) ? v : null; };
+
+  const partnerId = val('rpPartner');
+  const month = val('rpMonth');
+  const net = num('rpNet');
+
+  const fail = msg => { err.textContent = msg; err.style.display = 'block'; };
+  err.style.display = 'none';
+
+  if(!partnerId) return fail('Choose a partner.');
+  if(!month) return fail('Choose a month.');
+  if(net === null) return fail('Enter the net payout. That is the figure the partner sees.');
+
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.textContent = 'Saving…';
+
+  const { error } = await supa.rpc('upsert_residual_payout', {
+    p_partner_id:     partnerId,
+    p_period_month:   month + '-01',
+    p_merchant_count: num('rpMerchants') === null ? null : Math.round(num('rpMerchants')),
+    p_gross:          num('rpGross'),
+    p_adjustments:    num('rpAdjust') || 0,
+    p_net:            net,
+    p_status:         val('rpStatus'),
+    p_paid_on:        val('rpPaidOn') || null,
+    p_reference:      val('rpReference'),
+    p_notes:          val('rpNotes')
+  });
+
+  btn.disabled = false;
+  btn.textContent = original;
+  if(error) return fail(error.message);
+
+  RESIDUALS = await loadResidualsFromSupabase();
+  closeResidualDrawer();
+  renderResidualsReport();
+  showToast('Payout saved. The partner can see it in their portal.', 'success');
+}
+
+async function deleteResidualPayout(id){
+  const r = RESIDUALS.find(x => x.id === id);
+  if(!r) return;
+  if(!confirm(`Delete the ${monthLabel(r.period_month)} payout for ${partnerNameById(r.partner_id)}? They will stop seeing it in their portal.`)) return;
+  const { error } = await supa.from('residual_payouts').delete().eq('id', id);
+  if(error){ showToast('Could not delete it: ' + error.message, 'error'); return; }
+  RESIDUALS = RESIDUALS.filter(x => x.id !== id);
+  closeResidualDrawer();
+  renderResidualsReport();
+  showToast('Payout deleted.', 'success');
+}
+
+/* ---- uploading a month -------------------------------------------------
+   Paste a block out of a spreadsheet. Everything is matched and shown back
+   BEFORE anything is written — a row whose partner name does not match must
+   never be quietly dropped, because the failure mode is an agent not being
+   paid and nobody finding out until they ask.
+   ------------------------------------------------------------------------ */
+let residualUploadRows = [];
+
+function openResidualUploadDrawer(){
+  document.getElementById('residualDrawer').innerHTML = `
+    <div class="drawer-head">
+      <div><h2>Upload a month</h2>
+        <span style="font-size:12px;color:var(--slate-400);">Paste straight out of a spreadsheet</span></div>
+      <button class="drawer-close" onclick="closeResidualDrawer()">&times;</button>
+    </div>
+    <div class="drawer-body">
+      <div class="field"><label>Month</label>
+        <input id="ruMonth" type="month" value="${thisMonthISO()}"></div>
+
+      <div class="field"><label>Default status</label>
+        <select id="ruStatus"><option value="pending">Pending</option><option value="paid">Paid</option></select></div>
+
+      <div class="field">
+        <label>Rows</label>
+        <p style="font-size:11.5px;color:var(--slate-500);margin:0 0 8px;">
+          One partner per line. Tab or comma separated, in this order — extra columns are ignored:<br>
+          <code style="font-size:11px;">Partner name &nbsp; Merchants &nbsp; Gross &nbsp; Adjustments &nbsp; Net</code><br>
+          Only the name and one amount are required. With just a name and one number, that number is the net.
+        </p>
+        <textarea id="ruRows" rows="9" placeholder="Jordan Reyes&#9;14&#9;2350.00&#9;-120.00&#9;2230.00
+Dana Whitfield&#9;8&#9;1180.50&#9;0&#9;1180.50"></textarea>
+      </div>
+
+      <button class="btn" style="width:100%;" onclick="previewResidualUpload()">Check these rows</button>
+
+      <div id="ruPreview" style="margin-top:16px;"></div>
+    </div>
+    <div class="drawer-footer">
+      <button class="btn" style="flex:1;" onclick="closeResidualDrawer()">Cancel</button>
+      <button class="btn btn-accent" style="flex:1;" id="ruCommitBtn" onclick="commitResidualUpload()" disabled>Check the rows first</button>
+    </div>`;
+  residualUploadRows = [];
+  document.getElementById('residualOverlay').classList.add('open');
+}
+
+// '$1,234.50' / '(120.00)' / '-120' all mean what they look like. Accounting
+// software exports negatives in brackets, and a pasted currency column keeps
+// its symbols and separators.
+function parseMoney(raw){
+  if(raw == null) return null;
+  const raw0 = String(raw).trim();
+  if(!raw0) return null;                      // column simply absent
+
+  // Symbols first, brackets second. Excel writes a negative currency as
+  // "$(45.10)" as often as "($45.10)", and testing for brackets before the
+  // dollar sign has come off means the first of those never matches — it fell
+  // through as junk and the row was rejected as "not a number".
+  let t = raw0.replace(/[$\s,]/g, '');
+  if(!t) return NaN;                          // something was there, but not a number
+
+  let negative = false;
+  if(/^\(.*\)$/.test(t)){ negative = true; t = t.slice(1, -1); }
+  if(t.startsWith('-')){ negative = true; t = t.slice(1); }
+  else if(t.startsWith('+')){ t = t.slice(1); }
+
+  if(!/^\d*\.?\d+$/.test(t)) return NaN;   // NaN means "there was something here and it was not a number"
+  const v = parseFloat(t);
+  if(!isFinite(v)) return NaN;
+  return negative ? -v : v;
+}
+
+function findPartnerByName(name){
+  const key = String(name || '').trim().toLowerCase();
+  if(!key) return null;
+  let hit = PARTNERS.filter(p => (p.name || '').trim().toLowerCase() === key);
+  if(hit.length === 1) return { partner: hit[0] };
+  if(hit.length > 1) return { ambiguous: hit.length };
+  // An email is unambiguous where a name might not be, so it is worth trying.
+  hit = PARTNERS.filter(p => (p.email || '').trim().toLowerCase() === key);
+  if(hit.length === 1) return { partner: hit[0] };
+  return null;
+}
+
+function previewResidualUpload(){
+  const text = document.getElementById('ruRows').value;
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const out = document.getElementById('ruPreview');
+  const btn = document.getElementById('ruCommitBtn');
+  residualUploadRows = [];
+
+  if(lines.length === 0){
+    out.innerHTML = `<div class="stub-panel" style="padding:20px;">Nothing pasted yet.</div>`;
+    btn.disabled = true; btn.textContent = 'Check the rows first';
+    return;
+  }
+
+  const parsed = lines.map((line, i) => {
+    const cells = line.split(/\t|,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map(c => c.trim().replace(/^"|"$/g, ''));
+    const name = cells[0];
+
+    // Skip a header row rather than reporting it as an unmatched partner.
+    if(i === 0 && /^(partner|agent|name)$/i.test(name || '')) return { skip:'header', line };
+
+    const match = findPartnerByName(name);
+    const nums = cells.slice(1).map(parseMoney);
+
+    let merchants = null, gross = null, adjustments = 0, net = null;
+    const given = cells.slice(1).filter(c => c !== '').length;
+
+    if(given === 1){
+      net = nums[0];
+    } else {
+      merchants = nums[0];
+      gross = nums[1] == null ? null : nums[1];
+      adjustments = nums[2] == null || isNaN(nums[2]) ? 0 : nums[2];
+      net = nums[3] == null ? null : nums[3];
+      // Four columns is name/merchants/gross/net without adjustments.
+      if(net === null && gross !== null && !isNaN(gross)) net = gross + adjustments;
+    }
+
+    const problems = [];
+    if(!match) problems.push('no partner matches "' + (name || '(blank)') + '"');
+    else if(match.ambiguous) problems.push(match.ambiguous + ' partners share that name — log this one by hand');
+    if(net === null) problems.push('no amount found');
+    else if(isNaN(net)) problems.push('the amount is not a number');
+    if(gross !== null && isNaN(gross)) problems.push('gross is not a number');
+    if(merchants !== null && isNaN(merchants)) problems.push('merchant count is not a number');
+
+    return {
+      line,
+      partner: match && match.partner ? match.partner : null,
+      merchants: merchants === null || isNaN(merchants) ? null : Math.round(merchants),
+      gross: gross === null || isNaN(gross) ? null : gross,
+      adjustments: isNaN(adjustments) ? 0 : adjustments,
+      net,
+      problems
+    };
+  }).filter(r => !r.skip);
+
+  const ok = parsed.filter(r => r.problems.length === 0);
+  const bad = parsed.filter(r => r.problems.length > 0);
+  residualUploadRows = ok;
+
+  const month = document.getElementById('ruMonth').value;
+  const existing = ok.filter(r => RESIDUALS.some(x =>
+    x.partner_id === r.partner.id && String(x.period_month).slice(0,7) === month));
+
+  out.innerHTML = `
+    ${bad.length ? `
+      <div style="padding:11px 12px;background:var(--danger-bg);border:1px solid var(--danger-border);border-radius:8px;margin-bottom:12px;">
+        <div style="font-size:12.5px;font-weight:700;color:var(--red);margin-bottom:6px;">${bad.length} ${bad.length===1?'row needs':'rows need'} attention — ${bad.length===1?'it':'they'} will not be uploaded</div>
+        ${bad.map(r => `<div style="font-size:11.5px;color:var(--red);margin-top:4px;">
+          <code style="font-size:11px;">${(r.line||'').slice(0,60)}</code><br>&nbsp;&nbsp;${r.problems.join('; ')}</div>`).join('')}
+      </div>` : ''}
+
+    ${existing.length ? `
+      <div style="padding:11px 12px;background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:8px;margin-bottom:12px;font-size:12px;color:var(--warn-text);">
+        ${existing.length} of these already have a ${monthLabel(month + '-01')} payout. Uploading replaces ${existing.length===1?'it':'them'} rather than adding a second.
+      </div>` : ''}
+
+    ${ok.length ? `
+      <table style="font-size:12px;">
+        <thead><tr><th>Partner</th><th>Merch.</th><th>Gross</th><th>Adj.</th><th>Net</th></tr></thead>
+        <tbody>${ok.map(r => `<tr>
+          <td>${r.partner.name}</td>
+          <td>${r.merchants == null ? '—' : r.merchants}</td>
+          <td>${r.gross == null ? '—' : money(r.gross)}</td>
+          <td>${r.adjustments ? money(r.adjustments) : '—'}</td>
+          <td><b>${money(r.net)}</b></td></tr>`).join('')}
+        </tbody>
+        <tfoot><tr><td colspan="4" style="text-align:right;"><b>Total</b></td>
+          <td><b>${money(ok.reduce((s,r)=>s+r.net,0))}</b></td></tr></tfoot>
+      </table>` : `<div class="stub-panel" style="padding:20px;">No usable rows.</div>`}`;
+
+  btn.disabled = ok.length === 0;
+  btn.textContent = ok.length === 0 ? 'Nothing to upload'
+    : `Upload ${ok.length} ${ok.length===1?'payout':'payouts'}`;
+}
+
+async function commitResidualUpload(){
+  if(residualUploadRows.length === 0) return;
+  const month = document.getElementById('ruMonth').value;
+  const status = document.getElementById('ruStatus').value;
+  const btn = document.getElementById('ruCommitBtn');
+  btn.disabled = true;
+  const original = btn.textContent;
+
+  let done = 0;
+  const failures = [];
+  for(const r of residualUploadRows){
+    btn.textContent = `Uploading ${done + 1} of ${residualUploadRows.length}…`;
+    const { error } = await supa.rpc('upsert_residual_payout', {
+      p_partner_id:     r.partner.id,
+      p_period_month:   month + '-01',
+      p_merchant_count: r.merchants,
+      p_gross:          r.gross,
+      p_adjustments:    r.adjustments || 0,
+      p_net:            r.net,
+      p_status:         status,
+      p_paid_on:        null,
+      p_reference:      null,
+      p_notes:          null
+    });
+    if(error) failures.push(r.partner.name + ': ' + error.message);
+    else done++;
+  }
+
+  RESIDUALS = await loadResidualsFromSupabase();
+  btn.disabled = false;
+  btn.textContent = original;
+
+  if(failures.length){
+    // Named, not counted. "3 failed" leaves someone to work out which three.
+    document.getElementById('ruPreview').innerHTML =
+      `<div style="padding:11px 12px;background:var(--danger-bg);border:1px solid var(--danger-border);border-radius:8px;">
+        <div style="font-size:12.5px;font-weight:700;color:var(--red);margin-bottom:6px;">${done} uploaded, ${failures.length} failed</div>
+        ${failures.map(f => `<div style="font-size:11.5px;color:var(--red);">${f}</div>`).join('')}
+      </div>`;
+    renderResidualsReport();
+    return;
+  }
+
+  closeResidualDrawer();
+  renderResidualsReport();
+  showToast(`${done} ${done===1?'payout':'payouts'} uploaded for ${monthLabel(month + '-01')}.`, 'success');
+}
+
 function showView(view, fromHistory){
   // Hard gate, checked on every navigation (not just at login/role-switch) —
   // this is what actually stops a non-admin from landing on these views if
@@ -5356,6 +6008,7 @@ function showView(view, fromHistory){
   if(view === 'applications') renderApplicationsTable();
   if(view === 'coldemail') renderColdEmailTable();
   if(view === 'newsletter') renderNewsletterView();
+  if(view === 'residuals') renderResidualsReport();
   if(view === 'reportsubs') renderSubscriptionReport();
   if(view === 'collections') renderCollectionsReport();
   if(view === 'lendingleads') renderLendingLeadsBoard();
@@ -12930,6 +13583,13 @@ document.getElementById('calNextBtn').addEventListener('click', function(){
   calViewDate = new Date(calViewDate.getFullYear(), calViewDate.getMonth()+1, 1);
   renderCalendar();
 });
+document.getElementById('residualsYearFilter').addEventListener('change', function(){
+  residualYearFilter = this.value; renderResidualsReport();
+});
+document.getElementById('residualsStatusFilter').addEventListener('change', function(){
+  residualStatusFilter = this.value; renderResidualsReport();
+});
+
 document.getElementById('calSyncBtn').addEventListener('click', function(){ syncGoogleCalendar(false); });
 document.getElementById('calTodayBtn').addEventListener('click', function(){
   calViewDate = new Date();
