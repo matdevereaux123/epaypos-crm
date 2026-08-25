@@ -2233,7 +2233,7 @@
         <div class="panel">
           <div class="panel-head">
             <h2>Connected calendars</h2>
-            <button class="btn btn-accent btn-sm" id="addCalendarBtn">+ Connect calendar</button>
+            <button class="btn btn-accent btn-sm" id="addCalendarBtn">Connect my Google Calendar</button>
           </div>
           <div id="connectedCalendarsList"></div>
         </div>
@@ -3043,8 +3043,13 @@ const INTEGRATION_DEFS = [
     webhookNote:'This should point at your own server (e.g. a Supabase Edge Function) — never put a Claude API key directly in this front-end file.' },
   { key:'google_calendar', name:'Google Calendar', desc:'Syncs the Calendar tab to team members\' real Google Calendars for scheduling.',
     icon:'<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
-    fields:[{key:'client_id', label:'Google OAuth Client ID', type:'text'}, {key:'client_secret', label:'Google OAuth Client Secret', type:'password'}],
-    webhookNote:'Requires a Google Cloud project with the Calendar API enabled and an OAuth consent screen. Each team member then connects their own account below (per-user OAuth, not one shared login) — manage who\'s connected under "Connected calendars" further down this page.' },
+    // No client secret field, deliberately — same reasoning as outbound
+    // email. Anything stored in `integrations` is readable by anyone with
+    // manageSettings, and the secret is what lets a caller mint tokens for
+    // the whole team's calendars. It lives in the edge functions' own
+    // environment (GOOGLE_CLIENT_SECRET) and never comes back to the browser.
+    fields:[],
+    webhookNote:'Needs a Google Cloud project with the Calendar API enabled and an OAuth consent screen, then GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET set on the google-calendar and google-calendar-callback functions. Each team member signs in with their own Google account under "Connected calendars" below — per-user, not one shared login. Nobody, including an admin, can read anyone\'s calendar token from in here.' },
   { key:'outbound_email', name:'Outbound Email', desc:'Sends application links, welcome notes and tracking updates through Resend.',
     icon:'<path d="M22 6c0-1.1-.9-2-2-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6z"/><polyline points="22 6 12 13 2 6"/>',
     // No API key field, deliberately. Whatever is stored here is readable by
@@ -12469,58 +12474,140 @@ function renderIntegrationsList(){
   }).join('');
 }
 
+/* =========================================================================
+   GOOGLE CALENDAR
+   The browser never holds a Google token. It asks the google-calendar edge
+   function to act on its behalf, and that function is the only thing with
+   the client secret and the stored refresh token. See
+   database/35_google_calendar_oauth.sql for why that split is not optional.
+   ========================================================================= */
+async function callGoogleCalendar(action, extra){
+  // supabase-js reports a non-2xx as "non-2xx status" and throws the body
+  // away, so the real reason — not configured, link revoked, whatever Google
+  // said — never arrives. Same reason sendOutboundEmail() uses fetch.
+  try {
+    const { data: { session } } = await supa.auth.getSession();
+    const res = await fetch(SUPABASE_URL + '/functions/v1/google-calendar', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + (session ? session.access_token : SUPABASE_ANON_KEY)
+      },
+      body: JSON.stringify(Object.assign({ action }, extra || {}))
+    });
+    const raw = await res.text();
+    let parsed = null;
+    try { parsed = JSON.parse(raw); } catch(e){ /* not JSON, keep raw */ }
+    if(!res.ok) return { error: (parsed && parsed.error) || raw || ('Request failed (' + res.status + ')') };
+    return parsed || {};
+  } catch(e){
+    return { error: e.message || 'Could not reach the calendar service' };
+  }
+}
+
+// Whether the signed-in user has linked their own Google account. Read from
+// CONNECTED_CALENDARS rather than a round trip, since it is already loaded.
+function myConnectedCalendar(){
+  return CONNECTED_CALENDARS.find(c => c.user_id && c.user_id === currentUser.id) || null;
+}
+
+async function connectMyGoogleCalendar(){
+  // The window has to be opened inside the click, before any await — open it
+  // after the fetch resolves and every popup blocker treats it as unsolicited.
+  const win = window.open('', 'epayGoogleCalendar', 'width=520,height=680');
+  if(!win){
+    showToast('Your browser blocked the Google sign-in window. Allow popups for this site and try again.', 'error');
+    return;
+  }
+  win.document.write('<p style="font-family:sans-serif;padding:24px;color:#22406F;">Opening Google\u2026</p>');
+
+  const out = await callGoogleCalendar('connect_url');
+  if(out.error){
+    win.close();
+    showToast(out.error, 'error');
+    return;
+  }
+  win.location = out.url;
+}
+
+// The callback page posts back when it is done, so the list refreshes without
+// the user having to reload.
+window.addEventListener('message', async function(e){
+  if(!e.data || e.data.source !== 'epay-google-calendar') return;
+  if(!e.data.ok) return;
+  CONNECTED_CALENDARS = await loadConnectedCalendarsFromSupabase();
+  if(document.getElementById('connectedCalendarsList')) renderConnectedCalendarsList();
+  showToast('Google Calendar connected.', 'success');
+});
+
+async function disconnectMyGoogleCalendar(){
+  if(!confirm('Disconnect your Google Calendar? Meetings already on it stay there, but new ones will not sync.')) return;
+  const out = await callGoogleCalendar('disconnect');
+  if(out.error){ showToast(out.error, 'error'); return; }
+  CONNECTED_CALENDARS = await loadConnectedCalendarsFromSupabase();
+  renderConnectedCalendarsList();
+  showToast('Google Calendar disconnected.', 'success');
+}
+
 function renderConnectedCalendarsList(){
-  document.getElementById('connectedCalendarsList').innerHTML = CONNECTED_CALENDARS.map(c => `
+  const mine = myConnectedCalendar();
+
+  // Your own row first, and it is the only one with a Disconnect button —
+  // unlinking somebody else's Google account is not yours to do, and the RLS
+  // policy in migration 35 refuses it anyway.
+  const rows = CONNECTED_CALENDARS.map(c => {
+    const isMine = !!(c.user_id && c.user_id === currentUser.id);
+    const linked = !!c.google_email;
+    return `
     <div class="integration-row">
       <span class="integration-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1"/></svg></span>
       <div class="integration-info">
-        <div class="ii-name">${c.name} <span class="integration-status ${c.connected ? 'connected':'not-connected'}">${c.connected ? 'Connected' : 'Not connected'}</span></div>
-        <div class="ii-desc">${c.email}</div>
+        <div class="ii-name">${c.name}${isMine ? ' <span style="color:var(--slate-300);font-weight:400;">(you)</span>' : ''}
+          <span class="integration-status ${linked && c.connected ? 'connected':'not-connected'}">${linked && c.connected ? 'Google linked' : 'Not linked'}</span></div>
+        <div class="ii-desc">${c.google_email || c.email || '&mdash;'}${linked && c.connected_at ? ' &middot; since ' + new Date(c.connected_at).toLocaleDateString() : ''}</div>
       </div>
-      <button class="btn btn-sm" onclick="toggleCalendarConnection('${c.id}')">${c.connected ? 'Disconnect' : 'Connect'}</button>
-    </div>
-  `).join('') + (CONNECTED_CALENDARS.length === 0 ? '<div class="stub-panel" style="padding:30px;">No calendars added yet.</div>' : '');
+      ${isMine && linked
+        ? `<button class="btn btn-sm" onclick="disconnectMyGoogleCalendar()">Disconnect</button>`
+        : (linked ? '' : `<button class="btn btn-sm" onclick="removePlaceholderCalendar('${c.id}')">Remove</button>`)}
+    </div>`;
+  }).join('');
+
+  const own = mine
+    ? ''
+    : `<div class="integration-row" style="background:var(--slate-50);">
+         <span class="integration-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>
+         <div class="integration-info">
+           <div class="ii-name">Your Google Calendar</div>
+           <div class="ii-desc">Sign in with Google once. Meetings you schedule here then appear on your own calendar.</div>
+         </div>
+         <button class="btn btn-accent btn-sm" onclick="connectMyGoogleCalendar()">Connect with Google</button>
+       </div>`;
+
+  document.getElementById('connectedCalendarsList').innerHTML = own + rows
+    + (CONNECTED_CALENDARS.length === 0 && mine ? '<div class="stub-panel" style="padding:30px;">No calendars linked yet.</div>' : '');
 }
 
-async function toggleCalendarConnection(id){
-  const c = CONNECTED_CALENDARS.find(x => x.id === id);
-  if(!c) return;
-  const connected = !c.connected;
-  const { error } = await supa.from('connected_calendars').update({ connected }).eq('id', id);
-  if(error){ alert('Could not update calendar: ' + error.message); return; }
-  c.connected = connected;
+// The old flow let anyone type a name and an email and called it a calendar.
+// Those rows still exist and still hold meetings, so they can be tidied away
+// but not "connected" — connecting now means signing in as that person.
+async function removePlaceholderCalendar(id){
+  if(!confirm('Remove this calendar? Meetings assigned to it stay in the CRM but lose their calendar label.')) return;
+  const { error } = await supa.from('connected_calendars').delete().eq('id', id);
+  if(error){ showToast('Could not remove it: ' + error.message, 'error'); return; }
+  CONNECTED_CALENDARS = CONNECTED_CALENDARS.filter(c => c.id !== id);
   renderConnectedCalendarsList();
 }
+
+
 
 document.getElementById('addCalendarBtn').addEventListener('click', function(){
-  document.getElementById('integrationDrawer').innerHTML = `
-    <div class="drawer-head">
-      <div><h2>Connect a calendar</h2></div>
-      <button class="drawer-close" onclick="closeIntegrationConfig()">&times;</button>
-    </div>
-    <div class="drawer-body">
-      <p style="font-size:12.5px;color:var(--slate-500);margin:0 0 16px;">Each team member connects their own Google account via OAuth once the Google Calendar integration above is wired up server-side. For now, add their name so meetings can be assigned to their calendar.</p>
-      <div class="field"><label>Name</label><input id="calName" placeholder="e.g. Jordan Reyes"></div>
-      <div class="field"><label>Google account email</label><input id="calEmail" type="email" placeholder="name@epaypos.net"></div>
-    </div>
-    <div class="drawer-footer">
-      <button class="btn" style="flex:1;" onclick="closeIntegrationConfig()">Cancel</button>
-      <button class="btn btn-accent" style="flex:1;" onclick="saveNewCalendar()">Connect</button>
-    </div>
-  `;
-  document.getElementById('integrationOverlay').classList.add('open');
+  if(myConnectedCalendar()){
+    showToast('Your Google Calendar is already connected.', 'info');
+    return;
+  }
+  connectMyGoogleCalendar();
 });
-
-async function saveNewCalendar(){
-  const name = document.getElementById('calName').value.trim();
-  const email = document.getElementById('calEmail').value.trim();
-  if(!name) return;
-  const { data, error } = await supa.from('connected_calendars').insert({ name, email: email || '—', connected: true }).select().single();
-  if(error){ alert('Could not add calendar: ' + error.message); return; }
-  CONNECTED_CALENDARS.push(data);
-  closeIntegrationConfig();
-  renderConnectedCalendarsList();
-}
 
 function openIntegrationConfig(key){
   const def = INTEGRATION_DEFS.find(d => d.key === key);
@@ -12742,26 +12829,52 @@ async function saveMeeting(eventId){
     zoom_link: document.getElementById('mtZoomLink').value.trim(),
     notes: document.getElementById('mtNotes').value.trim(),
   };
+  let savedId = eventId;
   if(eventId){
     const { error } = await supa.from('calendar_events').update(fields).eq('id', eventId);
-    if(error){ alert('Could not save meeting: ' + error.message); return; }
+    if(error){ showToast('Could not save meeting: ' + error.message, 'error'); return; }
     Object.assign(CALENDAR_EVENTS.find(e => e.id === eventId), fields);
   } else {
     const { data, error } = await supa.from('calendar_events').insert(fields).select().single();
-    if(error){ alert('Could not schedule meeting: ' + error.message); return; }
+    if(error){ showToast('Could not schedule meeting: ' + error.message, 'error'); return; }
     CALENDAR_EVENTS.unshift(data);
+    savedId = data.id;
   }
   closeMeetingDrawer();
   renderCalendar();
+
+  // The meeting is saved either way. Pushing it to Google is a second,
+  // failable step, so it happens after the drawer closes and a failure is
+  // reported without pretending the meeting did not save.
+  if(myConnectedCalendar() && savedId){
+    const out = await callGoogleCalendar('push_event', { eventId: savedId });
+    if(out.error){
+      showToast('Saved, but Google Calendar rejected it: ' + out.error, 'error');
+    } else {
+      const row = CALENDAR_EVENTS.find(e => e.id === savedId);
+      if(row){ row.google_event_id = out.googleEventId; row.google_sync_error = null; }
+      showToast('Meeting saved and added to your Google Calendar.', 'success');
+    }
+  }
   if(document.getElementById('view-coldleads').style.display !== 'none') renderColdLeadsTable();
 }
 
 async function deleteMeeting(eventId){
+  // Read the Google id before the row goes, or there is no way to find the
+  // copy on Google afterwards and it is orphaned on the calendar forever.
+  const existing = CALENDAR_EVENTS.find(e => e.id === eventId);
+  const googleEventId = existing && existing.google_event_id;
+
   const { error } = await supa.from('calendar_events').delete().eq('id', eventId);
-  if(error){ alert('Could not delete meeting: ' + error.message); return; }
+  if(error){ showToast('Could not delete meeting: ' + error.message, 'error'); return; }
   CALENDAR_EVENTS = CALENDAR_EVENTS.filter(e => e.id !== eventId);
   closeMeetingDrawer();
   renderCalendar();
+
+  if(googleEventId && myConnectedCalendar()){
+    const out = await callGoogleCalendar('delete_event', { googleEventId });
+    if(out.error) showToast('Removed here, but it is still on your Google Calendar: ' + out.error, 'error');
+  }
 }
 
 document.getElementById('newMeetingBtn').addEventListener('click', function(){
