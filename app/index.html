@@ -4774,8 +4774,8 @@ async function renderApplicationLandingPage(slug){
 const LEAD_FORM_FIELDS = [
   { id:'lfBusinessName',  label:'Business name', required:true },
   { id:'lfContactName',   label:'Your name',     required:true },
-  { id:'lfEmail',         label:'Email', type:'email' },
-  { id:'lfPhone',         label:'Phone', type:'tel' },
+  { id:'lfEmail',         label:'Email', type:'email', required:true },
+  { id:'lfPhone',         label:'Phone', type:'tel', required:true },
   { id:'lfBusinessAddress', label:'Business address' },
   { id:'lfBusinessType',  label:'What does the business do?' },
   { id:'lfVolume',        label:'Roughly what do you process a month?' }
@@ -4821,8 +4821,9 @@ async function submitLeadFormLanding(slug){
   const btn = document.getElementById('lfSubmitBtn');
   err.style.display = 'none';
 
-  if(!v('lfBusinessName') || !v('lfContactName')){
-    err.textContent = 'Please give us the business name and your name.';
+  const missing = LEAD_FORM_FIELDS.filter(f => f.required && !v(f.id)).map(f => f.label);
+  if(missing.length){
+    err.textContent = 'Please fill in: ' + missing.join(', ') + '.';
     err.style.display = 'block';
     return;
   }
@@ -4998,14 +4999,32 @@ async function renderReferralLandingPage(slug){
 async function submitReferralLead(partnerId){
   const business_name = document.getElementById('lpBusiness').value.trim();
   const contact_name = document.getElementById('lpContact').value.trim();
-  if(!business_name || !contact_name){ alert('Please fill in your business name and your name.'); return; }
+  const phone = document.getElementById('lpPhone').value.trim();
+  const email = document.getElementById('lpEmail').value.trim();
+
+  // Email and phone are required on every sendable form. A lead nobody can
+  // reach is not a lead — and the old version accepted one silently, storing
+  // an em dash where the contact details should be.
+  const missing = [];
+  if(!business_name) missing.push('business name');
+  if(!contact_name)  missing.push('your name');
+  if(!email)         missing.push('email');
+  if(!phone)         missing.push('phone');
+  if(missing.length){
+    alert('Please fill in: ' + missing.join(', ') + '.');
+    return;
+  }
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+    alert('That does not look like a valid email address.');
+    return;
+  }
 
   const { error } = await supa.rpc('public_submit_referral_lead', {
     p_partner_id: partnerId,
     p_business_name: business_name,
     p_contact_name: contact_name,
-    p_phone: document.getElementById('lpPhone').value.trim(),
-    p_email: document.getElementById('lpEmail').value.trim(),
+    p_phone: phone,
+    p_email: email,
     p_business_address: document.getElementById('lpAddress').value.trim(),
     p_est_volume: document.getElementById('lpVolume').value.trim(),
     p_notes: document.getElementById('lpNotes').value.trim(),
