@@ -723,21 +723,37 @@
   .cal-nav{display:flex;align-items:center;gap:10px;}
   .cal-grid-head{display:grid;grid-template-columns:repeat(7,1fr);border-bottom:1px solid var(--line);}
   .cal-grid-head span{padding:10px 8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--slate-500);text-align:center;}
-  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);}
+  /* Rows share the grid's height equally and never grow to fit their
+     contents. minmax(0,1fr) rather than 1fr: a bare 1fr is min-content by
+     default, so one busy day would still stretch its whole row and push the
+     month off the bottom of the screen — which is exactly what it did. */
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);grid-auto-rows:minmax(0,1fr);}
   .cal-day{
-    min-height:96px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);
+    min-height:0;overflow:hidden;display:flex;flex-direction:column;
+    border-right:1px solid var(--line);border-bottom:1px solid var(--line);
     padding:6px;cursor:pointer;transition:background .12s ease;
   }
+  /* Holds the chips. Clips rather than scrolls — the day drawer is where you
+     read a day, the cell is only a glance. */
+  .cal-day-events{flex:1;min-height:0;overflow:hidden;}
   .cal-day:nth-child(7n){border-right:none;}
   .cal-day:hover{background:var(--surface-3);}
   .cal-day.outside{background:var(--surface-3);color:var(--slate-300);}
   .cal-day.today .cal-day-num{background:var(--brand-accent-2);color:#fff;}
   .cal-day-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;font-size:12px;font-weight:600;color:var(--navy-700);}
+  /* line-height is explicit so a chip is exactly 20px tall including its
+     margin (3 + 2 + 13 + 2). chipsPerCell() divides by that number, and
+     leaving it to the default meant the pitch varied with the platform's font
+     metrics — the last chip in a busy cell came out half-cut. */
   .cal-event-chip{
-    display:block;font-size:10.5px;font-weight:600;padding:2px 6px;border-radius:5px;margin-top:3px;
+    display:block;font-size:10.5px;line-height:13px;font-weight:600;padding:2px 6px;
+    border-radius:5px;margin-top:3px;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;
   }
-  .cal-event-more{font-size:10px;color:var(--slate-500);margin-top:2px;padding:0 6px;}
+  /* Pinned to the bottom of the cell so it stays visible however many chips
+     are above it. */
+  .cal-event-more{font-size:10px;line-height:12px;color:var(--slate-500);margin-top:auto;padding:2px 6px 0;flex:none;}
+  .cal-day-num{flex:none;}
 
   .ai-enrich-chip{
     display:flex;align-items:center;gap:7px;padding:8px 12px;border:1px solid var(--line);border-radius:20px;
@@ -12762,6 +12778,84 @@ function setCalFilter(id){
   renderCalendar();
 }
 
+/* -------------------------------------------------------------------------
+   SIZING
+   The month used to run off the bottom of the page: cells had a min-height
+   and no cap, so a day with several events stretched its whole row.
+
+   Rather than guess at a pixel height for the grid, this measures the space
+   actually left below the toolbar and fits the month into it. That survives
+   any window size, a collapsed sidebar, browser zoom and the laptop-vs-
+   monitor difference, none of which a hard-coded number does.
+   ------------------------------------------------------------------------- */
+const CAL_BOTTOM_GAP = 4;    // rounding slack, nothing more
+// The floor. Below this the rows are too short to read and scrolling a little
+// is the better trade. Set so a 1280x720 window still fits exactly — that is
+// the smallest screen anyone here is likely to work on, and it was scrolling
+// by 15px at the old value.
+const CAL_MIN_HEIGHT  = 340;
+
+function fitCalendarGrid(){
+  const grid = document.getElementById('calGrid');
+  if(!grid) return null;
+  const top = grid.getBoundingClientRect().top;
+  // Hidden (display:none) reports 0. Nothing sensible to measure against, so
+  // leave the height alone and let the next render — when it is visible — do it.
+  if(top <= 0) return null;
+
+  // .main carries bottom padding (60px, dropping at each breakpoint). Sizing
+  // the grid to the viewport while ignoring it leaves exactly that much
+  // document hanging below the fold — the month looked like it fitted and the
+  // page still scrolled. Read rather than hard-coded, so the responsive
+  // values stay correct on their own.
+  const main = grid.closest('.main');
+  const padBottom = main ? (parseFloat(getComputedStyle(main).paddingBottom) || 0) : 0;
+
+  const available = window.innerHeight - top - padBottom - CAL_BOTTOM_GAP;
+  let height = Math.max(CAL_MIN_HEIGHT, available);
+  grid.style.height = height + 'px';
+
+  // One correction pass against the real document height. Panel margins,
+  // borders and whatever else sits between the grid and the bottom of the
+  // page all contribute, and enumerating them here would mean re-finding
+  // every one of them the next time the surrounding markup changes. Measuring
+  // the result instead is both shorter and correct by construction.
+  //
+  // Reading scrollHeight forces a reflow, which is why this runs once on
+  // render rather than in a loop.
+  const overflow = document.documentElement.scrollHeight - window.innerHeight;
+  if(overflow > 0){
+    height = Math.max(CAL_MIN_HEIGHT, height - overflow);
+    grid.style.height = height + 'px';
+  }
+
+  return height;
+}
+
+// How many chips actually fit in a row of this height. Measured against the
+// real CSS: a chip is 10.5px text in a 2px/6px box with a 3px top margin, the
+// date circle is 22px, and the "+N more" line needs its own space.
+function chipsPerCell(rowHeight){
+  const CHIP      = 20;  // 3 margin + 2 padding + 13 line-height + 2 padding
+  const DAY_NUM   = 22;  // the date circle
+  const MORE_LINE = 14;  // 2 padding + 12 line-height
+  const PADDING   = 12;  // the cell's own 6px top and bottom
+  // Zero is a legitimate answer on a short window. Forcing one through anyway
+  // just draws a chip with its bottom half cut off, which reads as a rendering
+  // fault rather than as "there is no room here".
+  return Math.max(0, Math.floor((rowHeight - DAY_NUM - PADDING - MORE_LINE) / CHIP));
+}
+
+// The grid is sized from the viewport, so it has to be re-fitted when that
+// changes. Debounced — resize fires continuously while a window is dragged.
+let calResizeTimer = null;
+window.addEventListener('resize', function(){
+  const view = document.getElementById('view-calendar');
+  if(!view || view.style.display === 'none') return;
+  clearTimeout(calResizeTimer);
+  calResizeTimer = setTimeout(renderCalendar, 120);
+});
+
 function renderCalendar(){
   renderCalendarFilter();
   const year = calViewDate.getFullYear();
@@ -12791,6 +12885,12 @@ function renderCalendar(){
 
   // Events carry calendar_id. This read e.calendar, which is undefined on
   // every row, so picking any single calendar showed an empty month.
+  // Sized before the cells are built, so the chip count is decided against the
+  // row height the cells will actually get.
+  const gridHeight = fitCalendarGrid();
+  const rows = cells.length / 7;
+  const maxChips = gridHeight ? chipsPerCell(gridHeight / rows) : 3;
+
   const scoped = CALENDAR_EVENTS.filter(e => calFilter === 'all' || e.calendar_id === calFilter);
 
   document.getElementById('calGrid').innerHTML = cells.map(c => {
@@ -12799,17 +12899,25 @@ function renderCalendar(){
     }
     const dayEvents = scoped.filter(e => e.date === c.dateStr).sort(compareEventTime);
     const isToday = c.dateStr === todayStr;
-    const visible = dayEvents.slice(0,3);
+    // Showing all but one and saying "+1 more" wastes a line to save nothing,
+    // so the last slot holds the last event rather than a count of it.
+    const visible = dayEvents.length === maxChips + 1 ? dayEvents : dayEvents.slice(0, maxChips);
     const overflow = dayEvents.length - visible.length;
+    // With nothing shown above it, "+3 more" is meaningless — more than what?
+    const overflowLabel = visible.length === 0
+      ? overflow + (overflow === 1 ? ' event' : ' events')
+      : '+' + overflow + ' more';
     return `
       <div class="cal-day ${isToday?'today':''}" onclick="openDayDrawer('${c.dateStr}')">
         <span class="cal-day-num">${c.day}</span>
+        <div class="cal-day-events">
         ${visible.map(e => {
           const mt = meetingType(e.type);
           const when = (e.all_day || !e.time) ? 'All day' : e.time;
           return `<span class="cal-event-chip" style="background:${mt.color}22;color:${mt.color};" onclick="event.stopPropagation(); openDayDrawer('${c.dateStr}');">${when} ${e.title}</span>`;
         }).join('')}
-        ${overflow > 0 ? `<div class="cal-event-more">+${overflow} more</div>` : ''}
+        </div>
+        ${overflow > 0 ? `<div class="cal-event-more">${overflowLabel}</div>` : ''}
       </div>`;
   }).join('');
 }
