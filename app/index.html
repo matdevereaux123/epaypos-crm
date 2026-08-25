@@ -3049,8 +3049,9 @@ const INTEGRATION_DEFS = [
     // the whole team's calendars. It lives in the edge functions' own
     // environment (GOOGLE_CLIENT_SECRET) and never comes back to the browser.
     fields:[],
-    webhookNote:'Needs a Google Cloud project with the Calendar API enabled and an OAuth consent screen, then GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET set on the google-calendar and google-calendar-callback functions. Each team member signs in with their own Google account under "Connected calendars" below — per-user, not one shared login. Nobody, including an admin, can read anyone\'s calendar token from in here.' },
-  { key:'outbound_email', name:'Outbound Email', desc:'Sends application links, welcome notes and tracking updates through Resend.',
+    live:true,
+    webhookNote:'Set up once against a Google Cloud project with the Calendar API enabled: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and APP_URL live on the google-calendar edge function, never in here. Google returns to epaycrm.epaypos.net/oauth/google — a page on this site, not an endpoint on Supabase. Each team member signs in with their own Google account, so there is nothing shared to configure and nobody, admin included, can read anyone\'s calendar token from this screen.' },
+  { key:'outbound_email', name:'Outbound Email', live:true, desc:'Sends application links, welcome notes and tracking updates through Resend.',
     icon:'<path d="M22 6c0-1.1-.9-2-2-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6z"/><polyline points="22 6 12 13 2 6"/>',
     // No API key field, deliberately. Whatever is stored here is readable by
     // anyone with manageSettings, which is a wider audience than should hold a
@@ -12631,6 +12632,25 @@ document.getElementById('addCalendarBtn').addEventListener('click', function(){
   connectMyGoogleCalendar();
 });
 
+// There is nothing to type in for Google Calendar — the whole point is that
+// the credential is an OAuth grant, not a key somebody pastes. So the drawer
+// carries the action instead of a form.
+function googleCalendarDrawerHtml(){
+  const mine = myConnectedCalendar();
+  if(mine){
+    return `<div style="padding:12px 14px;border:1px solid var(--ok-border);background:var(--ok-bg);border-radius:8px;margin:0 0 4px;">
+      <div style="font-size:13px;font-weight:600;color:var(--ok-text);margin-bottom:3px;">Your calendar is linked</div>
+      <div style="font-size:12px;color:var(--slate-500);">${mine.google_email || mine.email || ''}</div>
+      <button class="btn btn-sm" style="margin-top:10px;" onclick="disconnectMyGoogleCalendar()">Disconnect my calendar</button>
+    </div>`;
+  }
+  return `<div style="padding:12px 14px;border:1px solid var(--slate-200);background:var(--slate-50);border-radius:8px;margin:0 0 4px;">
+    <div style="font-size:13px;font-weight:600;margin-bottom:3px;">Your calendar is not linked yet</div>
+    <div style="font-size:12px;color:var(--slate-500);">Sign in with Google once. Meetings you schedule here then appear on your own calendar.</div>
+    <button class="btn btn-accent btn-sm" style="margin-top:10px;" onclick="connectMyGoogleCalendar()">Connect with Google</button>
+  </div>`;
+}
+
 function openIntegrationConfig(key){
   const def = INTEGRATION_DEFS.find(d => d.key === key);
   const state = INTEGRATIONS[key] || { connected:false, values:{} };
@@ -12651,12 +12671,17 @@ function openIntegrationConfig(key){
           <input id="intField_${f.key}" type="${f.type}" value="${state.values[f.key] || ''}" placeholder="${f.type==='password' ? (state.values[f.key] ? 'On file: '+maskApiKey(state.values[f.key]) : 'Paste key here') : ''}">
         </div>
       `).join('')}
+      ${key === 'google_calendar' ? googleCalendarDrawerHtml() : ''}
       <p style="font-size:11.5px;color:var(--slate-500);margin:10px 0 0;">${def.webhookNote}</p>
-      <p style="font-size:11.5px;color:var(--slate-500);margin:10px 0 0;">Saving here stores the config for this demo only — it doesn't call out anywhere yet. Once a backend endpoint exists, it reads these same values to make the connection live.</p>
+      ${def.live ? '' : `<p style="font-size:11.5px;color:var(--slate-500);margin:10px 0 0;">Saving here stores the config only — it doesn't call out anywhere yet. Once a backend endpoint exists, it reads these same values to make the connection live.</p>`}
     </div>
     <div class="drawer-footer">
-      ${state.connected ? `<button class="btn" style="flex:1;" onclick="disconnectIntegration('${key}')">Disconnect</button>` : ''}
-      <button class="btn btn-accent" style="flex:1;" onclick="saveIntegrationConfig('${key}')">Save</button>
+      ${def.fields.length === 0
+        // Nothing to save. A Save button that writes an empty object and
+        // reports success is worse than no button.
+        ? `<button class="btn" style="flex:1;" onclick="closeIntegrationConfig()">Close</button>`
+        : `${state.connected ? `<button class="btn" style="flex:1;" onclick="disconnectIntegration('${key}')">Disconnect</button>` : ''}
+           <button class="btn btn-accent" style="flex:1;" onclick="saveIntegrationConfig('${key}')">Save</button>`}
     </div>
   `;
   document.getElementById('integrationOverlay').classList.add('open');
