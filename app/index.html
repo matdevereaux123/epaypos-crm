@@ -1322,7 +1322,11 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           Referral Partners
         </button>
-        <button class="nav-item" data-view="agents">
+        <button class="nav-item" data-view="loaders" id="navLoadersItem" style="display:none;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+          Loaders
+        </button>
+        <button class="nav-item" data-view="agents" id="navAgentsItem">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
           Agents
         </button>
@@ -1762,6 +1766,37 @@
       </section>
 
       <!-- AGENTS -->
+      <!-- ATM LOADERS -->
+      <section id="view-loaders" class="view" style="display:none;">
+        <div class="topbar">
+          <div>
+            <h1>Loaders</h1>
+            <p class="subtext">Who loads cash into our ATMs, and where. Internal only &mdash; loaders have no portal login.</p>
+          </div>
+          <button class="btn btn-accent" id="addLoaderBtn">+ Add Loader</button>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h2 id="loadersCount">All loaders</h2>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <select id="loadersStateFilter" style="width:auto;min-width:150px;"></select>
+              <select id="loadersActiveFilter" style="width:auto;min-width:120px;">
+                <option value="active">Active</option>
+                <option value="all">All</option>
+                <option value="inactive">Inactive</option>
+              </select>
+              <input class="search-input" placeholder="Search name, city or contact..." id="loadersSearch">
+            </div>
+          </div>
+          <table>
+            <thead><tr><th>Loader</th><th>Contact</th><th>Address</th><th>State</th><th>Phone</th><th></th></tr></thead>
+            <tbody id="loadersTableBody"></tbody>
+          </table>
+          <div id="loadersEmptyState" class="empty-state" style="display:none;"></div>
+        </div>
+      </section>
+
       <section id="view-agents" class="view" style="display:none;">
         <div class="topbar">
           <div>
@@ -2403,6 +2438,10 @@
 </div>
 
 <!-- ================= DRAWER: SCHEDULE / EDIT MEETING ================= -->
+<div class="overlay" id="loaderOverlay">
+  <div class="drawer" id="loaderDrawer"></div>
+</div>
+
 <div class="overlay" id="residualOverlay">
   <div class="drawer" id="residualDrawer"></div>
 </div>
@@ -3392,7 +3431,10 @@ let calFilter = 'all';
 // this with the actual logged-in user's row from Supabase.
 let currentUser = { id:null, name:'', email:'', brands:['epay'], role:'in_house_sales' };
 const ADMIN_ONLY_VIEWS = ['aiscraper', 'coldemail', 'newsletter'];
-const EPAY_ONLY_VIEWS = ['applications', 'aiscraper', 'coldemail', 'reportsubs', 'calendar', 'authresellers', 'lendingleads'];
+const EPAY_ONLY_VIEWS = ['applications', 'aiscraper', 'coldemail', 'reportsubs', 'calendar', 'authresellers', 'lendingleads', 'agents'];
+// Loaders are an Envision ATM concept — nobody loads cash into a card
+// terminal. Same hard gate as EPAY_ONLY_VIEWS, mirrored.
+const ATM_ONLY_VIEWS = ['loaders'];
 // Controls where openLeadDetail()/openColdLeadDetail() render: the normal
 // slide-over drawer everywhere in the app, or full-width inline content —
 // used only by the Live Recall tab. Every internal re-render (after a save,
@@ -3481,6 +3523,12 @@ function setBrand(brand){
   navReportSubs.style.display = (brand === 'epay') ? 'flex' : 'none';
   navCalendar.style.display = (brand === 'epay') ? 'flex' : 'none';
   navAuthResellers.style.display = (brand === 'epay') ? 'flex' : 'none';
+  // Agents and Loaders share the slot: 1099 sales agents on EPAY POS, the
+  // people who load cash into the machines on Envision ATM.
+  const navAgents = document.getElementById('navAgentsItem');
+  const navLoaders = document.getElementById('navLoadersItem');
+  if(navAgents)  navAgents.style.display  = (brand === 'epay') ? 'flex' : 'none';
+  if(navLoaders) navLoaders.style.display = (brand === 'atm')  ? 'flex' : 'none';
   lendingToggle.style.display = (brand === 'epay') ? 'flex' : 'none';
   lendingItems.style.display = (brand === 'epay') ? 'block' : 'none';
   // Reports section itself stays visible on both brands now — Collections
@@ -3922,6 +3970,7 @@ async function enterAppAsAuthUser(authUser){
     loadConnectedCalendarsFromSupabase(),
     loadCalendarEventsFromSupabase(),
     loadResidualsFromSupabase(),
+    loadLoadersFromSupabase(),
     loadInstantlyContactsFromSupabase(),
     loadPartnerDocumentsFromSupabase(),
     loadApplicationLinksFromSupabase(),
@@ -3952,7 +4001,7 @@ async function enterAppAsAuthUser(authUser){
     users, partners, leads, applications, coldLeads, notes, leadNotes,
     leadCallNotes, leadDocuments, offices, lendingLeads, lendingLeadNotes,
     lendingLeadCallNotes, newsletters, nlTemplates, connectedCalendars,
-    calendarEvents, residualPayouts, instantlyContacts, partnerDocuments, applicationLinks,
+    calendarEvents, residualPayouts, atmLoaders, instantlyContacts, partnerDocuments, applicationLinks,
     integrationsFromDb
   ] = await tablesPromise;
 
@@ -3975,6 +4024,7 @@ async function enterAppAsAuthUser(authUser){
   CALENDAR_EVENTS = calendarEvents;
   calFilter = defaultCalendarFilter();
   RESIDUALS = residualPayouts;
+  LOADERS = atmLoaders;
   INSTANTLY_CONTACTS = instantlyContacts;
   PARTNER_DOCUMENTS = partnerDocuments;
   // Null means the read was refused, so the localStorage mirror stands rather
@@ -5972,6 +6022,203 @@ async function commitResidualUpload(){
   showToast(`${done} ${done===1?'payout':'payouts'} uploaded for ${monthLabel(month + '-01')}.`, 'success');
 }
 
+/* =========================================================================
+   ATM LOADERS
+   An internal address book of who loads cash into our machines. Deliberately
+   thin: name, where they are, how to reach them. No portal login, no
+   onboarding, no residuals — see database/40_atm_loaders.sql for why this is
+   its own table rather than another partner type.
+   ========================================================================= */
+const US_STATES = ['AL','AK','AZ','AR','CA','CO','CT','DE','DC','FL','GA','HI','ID','IL','IN','IA',
+  'KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND',
+  'OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
+
+let LOADERS = [];
+let loaderStateFilter = 'all';
+let loaderActiveFilter = 'active';
+let loaderSearch = '';
+
+async function loadLoadersFromSupabase(){
+  const { data, error } = await supa.from('atm_loaders').select('*').order('business_name');
+  if(error){ console.error('Failed to load ATM loaders', error); return []; }
+  return data || [];
+}
+
+function scopedLoaders(){
+  const q = loaderSearch.trim().toLowerCase();
+  return LOADERS.filter(l => {
+    if(loaderActiveFilter === 'active'   && l.active === false) return false;
+    if(loaderActiveFilter === 'inactive' && l.active !== false) return false;
+    if(loaderStateFilter !== 'all' && (l.state || '') !== loaderStateFilter) return false;
+    if(!q) return true;
+    return [l.business_name, l.contact_name, l.city, l.email, l.phone, l.address]
+      .some(v => (v || '').toLowerCase().includes(q));
+  });
+}
+
+function renderLoaders(){
+  const rows = scopedLoaders();
+
+  // Only states that actually have someone in them. A dropdown of all fifty
+  // where forty-six find nothing is a worse tool than one with four entries.
+  const used = [...new Set(LOADERS.map(l => l.state).filter(Boolean))].sort();
+  const sel = document.getElementById('loadersStateFilter');
+  sel.innerHTML = `<option value="all">All states</option>` +
+    used.map(st => `<option value="${st}" ${loaderStateFilter===st?'selected':''}>${st} (${LOADERS.filter(l=>l.state===st).length})</option>`).join('');
+
+  document.getElementById('loadersCount').textContent =
+    rows.length === LOADERS.length ? `All loaders (${rows.length})` : `${rows.length} of ${LOADERS.length} loaders`;
+
+  const body = document.getElementById('loadersTableBody');
+  const empty = document.getElementById('loadersEmptyState');
+
+  if(rows.length === 0){
+    body.innerHTML = '';
+    empty.style.display = 'block';
+    empty.textContent = LOADERS.length === 0
+      ? 'No loaders yet. Add the first one to start building the list.'
+      : 'No loaders match that search.';
+    return;
+  }
+  empty.style.display = 'none';
+
+  body.innerHTML = rows.map(l => `
+    <tr style="cursor:pointer;" onclick="openLoaderDrawer('${l.id}')">
+      <td><b>${l.business_name || '—'}</b>${l.active === false ? ' <span class="integration-status not-connected">Inactive</span>' : ''}
+        ${l.email ? `<div style="font-size:11.5px;color:var(--slate-500);">${l.email}</div>` : ''}</td>
+      <td>${l.contact_name || '—'}</td>
+      <td>${[l.address, l.city].filter(Boolean).join(', ') || '—'}${l.zip ? ` <span style="color:var(--slate-400);">${l.zip}</span>` : ''}</td>
+      <td>${l.state || '—'}</td>
+      <td>${l.phone || '—'}</td>
+      <td style="text-align:right;"><button class="btn btn-sm" onclick="event.stopPropagation(); openLoaderDrawer('${l.id}')">Edit</button></td>
+    </tr>`).join('');
+}
+
+function openLoaderDrawer(loaderId){
+  const l = loaderId ? LOADERS.find(x => x.id === loaderId) : null;
+  const v = (k, d) => (l && l[k] != null ? String(l[k]) : (d || ''));
+
+  document.getElementById('loaderDrawer').innerHTML = `
+    <div class="drawer-head">
+      <div><h2>${l ? 'Edit loader' : 'Add loader'}</h2>
+        ${l ? `<span style="font-size:12px;color:var(--slate-400);">${[l.city, l.state].filter(Boolean).join(', ')}</span>` : ''}</div>
+      <button class="drawer-close" onclick="closeLoaderDrawer()">&times;</button>
+    </div>
+    <div class="drawer-body">
+      <div id="loaderError" style="display:none;margin-bottom:12px;padding:10px 12px;background:var(--danger-bg);border:1px solid var(--danger-border);border-radius:8px;color:var(--red);font-size:12.5px;"></div>
+
+      <div class="field"><label>Business name</label>
+        <input id="ldName" value="${v('business_name')}" placeholder="e.g. Great Lakes Cash Services"></div>
+
+      <div class="field"><label>Contact name <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
+        <input id="ldContact" value="${v('contact_name')}"></div>
+
+      <div class="field"><label>Phone <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
+        <input id="ldPhone" type="tel" value="${v('phone')}"></div>
+
+      <div class="field"><label>Email <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
+        <input id="ldEmail" type="email" value="${v('email')}"></div>
+
+      <h3 style="font-size:14px;margin:22px 0 12px;">Address</h3>
+
+      <div class="field"><label>Street <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
+        <input id="ldAddress" value="${v('address')}"></div>
+
+      <div class="field"><label>City <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
+        <input id="ldCity" value="${v('city')}"></div>
+
+      <div class="field"><label>State</label>
+        <select id="ldState">
+          <option value="">&mdash;</option>
+          ${US_STATES.map(st => `<option value="${st}" ${v('state')===st?'selected':''}>${st}</option>`).join('')}
+        </select>
+        <p style="font-size:11px;color:var(--slate-400);margin:6px 0 0;">This is what the state filter searches on, so it is worth filling in.</p>
+      </div>
+
+      <div class="field"><label>ZIP <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
+        <input id="ldZip" value="${v('zip')}"></div>
+
+      <div class="field"><label>Notes <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
+        <textarea id="ldNotes" rows="3">${v('notes')}</textarea></div>
+
+      <div class="field"><label>Status</label>
+        <select id="ldActive">
+          <option value="true" ${!l || l.active !== false ? 'selected' : ''}>Active</option>
+          <option value="false" ${l && l.active === false ? 'selected' : ''}>Inactive</option>
+        </select></div>
+    </div>
+    <div class="drawer-footer">
+      ${l ? `<button class="btn" style="flex:1;" onclick="deleteLoader('${l.id}')">Delete</button>`
+          : `<button class="btn" style="flex:1;" onclick="closeLoaderDrawer()">Cancel</button>`}
+      <button class="btn btn-accent" style="flex:1;" id="ldSaveBtn" onclick="saveLoader(${l ? `'${l.id}'` : 'null'})">${l ? 'Save changes' : 'Add loader'}</button>
+    </div>`;
+  document.getElementById('loaderOverlay').classList.add('open');
+}
+
+function closeLoaderDrawer(){ document.getElementById('loaderOverlay').classList.remove('open'); }
+
+async function saveLoader(loaderId){
+  const val = id => ((document.getElementById(id) || {}).value || '').trim();
+  const err = document.getElementById('loaderError');
+  const btn = document.getElementById('ldSaveBtn');
+  err.style.display = 'none';
+
+  const name = val('ldName');
+  if(!name){ err.textContent = 'A business name is required.'; err.style.display = 'block'; return; }
+
+  const fields = {
+    business_name: name,
+    contact_name:  val('ldContact') || null,
+    phone:         val('ldPhone')   || null,
+    email:         val('ldEmail')   || null,
+    address:       val('ldAddress') || null,
+    city:          val('ldCity')    || null,
+    state:         val('ldState')   || null,
+    zip:           val('ldZip')     || null,
+    notes:         val('ldNotes')   || null,
+    active:        val('ldActive') === 'true'
+  };
+
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.textContent = 'Saving…';
+
+  let error;
+  if(loaderId){
+    ({ error } = await supa.from('atm_loaders').update(fields).eq('id', loaderId));
+    if(!error) Object.assign(LOADERS.find(x => x.id === loaderId), fields);
+  } else {
+    const res = await supa.from('atm_loaders')
+      .insert(Object.assign({ created_by: currentUser.id }, fields)).select().single();
+    error = res.error;
+    if(!error) LOADERS.push(res.data);
+  }
+
+  btn.disabled = false;
+  btn.textContent = original;
+  if(error){ err.textContent = error.message; err.style.display = 'block'; return; }
+
+  // The trigger uppercases state and lowercases email, so the local copy is
+  // read back rather than assumed — otherwise a loader entered as 'oh' sits
+  // in the list unfindable by the OH filter until the next reload.
+  LOADERS = await loadLoadersFromSupabase();
+  closeLoaderDrawer();
+  renderLoaders();
+  showToast(loaderId ? 'Loader updated.' : 'Loader added.', 'success');
+}
+
+async function deleteLoader(id){
+  const l = LOADERS.find(x => x.id === id);
+  if(!l) return;
+  if(!confirm(`Delete ${l.business_name}? If they might come back, set them Inactive instead — that keeps the record.`)) return;
+  const { error } = await supa.from('atm_loaders').delete().eq('id', id);
+  if(error){ showToast('Could not delete: ' + error.message, 'error'); return; }
+  LOADERS = LOADERS.filter(x => x.id !== id);
+  closeLoaderDrawer();
+  renderLoaders();
+  showToast('Loader deleted.', 'success');
+}
+
 function showView(view, fromHistory){
   // Hard gate, checked on every navigation (not just at login/role-switch) —
   // this is what actually stops a non-admin from landing on these views if
@@ -5984,6 +6231,9 @@ function showView(view, fromHistory){
   // of this data, so a direct showView() call must be caught here too, not
   // just when setBrand() itself runs.
   if(EPAY_ONLY_VIEWS.includes(view) && currentBrand !== 'epay'){
+    view = 'referrals';
+  }
+  if(ATM_ONLY_VIEWS.includes(view) && currentBrand !== 'atm'){
     view = 'referrals';
   }
   // Live Recall's inline detail mode should never leak into other tabs —
@@ -6001,6 +6251,7 @@ function showView(view, fromHistory){
   if(view === 'followups') renderFollowups();
   if(view === 'settings'){ renderUsersTable(); renderRolesTable(); renderIntegrationsList(); renderConnectedCalendarsList(); renderApplicationLinksTable(); }
   if(view === 'agents') renderAgentsTable();
+  if(view === 'loaders') renderLoaders();
   if(view === 'authresellers') renderResellersTable();
   if(view === 'coldleads') renderColdLeadsTable();
   if(view === 'leads') renderLeadsBoard();
@@ -13583,6 +13834,17 @@ document.getElementById('calNextBtn').addEventListener('click', function(){
   calViewDate = new Date(calViewDate.getFullYear(), calViewDate.getMonth()+1, 1);
   renderCalendar();
 });
+document.getElementById('addLoaderBtn').addEventListener('click', function(){ openLoaderDrawer(null); });
+document.getElementById('loadersStateFilter').addEventListener('change', function(){
+  loaderStateFilter = this.value; renderLoaders();
+});
+document.getElementById('loadersActiveFilter').addEventListener('change', function(){
+  loaderActiveFilter = this.value; renderLoaders();
+});
+document.getElementById('loadersSearch').addEventListener('input', function(){
+  loaderSearch = this.value; renderLoaders();
+});
+
 document.getElementById('residualsYearFilter').addEventListener('change', function(){
   residualYearFilter = this.value; renderResidualsReport();
 });
