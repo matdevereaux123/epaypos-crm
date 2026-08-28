@@ -2646,6 +2646,80 @@ const STAGES = [
 // by entering the installation date (see saveAtmInstallDate), not just by
 // reaching the column, so a lead can sit in Installation mid-work without
 // disappearing from the board before it's actually done.
+/* -------------------------------------------------------------------------
+   DUAL-BRAND LEADS
+   A business can want card processing and a cash machine. brand is 'epay',
+   'atm' or 'both', and 'both' means one record appearing on both boards —
+   not two records to keep in step.
+
+   The two pipelines are separate, so a 'both' lead holds two positions at
+   once: `stage` is always the EPAY one, `atm_stage` always the ATM one,
+   whatever brand says. Everything that reads or writes a lead's stage goes
+   through these, so the pair cannot be got the wrong way round in one place
+   and right in another.
+   ------------------------------------------------------------------------- */
+// Marks a record that lives on both boards, so it is obvious why the same
+// business appears in two places.
+function bothBrandsBadge(record){
+  return (record && record.brand === 'both')
+    ? ' <span class="integration-status connected" style="font-size:9.5px;">Both</span>'
+    : '';
+}
+
+function leadInBrand(lead, brand){
+  const b = lead.brand || 'epay';
+  return b === 'both' || b === (brand || currentBrand);
+}
+
+// Which stage column applies right now. Reading lead.stage directly is
+// correct only for an EPAY view and quietly wrong everywhere else.
+function leadStage(lead, brand){
+  return (brand || currentBrand) === 'atm'
+    ? (lead.atm_stage || 'inbound_placement')
+    : (lead.stage || 'inbound_lead');
+}
+
+function leadStageField(brand){
+  return (brand || currentBrand) === 'atm' ? 'atm_stage' : 'stage';
+}
+
+function leadStageEnteredField(brand){
+  return (brand || currentBrand) === 'atm' ? 'atm_stage_entered_at' : 'stage_entered_at';
+}
+
+// The update payload for moving a lead, so a caller cannot write the stage
+// without also stamping when it got there.
+function leadStagePatch(stageKey, brand){
+  const patch = {};
+  patch[leadStageField(brand)] = stageKey;
+  patch[leadStageEnteredField(brand)] = todayISO();
+  return patch;
+}
+
+const BRAND_CHOICES = [
+  { key:'epay', label:'EPAY POS' },
+  { key:'atm',  label:'Envision ATM' },
+  { key:'both', label:'Both' }
+];
+
+function brandLabel(b){
+  const hit = BRAND_CHOICES.find(x => x.key === (b || 'epay'));
+  return hit ? hit.label : 'EPAY POS';
+}
+
+// The picker shown on lead and cold-lead forms. Same control in both, so the
+// option means the same thing wherever it appears.
+function brandPickerHtml(id, current, note){
+  return `
+    <div class="field">
+      <label>Show this in</label>
+      <select id="${id}">
+        ${BRAND_CHOICES.map(b => `<option value="${b.key}" ${(current||'epay')===b.key?'selected':''}>${b.label}</option>`).join('')}
+      </select>
+      <p style="font-size:11px;color:var(--slate-400);margin:6px 0 0;">${note || 'Choose Both when the business wants card processing and a cash machine. It appears on both boards and keeps its own position on each.'}</p>
+    </div>`;
+}
+
 const ATM_LEAD_STAGES = [
   { key:'inbound_placement', label:'Inbound Placement Form/Lead', color:'var(--info-text)' },
   { key:'on_hold_waiting', label:'On Hold/Waiting', color:'var(--warn-text)' },
@@ -2669,6 +2743,14 @@ function stageInfo(key){
   return STAGES.find(s => s.key === key) || ATM_LEAD_STAGES.find(s => s.key === key) || STAGES[0];
 }
 function stagesForBrand(brand){ return brand === 'atm' ? ATM_LEAD_STAGES : STAGES; }
+
+// 'both' is not a pipeline, it is a membership. Which stage set applies to a
+// dual-brand lead depends entirely on which board you are looking at.
+function effectiveBrand(lead){
+  const b = (lead && lead.brand) || 'epay';
+  return b === 'both' ? currentBrand : b;
+}
+function stagesForLead(lead){ return stagesForBrand(effectiveBrand(lead)); }
 
 /* =========================================================================
    LENDING — a fully separate, deliberately basic pipeline. No phases, no
@@ -6443,9 +6525,9 @@ function renderDashboard(){
   // Both brands now have a Leads/Accounts/Cold Leads pipeline, so this is
   // no longer EPAY-exclusive — only "Applications" (Wix form submissions)
   // stays EPAY-only, since that integration is specific to that brand.
-  const coldConvertedCount = scopedColdLeads().filter(c => c.promoted && (c.brand||'epay') === currentBrand).length;
-  const activeLeadsCount = scopedLeads().filter(l => !l.converted_to_account && (l.brand||'epay') === currentBrand).length;
-  const accountsCount = scopedLeads().filter(l => l.converted_to_account && (l.brand||'epay') === currentBrand).length;
+  const coldConvertedCount = scopedColdLeads().filter(c => c.promoted && leadInBrand(c)).length;
+  const activeLeadsCount = scopedLeads().filter(l => !l.converted_to_account && leadInBrand(l)).length;
+  const accountsCount = scopedLeads().filter(l => l.converted_to_account && leadInBrand(l)).length;
   const unmatchedApps = scopedApplications().filter(a => !a.linked_account_id).length;
 
   primaryLabel.textContent = 'Pipeline & follow-ups';
@@ -6482,7 +6564,7 @@ function renderPipelineSnapshot(){
   const el = document.getElementById('pipelineSnapshot');
   el.innerHTML = PHASES.map(phase => {
     const phaseStages = STAGES.filter(s => s.phase === phase.key && s.key !== 'converted_active');
-    const count = scopedLeads().filter(l => phaseStages.some(s => s.key === l.stage) && (l.brand||'epay') === currentBrand).length;
+    const count = scopedLeads().filter(l => phaseStages.some(s => s.key === leadStage(l)) && leadInBrand(l)).length;
     return `
       <div class="pipeline-snap-card" onclick="showView('leads'); setActiveLeadPhase('${phase.key}');">
         <div class="psc-head"><span class="psc-dot" style="background:${phase.color};"></span><span class="psc-label">${phase.label}</span></div>
@@ -7558,13 +7640,13 @@ async function openReferralDetail(id){
       <div style="margin-top:10px;">
         ${linkedLeads.map(l => `
           <div class="note-item" style="cursor:pointer;" onclick="closeReferralDrawer(); showView('leads'); openLeadDetail('${l.id}');">
-            <div class="meta">${stageInfo(l.stage).label} · Lead</div>
+            <div class="meta">${stageInfo(leadStage(l)).label} · Lead</div>
             <div class="txt">${l.business_name}</div>
           </div>
         `).join('')}
         ${linkedAccounts.map(l => `
           <div class="note-item" style="cursor:pointer;" onclick="closeReferralDrawer(); showView('accounts'); openLeadDetail('${l.id}');">
-            <div class="meta">${stageInfo(l.stage).label} · Account</div>
+            <div class="meta">${stageInfo(leadStage(l)).label} · Account</div>
             <div class="txt">${l.business_name}</div>
           </div>
         `).join('')}
@@ -8041,7 +8123,7 @@ function fuRecordSearchHandler(rawQuery){
   if(fuActiveType === 'partner'){
     pool = scopedPartnersForCurrentUser().map(p => ({ id:p.id, name:p.name, sub:`${p.city}, ${p.state}` }));
   } else {
-    pool = scopedLeads().filter(l => (l.brand||'epay') === currentBrand).map(l => ({ id:l.id, name:l.business_name, sub: l.converted_to_account ? 'Account' : 'Lead' }));
+    pool = scopedLeads().filter(l => leadInBrand(l)).map(l => ({ id:l.id, name:l.business_name, sub: l.converted_to_account ? 'Account' : 'Lead' }));
   }
   const matches = (q ? pool.filter(r => r.name.toLowerCase().includes(q)) : pool)
     .sort((a,b)=> a.name.localeCompare(b.name)).slice(0, 8);
@@ -8174,18 +8256,18 @@ function collectAllFollowups(){
       });
     }
   });
-  scopedLeads().filter(l => (l.brand||'epay') === currentBrand).forEach(l => {
+  scopedLeads().filter(l => leadInBrand(l)).forEach(l => {
     const typeLabel = l.converted_to_account ? 'Account' : 'Lead';
     if(l.general_follow_up_date){
       items.push({ recordType:'lead', id:l.id, name:l.business_name, typeLabel, detail:'General reminder', note:l.general_follow_up_note, date:l.general_follow_up_date, converted:l.converted_to_account });
     }
-    if(l.followup1_date && l.stage === 'follow_up_1'){
+    if(l.followup1_date && leadStage(l) === 'follow_up_1'){
       items.push({ recordType:'lead', id:l.id, name:l.business_name, typeLabel, detail:'Follow Up 1', note:l.followup1_idea, date:l.followup1_date, converted:l.converted_to_account });
     }
-    if(l.followup2_date && l.stage === 'follow_up_2'){
+    if(l.followup2_date && leadStage(l) === 'follow_up_2'){
       items.push({ recordType:'lead', id:l.id, name:l.business_name, typeLabel, detail:'Follow Up 2', note:l.followup2_idea, date:l.followup2_date, converted:l.converted_to_account });
     }
-    if(l.pending_next_reminder && l.stage === 'pending_hold'){
+    if(l.pending_next_reminder && leadStage(l) === 'pending_hold'){
       items.push({ recordType:'lead', id:l.id, name:l.business_name, typeLabel, detail:'Pending/Hold', note:'', date:l.pending_next_reminder, converted:l.converted_to_account });
     }
   });
@@ -9325,7 +9407,7 @@ function renderPhaseToggle(){
   const toggle = document.getElementById('phaseToggle');
   toggle.innerHTML = PHASES.map(phase => {
     const phaseStages = STAGES.filter(s => s.phase === phase.key && s.key !== 'converted_active');
-    const count = scopedLeads().filter(l => phaseStages.some(s => s.key === l.stage) && (l.brand || 'epay') === currentBrand).length;
+    const count = scopedLeads().filter(l => phaseStages.some(s => s.key === leadStage(l)) && leadInBrand(l)).length;
     return `
       <button type="button" class="${phase.key===activeLeadPhase ? 'active':''}" onclick="setActiveLeadPhase('${phase.key}')">
         <span class="phase-dot" style="background:${phase.color};"></span>
@@ -9368,7 +9450,7 @@ function renderLeadsBoard(){
     phaseToggleEl.innerHTML = '';
 
     const columnsHtml = ATM_LEAD_STAGES.map(stage => {
-      let leadsInStage = scopedLeads().filter(l => l.stage === stage.key && (l.brand||'epay') === 'atm' && !l.converted_to_account);
+      let leadsInStage = scopedLeads().filter(l => leadStage(l) === stage.key && leadInBrand(l, 'atm') && !l.converted_to_account);
       if(mirroringUserId) leadsInStage = leadsInStage.filter(l => l.assigned_to === mirroringUserId);
       if(q) leadsInStage = leadsInStage.filter(l => l.business_name.toLowerCase().includes(q) || l.contact_name.toLowerCase().includes(q));
       const isCollapsed = !!collapsed['atm_'+stage.key];
@@ -9400,7 +9482,7 @@ function renderLeadsBoard(){
   const phaseStages = STAGES.filter(s => s.phase === phase.key && s.key !== 'converted_active');
 
   const columnsHtml = phaseStages.map(stage => {
-    let leadsInStage = scopedLeads().filter(l => l.stage === stage.key && (l.brand || 'epay') === currentBrand);
+    let leadsInStage = scopedLeads().filter(l => leadStage(l) === stage.key && leadInBrand(l));
     if(mirroringUserId) leadsInStage = leadsInStage.filter(l => l.assigned_to === mirroringUserId);
     if(q) leadsInStage = leadsInStage.filter(l => l.business_name.toLowerCase().includes(q) || l.contact_name.toLowerCase().includes(q));
     const isCollapsed = !!collapsed[stage.key];
@@ -9433,9 +9515,11 @@ function daysSince(dateStr){
 }
 
 function leadCardHtml(l, phaseColor){
-  const idx = stageIndex(l.stage);
+  const idx = stageIndex(leadStage(l));
   const isLast = idx === stagesForBrand(l.brand || 'epay').length - 1;
-  const age = daysSince(l.stage_entered_at);
+  // Per-pipeline: a dual-brand lead can be moving on one board and stuck on
+  // the other, and one shared date would misreport both.
+  const age = daysSince(l[leadStageEnteredField(effectiveBrand(l))] || l.stage_entered_at);
   const hasMeeting = CALENDAR_EVENTS.some(e => e.linked_lead_id === l.id);
   const noteCount = LEAD_NOTES.filter(n => n.lead_id === l.id).length + LEAD_CALL_NOTES.filter(n => n.lead_id === l.id).length;
   const initials = l.business_name.split(' ').filter(Boolean).map(w=>w[0]).slice(0,2).join('').toUpperCase();
@@ -9449,7 +9533,7 @@ function leadCardHtml(l, phaseColor){
       <div class="lc-top">
         <span class="lc-avatar" style="background:linear-gradient(135deg, ${phaseColor}, ${phaseColor}cc);">${initials}</span>
         <div>
-          <div class="lc-name">${l.business_name}</div>
+          <div class="lc-name">${l.business_name}${bothBrandsBadge(l)}</div>
           <div class="lc-sub">${l.contact_name}</div>
         </div>
         ${assignee ? `<span class="lc-assignee" title="Assigned to ${assignee.name}">${assigneeInitials}</span>` : ''}
@@ -9491,8 +9575,8 @@ function handleStageDrop(e){
   if(!_draggingLeadId) return;
 
   const lead = LEADS.find(l => l.id === _draggingLeadId);
-  const isForward = lead && stageIndex(stageKey) > stageIndex(lead.stage);
-  const isJump = lead && (stageIndex(stageKey) - stageIndex(lead.stage)) > 1;
+  const isForward = lead && stageIndex(stageKey) > stageIndex(leadStage(lead));
+  const isJump = lead && (stageIndex(stageKey) - stageIndex(leadStage(lead))) > 1;
 
   // A single step forward keeps its existing behaviour — one gate, one toast,
   // no ceremony. The checklist is for the jumps, where the old code checked
@@ -9510,7 +9594,7 @@ function maybeConvertToAccount(lead){
   // Once true this never reverts, even if the stage is later corrected
   // backward, since it did become an account at some point.
   if(lead.converted_to_account) return;
-  const stage = stageInfo(lead.stage);
+  const stage = stageInfo(leadStage(lead));
   if(stage.phase === 'post_boarding' || stage.convertsToAccount){
     lead.converted_to_account = true;
     lead.converted_at = new Date().toISOString().slice(0,10);
@@ -9581,7 +9665,7 @@ function getAtmStageRequirementError(lead, stageKey){
   }
 }
 function stageRequirementErrorFor(lead, stageKey){
-  return (lead.brand === 'atm') ? getAtmStageRequirementError(lead, stageKey) : getStageRequirementError(lead, stageKey);
+  return effectiveBrand(lead) === 'atm' ? getAtmStageRequirementError(lead, stageKey) : getStageRequirementError(lead, stageKey);
 }
 
 /* =========================================================================
@@ -9594,7 +9678,7 @@ function stageRequirementErrorFor(lead, stageKey){
    ========================================================================= */
 function requirementsBetween(lead, targetStageKey){
   const list = stagesForBrand(lead.brand || 'epay');
-  const from = stageIndex(lead.stage);
+  const from = stageIndex(leadStage(lead));
   const to = stageIndex(targetStageKey);
   const out = [];
   // Moving backwards to correct something has never been gated, and should
@@ -9707,7 +9791,7 @@ function openStageMoveModal(leadId, targetStageKey){
     <div class="smm-head">
       <div class="smm-title">${lead.business_name || 'This lead'}</div>
       <div class="smm-route">
-        <span class="pill" style="background:var(--hover);color:var(--slate-500);">${stageInfo(lead.stage).label}</span>
+        <span class="pill" style="background:var(--hover);color:var(--slate-500);">${stageInfo(leadStage(lead)).label}</span>
         <span class="smm-arrow">&rarr;</span>
         <span class="pill pill-referral">${target.label}</span>
       </div>
@@ -9772,7 +9856,7 @@ async function moveLeadToStage(leadId, stageKey, opts){
   opts = opts || {};
   const lead = LEADS.find(l => l.id === leadId);
   if(!lead) return false;
-  const movingForward = stageIndex(stageKey) > stageIndex(lead.stage);
+  const movingForward = stageIndex(stageKey) > stageIndex(leadStage(lead));
   if(movingForward && !opts.skipValidation){
     const err = stageRequirementErrorFor(lead, lead.stage);
     if(err){
@@ -9786,14 +9870,16 @@ async function moveLeadToStage(leadId, stageKey, opts){
   // unmodified) so the real lead object only changes after the Supabase
   // write actually succeeds — a failed save shouldn't leave local state
   // out of sync with the database.
-  const draft = Object.assign({}, lead, { stage: stageKey, stage_entered_at: new Date().toISOString().slice(0,10) });
+  // Writes atm_stage on the ATM board and stage on the EPAY one. For a
+  // 'both' lead that is the whole point — moving it here must not disturb
+  // where it sits on the other board.
+  const patch = leadStagePatch(stageKey, effectiveBrand(lead));
+  const draft = Object.assign({}, lead, patch);
   maybeConvertToAccount(draft);
-  const { error } = await supa.from('leads').update({
-    stage: draft.stage,
-    stage_entered_at: draft.stage_entered_at,
+  const { error } = await supa.from('leads').update(Object.assign({}, patch, {
     converted_to_account: draft.converted_to_account,
     converted_at: draft.converted_at,
-  }).eq('id', leadId);
+  })).eq('id', leadId);
   if(error){ alert('Could not move lead: ' + error.message); return false; }
   Object.assign(lead, draft);
   renderLeadsBoard();
@@ -9803,19 +9889,18 @@ async function moveLeadToStage(leadId, stageKey, opts){
 async function advanceLead(leadId){
   const lead = LEADS.find(l => l.id === leadId);
   if(!lead) return;
-  const stagesList = stagesForBrand(lead.brand || 'epay');
-  const idx = stageIndex(lead.stage);
+  const stagesList = stagesForLead(lead);
+  const idx = stageIndex(leadStage(lead));
   if(idx < stagesList.length - 1){
-    const err = stageRequirementErrorFor(lead, lead.stage);
+    const err = stageRequirementErrorFor(lead, leadStage(lead));
     if(err){ showErrorToast(err); return; }
-    const draft = Object.assign({}, lead, { stage: stagesList[idx + 1].key, stage_entered_at: new Date().toISOString().slice(0,10) });
+    const patch = leadStagePatch(stagesList[idx + 1].key, effectiveBrand(lead));
+    const draft = Object.assign({}, lead, patch);
     maybeConvertToAccount(draft);
-    const { error } = await supa.from('leads').update({
-      stage: draft.stage,
-      stage_entered_at: draft.stage_entered_at,
+    const { error } = await supa.from('leads').update(Object.assign({}, patch, {
       converted_to_account: draft.converted_to_account,
       converted_at: draft.converted_at,
-    }).eq('id', leadId);
+    })).eq('id', leadId);
     if(error){ alert('Could not advance lead: ' + error.message); return; }
     Object.assign(lead, draft);
     renderLeadsBoard();
@@ -9835,11 +9920,15 @@ document.getElementById('addLeadBtn').addEventListener('click', function(){
       <div class="field"><label>Phone</label><input id="lPhone" placeholder="(555) 555-5555"></div>
       <div class="field"><label>Email</label><input id="lEmail" type="email" placeholder="name@business.com"></div>
       <div class="field"><label>Estimated monthly volume</label><input id="lVolume" placeholder="e.g. $20k/mo"></div>
+      ${brandPickerHtml('lBrand', currentBrand)}
       <div class="field">
-        <label>Starting stage</label>
+        <label>Starting stage <span id="lStageBoardHint" style="color:var(--slate-300);font-weight:400;"></span></label>
         <select id="lStage">
           ${stagesForBrand(currentBrand).map(s=>`<option value="${s.key}">${s.label}</option>`).join('')}
         </select>
+        <p id="lStageBothNote" style="display:none;font-size:11px;color:var(--slate-400);margin:6px 0 0;">
+          It also starts at the front of the other brand's board, and moves independently from there.
+        </p>
       </div>
       <div class="field">
         <label>Referred by (partner) — optional</label>
@@ -9854,6 +9943,21 @@ document.getElementById('addLeadBtn').addEventListener('click', function(){
       <button class="btn btn-accent" style="flex:1;" onclick="saveNewLead()">Add lead</button>
     </div>
   `;
+  // The two pipelines share no stages, so the list has to follow the picker.
+  // On Both, the stage chosen here is the one for the board you are on and
+  // the other brand starts at its own first stage.
+  const syncStageList = () => {
+    const chosen = document.getElementById('lBrand').value;
+    const board = chosen === 'both' ? currentBrand : chosen;
+    const sel = document.getElementById('lStage');
+    sel.innerHTML = stagesForBrand(board).map(st => `<option value="${st.key}">${st.label}</option>`).join('');
+    document.getElementById('lStageBoardHint').textContent =
+      chosen === 'both' ? '(on the ' + brandLabel(board) + ' board)' : '';
+    document.getElementById('lStageBothNote').style.display = chosen === 'both' ? 'block' : 'none';
+  };
+  document.getElementById('lBrand').addEventListener('change', syncStageList);
+  syncStageList();
+
   document.getElementById('leadOverlay').classList.add('open');
 });
 
@@ -9868,6 +9972,8 @@ function closeLeadDrawer(){
 async function saveNewLead(){
   const business_name = document.getElementById('lBusiness').value.trim();
   if(!business_name) return;
+  const chosenBrand = document.getElementById('lBrand').value || currentBrand;
+  const board = chosenBrand === 'both' ? currentBrand : chosenBrand;
   const stage = document.getElementById('lStage').value;
   const startsConverted = stageInfo(stage).phase === 'post_boarding' || stageInfo(stage).convertsToAccount === true;
   // Deliberately minimal — everything else (documents, equipment_selected,
@@ -9880,8 +9986,13 @@ async function saveNewLead(){
     phone: document.getElementById('lPhone').value.trim() || '—',
     email: document.getElementById('lEmail').value.trim() || '—',
     est_volume: document.getElementById('lVolume').value.trim(),
-    stage,
-    brand: currentBrand,
+    // Both columns are always written. The one for the board in use gets the
+    // chosen stage; the other gets its pipeline's first stage, so a lead
+    // switched to Both later already has somewhere to be rather than landing
+    // on a stage that board has never heard of.
+    stage:     board === 'atm' ? 'inbound_lead'      : stage,
+    atm_stage: board === 'atm' ? stage               : 'inbound_placement',
+    brand: chosenBrand,
     converted_to_account: startsConverted,
     converted_at: startsConverted ? new Date().toISOString().slice(0,10) : null,
     linked_partner_id: document.getElementById('lLinkedPartner').value || null,
@@ -9981,7 +10092,7 @@ function toggleDrawerSection(id){
 
 function buildAccountDetailsHTML(l){
   const bank = l.banking || { bank_name:'', account_type:'checking', routing_number:'', account_number:'' };
-  const detailsRelevant = stageIndex(l.stage) >= stageIndex('equipment_pricing_confirm') || l.converted_to_account;
+  const detailsRelevant = stageIndex(leadStage(l)) >= stageIndex('equipment_pricing_confirm') || l.converted_to_account;
 
   const businessBody = `
     <div class="field"><label>Legal business name</label><input id="acLegalName" value="${l.legal_business_name||''}" placeholder="Legal business name"></div>
@@ -10538,7 +10649,7 @@ function readSystemPricingFields(l){
    other ATM stage just shows the standard sections (no panel needed).
    ========================================================================= */
 function atmStagePanelHtml(l){
-  if(l.stage === 'create_tid'){
+  if(leadStage(l) === 'create_tid'){
     return `
       <div class="stage-panel">
         <h3>Create TID/Program</h3>
@@ -10547,7 +10658,7 @@ function atmStagePanelHtml(l){
         <button class="btn btn-accent" style="width:100%;" onclick="saveAtmTid('${l.id}')">Save</button>
       </div>`;
   }
-  if(l.stage === 'commission'){
+  if(leadStage(l) === 'commission'){
     return `
       <div class="stage-panel">
         <h3>Commission</h3>
@@ -10563,7 +10674,7 @@ function atmStagePanelHtml(l){
         <button class="btn btn-accent" style="width:100%;" onclick="saveAtmCommission('${l.id}')">Save</button>
       </div>`;
   }
-  if(l.stage === 'installation'){
+  if(leadStage(l) === 'installation'){
     return `
       <div class="stage-panel">
         <h3>Installation</h3>
@@ -10773,6 +10884,49 @@ async function saveLeadPartnerLink(id, partnerId){
   if(error){ alert('Could not save: ' + error.message); return; }
   l.linked_partner_id = linked_partner_id;
 }
+/* -------------------------------------------------------------------------
+   Moving a lead between brands after the fact.
+
+   Nothing is destroyed. Both stage columns are always populated, so turning a
+   brand off only stops that board showing the lead — turn it back on and the
+   work is exactly where it was left. That is the whole reason this is one
+   record with two stage columns rather than two linked records.
+   ------------------------------------------------------------------------- */
+async function saveLeadBrand(id, brand){
+  const l = LEADS.find(x => x.id === id);
+  if(!l) return;
+  const previous = l.brand || 'epay';
+  if(brand === previous) return;
+
+  // Moving off the board you are standing on makes the lead vanish from under
+  // you. Worth a word first, because it looks like a delete.
+  const leavesThisBoard = !(brand === 'both' || brand === currentBrand);
+  if(leavesThisBoard){
+    const ok = confirm(`Move ${l.business_name} to ${brandLabel(brand)} only? It will disappear from this board. Its position here is kept, so switching back restores it.`);
+    if(!ok){
+      const sel = document.getElementById('leadBrandSelect');
+      if(sel) sel.value = previous;
+      return;
+    }
+  }
+
+  const { error } = await supa.from('leads').update({ brand }).eq('id', id);
+  if(error){
+    alert('Could not change the brand: ' + error.message);
+    const sel = document.getElementById('leadBrandSelect');
+    if(sel) sel.value = previous;
+    return;
+  }
+  l.brand = brand;
+
+  if(leavesThisBoard) closeLeadDrawer();
+  renderLeadsBoard();
+  if(document.getElementById('view-accounts').style.display !== 'none') renderAccountsTable();
+  showToast(brand === 'both'
+    ? `${l.business_name} now shows on both boards.`
+    : `${l.business_name} moved to ${brandLabel(brand)}.`, 'success');
+}
+
 async function saveLeadAssignment(id, userId){
   const l = LEADS.find(x=>x.id===id); if(!l) return;
   const assigned_to = userId || null;
@@ -11298,7 +11452,7 @@ async function openLeadDetail(id){
   const notesForLead = LEAD_NOTES.filter(n => n.lead_id === id).sort((a,b)=> new Date(b.created_at)-new Date(a.created_at));
   const callNotesForLead = LEAD_CALL_NOTES.filter(n => n.lead_id === id).sort((a,b)=> new Date(b.created_at)-new Date(a.created_at));
   const leadStages = stagesForBrand(l.brand || 'epay');
-  const currentIdx = stageIndex(l.stage);
+  const currentIdx = stageIndex(leadStage(l));
   const nextStage = currentIdx > -1 && currentIdx < leadStages.length - 1 ? leadStages[currentIdx + 1] : null;
 
   const stepperHtml = leadStages.map((s, i) => {
@@ -11324,6 +11478,13 @@ async function openLeadDetail(id){
     <div class="detail-row"><span class="k">Est. monthly volume</span><span class="v">${l.est_volume || '—'}</span></div>
     <div class="detail-row"><span class="k">Created</span><span class="v">${formatDate(l.created_at)}</span></div>
     <div class="field" style="margin-top:12px;">
+      <label>Show this in</label>
+      <select id="leadBrandSelect" onchange="saveLeadBrand('${l.id}', this.value)">
+        ${BRAND_CHOICES.map(b => `<option value="${b.key}" ${(l.brand||'epay')===b.key?'selected':''}>${b.label}</option>`).join('')}
+      </select>
+      <p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">Both puts it on the EPAY POS and Envision ATM boards at once, each with its own stage. Switching away hides it from that board without losing where it had got to.</p>
+    </div>
+    <div class="field" style="margin-top:12px;">
       <label>Assigned to</label>
       <select id="leadAssignedTo" onchange="saveLeadAssignment('${l.id}', this.value)">
         <option value="">Unassigned</option>
@@ -11344,7 +11505,7 @@ async function openLeadDetail(id){
     <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line);">
       <button class="btn btn-sm" style="width:100%;" onclick="openAccountWelcomeEmailPreview('${l.id}')">${l.welcome_email_sent ? `✓ Welcome email sent ${formatDate(l.welcome_email_sent_at)} — Resend` : 'Send account welcome email'}</button>
     </div>` : ''}
-    ${(l.brand || 'epay') === 'atm' ? `
+    ${effectiveBrand(l) === 'atm' ? `
     <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line);">
       <button class="btn btn-sm" style="width:100%;" onclick="createEpayLeadFromAtmLead('${l.id}')">Create as EPAY Lead</button>
       <p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">Cross-sell — copies this into the EPAY POS Leads pipeline as a new Inbound Lead.</p>
@@ -11408,7 +11569,7 @@ async function openLeadDetail(id){
     <div class="drawer-head">
       <div>
         <h2>${l.business_name}</h2>
-        <span class="pill pill-referral" style="margin-top:4px;display:inline-block;">${stageInfo(l.stage).label}</span>
+        <span class="pill pill-referral" style="margin-top:4px;display:inline-block;">${stageInfo(leadStage(l)).label}</span>
         ${l.converted_to_account ? '<span class="pill pill-agent-auth" style="margin-top:4px;margin-left:4px;display:inline-block;">Account</span>' : ''}
       </div>
       <button class="drawer-close" onclick="closeLeadDrawer()">&times;</button>
@@ -11427,7 +11588,7 @@ async function openLeadDetail(id){
         </select>
       </div>
 
-      ${(l.brand || 'epay') === 'epay' ? stagePanelHtml(l) : atmStagePanelHtml(l)}
+      ${effectiveBrand(l) === 'epay' ? stagePanelHtml(l) : atmStagePanelHtml(l)}
 
       ${drawerSection('sec-callnotes-'+l.id, 'Call notes', callNotesBody, true)}
       ${drawerSection('sec-notes-'+l.id, 'Notes / activity log', notesBody, true)}
@@ -11511,7 +11672,7 @@ async function deleteLeadCallNote(noteId, leadId){
    ========================================================================= */
 function renderAccountsTable(filterText){
   renderMirrorBanner();
-  let accounts = scopedLeads().filter(l => l.converted_to_account && (l.brand || 'epay') === currentBrand);
+  let accounts = scopedLeads().filter(l => l.converted_to_account && leadInBrand(l));
   if(mirroringUserId) accounts = accounts.filter(l => l.assigned_to === mirroringUserId);
   const q = (filterText || (document.getElementById('accountsSearch') ? document.getElementById('accountsSearch').value : '') || '').toLowerCase();
   const rows = accounts.filter(a => !q || a.business_name.toLowerCase().includes(q) || a.contact_name.toLowerCase().includes(q))
@@ -11573,13 +11734,13 @@ function updateBulkDeleteBar(kind){
 function purgeCollection(kind){
   let count, label;
   if(kind === 'coldleads'){
-    count = scopedColdLeads().filter(c => !c.promoted && (c.brand||'epay') === currentBrand).length;
+    count = scopedColdLeads().filter(c => !c.promoted && leadInBrand(c)).length;
     label = 'Cold Leads';
   } else if(kind === 'leads'){
-    count = scopedLeads().filter(l => !l.converted_to_account && (l.brand||'epay') === currentBrand).length;
+    count = scopedLeads().filter(l => !l.converted_to_account && leadInBrand(l)).length;
     label = 'Leads';
   } else if(kind === 'accounts'){
-    count = scopedLeads().filter(l => l.converted_to_account && (l.brand||'epay') === currentBrand).length;
+    count = scopedLeads().filter(l => l.converted_to_account && leadInBrand(l)).length;
     label = 'Accounts';
   } else {
     count = PARTNERS.length;
@@ -11959,7 +12120,7 @@ let coldLeadsFollowupFilter = 'all';
 let coldLeadsTempFilter = 'all';
 
 function renderColdLeadsStats(){
-  const active = scopedColdLeads().filter(c => !c.promoted && (c.brand || 'epay') === currentBrand);
+  const active = scopedColdLeads().filter(c => !c.promoted && leadInBrand(c));
   const overdue = active.filter(c => coldLeadFollowupStatus(c).key === 'overdue').length;
   const dueSoon = active.filter(c => coldLeadFollowupStatus(c).key === 'due_soon').length;
   const hot = active.filter(c => c.temperature === 'hot').length;
@@ -11995,7 +12156,7 @@ function renderColdLeadsTable(filterText){
   const q = (filterText || (document.getElementById('coldLeadsSearch') ? document.getElementById('coldLeadsSearch').value : '') || '').toLowerCase();
   const sortBy = document.getElementById('coldLeadsSort') ? document.getElementById('coldLeadsSort').value : 'followup';
 
-  let rows = scopedColdLeads().filter(c => !c.promoted && (c.brand || 'epay') === currentBrand);
+  let rows = scopedColdLeads().filter(c => !c.promoted && leadInBrand(c));
   if(q) rows = rows.filter(c => c.business_name.toLowerCase().includes(q) || c.contact_name.toLowerCase().includes(q));
   if(coldLeadsFollowupFilter !== 'all') rows = rows.filter(c => coldLeadFollowupStatus(c).key === coldLeadsFollowupFilter);
   if(coldLeadsTempFilter !== 'all') rows = rows.filter(c => c.temperature === coldLeadsTempFilter);
@@ -12030,7 +12191,7 @@ function renderColdLeadsTable(filterText){
     return `
     <tr onclick="openColdLeadDetail('${c.id}')">
       <td onclick="event.stopPropagation();"><input type="checkbox" class="row-check-coldLeads" data-id="${c.id}" onchange="updateBulkDeleteBar('coldLeads')"></td>
-      <td class="name-cell">${c.business_name}${c.notes ? `<div class="sub">${c.notes}</div>` : ''}</td>
+      <td class="name-cell">${c.business_name}${bothBrandsBadge(c)}${c.notes ? `<div class="sub">${c.notes}</div>` : ''}</td>
       <td>${c.contact_name}<div class="sub">${c.email} · ${c.phone}</div></td>
       <td><span class="pill" style="background:${temp.color}22;color:${temp.color};">${temp.label}</span></td>
       <td>
@@ -12132,6 +12293,13 @@ function openColdLeadDetail(id){
         <div class="field"><label>Follow-up note</label><input id="clFollowupNote" value="${c.follow_up_note||''}" placeholder="What to bring up next time"></div>
 
         <div class="field" style="margin-top:16px;">
+          <label>Show this in</label>
+          <select id="clDetailBrand">
+            ${BRAND_CHOICES.map(b=>`<option value="${b.key}" ${(c.brand||'epay')===b.key?'selected':''}>${b.label}</option>`).join('')}
+          </select>
+          <p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">Both shows this on the EPAY POS and Envision ATM cold lead lists.</p>
+        </div>
+        <div class="field">
           <label>Temperature</label>
           <select id="clDetailTemp">
             ${TEMPERATURES.map(t=>`<option value="${t.key}" ${c.temperature===t.key?'selected':''}>${t.label}</option>`).join('')}
@@ -12162,7 +12330,10 @@ function openColdLeadDetail(id){
 async function saveColdLeadNotes(id){
   const c = COLD_LEADS.find(x => x.id === id);
   if(!c) return;
+  const previousBrand = c.brand || 'epay';
+  const brand = (document.getElementById('clDetailBrand') || {}).value || previousBrand;
   const fields = {
+    brand,
     notes: document.getElementById('clDetailNotes').value.trim(),
     temperature: document.getElementById('clDetailTemp').value,
     follow_up_date: document.getElementById('clFollowupDate').value || null,
@@ -12173,6 +12344,15 @@ async function saveColdLeadNotes(id){
   if(error){ alert('Could not save: ' + error.message); return; }
   Object.assign(c, fields);
   renderColdLeadsTable();
+
+  // Re-opening the detail for a record that just left this board would show
+  // something the list behind it no longer contains.
+  if(!leadInBrand(c)){
+    closeColdLeadDrawer();
+    showToast(`${c.business_name} moved to ${brandLabel(brand)}.`, 'success');
+    return;
+  }
+  if(brand !== previousBrand) showToast(`${c.business_name} now shows in ${brandLabel(brand)}.`, 'success');
   openColdLeadDetail(id);
 }
 
@@ -12205,6 +12385,7 @@ document.getElementById('addColdLeadBtn').addEventListener('click', function(){
           ${COLD_LEAD_SOURCES.map(s=>`<option>${s}</option>`).join('')}
         </select>
       </div>
+      ${brandPickerHtml('clBrand', currentBrand, 'Choose Both when the business is a prospect for card processing and a cash machine. Cold leads have no pipeline, so one record simply shows on both lists.')}
       <div class="field"><label>Notes</label><textarea id="clNotes" placeholder="Where this came from, anything relevant..."></textarea></div>
     </div>
     <div class="drawer-footer">
@@ -12235,7 +12416,7 @@ async function saveNewColdLead(){
     source_category: document.getElementById('clSourceCategory').value,
     source: document.getElementById('clSource').value,
     notes: document.getElementById('clNotes').value.trim(),
-    brand: currentBrand,
+    brand: (document.getElementById('clBrand') || {}).value || currentBrand,
     promoted: false,
   };
   const { data: coldLead, error } = await supa.from('cold_leads').insert(fields).select().single();
@@ -12255,6 +12436,7 @@ async function promoteColdLead(id){
     email: c.email,
     est_volume: '',
     stage: 'inbound_lead',
+    atm_stage: 'inbound_placement',
     brand: c.brand || 'epay',
     converted_to_account: false,
     converted_at: null,
@@ -13122,7 +13304,7 @@ document.getElementById('syncInstantlyBtn').addEventListener('click', function()
    converted_to_account=true records on whichever brand is active.
    ========================================================================= */
 function newsletterAllAccounts(){
-  return scopedLeads().filter(l => l.converted_to_account && (l.brand||'epay') === currentBrand);
+  return scopedLeads().filter(l => l.converted_to_account && leadInBrand(l));
 }
 function newsletterRecipients(){
   const mode = document.getElementById('nlRecipientMode') ? document.getElementById('nlRecipientMode').value : 'all';
@@ -14179,10 +14361,10 @@ function liveRecallSearchHandler(rawQuery){
 
   const matches = (val) => (val || '').toString().toLowerCase().includes(q);
 
-  const leadResults = scopedLeads().filter(l => (l.brand || 'epay') === currentBrand && (matches(l.business_name) || matches(l.contact_name) || matches(l.phone) || matches(l.email)))
+  const leadResults = scopedLeads().filter(l => leadInBrand(l) && (matches(l.business_name) || matches(l.contact_name) || matches(l.phone) || matches(l.email)))
     .map(l => ({ kind: l.converted_to_account ? 'account' : 'lead', record: l }));
 
-  const coldResults = scopedColdLeads().filter(c => (c.brand || 'epay') === currentBrand && (matches(c.business_name) || matches(c.contact_name) || matches(c.phone) || matches(c.email)))
+  const coldResults = scopedColdLeads().filter(c => leadInBrand(c) && (matches(c.business_name) || matches(c.contact_name) || matches(c.phone) || matches(c.email)))
     .map(c => ({ kind: 'coldlead', record: c }));
 
   const all = leadResults.concat(coldResults).sort((a,b)=> a.record.business_name.localeCompare(b.record.business_name)).slice(0, 40);
@@ -14381,7 +14563,7 @@ function collectionsPeriodBounds(offset){
 
 function collectCollectionsReportItems(start, end){
   return LEADS
-    .filter(l => l.converted_to_account && (l.brand || 'epay') === currentBrand && l.collections_marked_at)
+    .filter(l => l.converted_to_account && leadInBrand(l) && l.collections_marked_at)
     .filter(l => {
       const marked = new Date(l.collections_marked_at + 'T00:00:00');
       return marked >= start && marked <= end;
@@ -14490,7 +14672,7 @@ function renderLendingLeadsBoard(){
   const q = (document.getElementById('lendingLeadsSearch') ? document.getElementById('lendingLeadsSearch').value : '').trim().toLowerCase();
 
   const columnsHtml = LENDING_STAGES.map(stage => {
-    let leadsInStage = LENDING_LEADS.filter(l => l.stage === stage.key);
+    let leadsInStage = LENDING_LEADS.filter(l => leadStage(l) === stage.key);
     if(q) leadsInStage = leadsInStage.filter(l => l.business_name.toLowerCase().includes(q) || l.contact_name.toLowerCase().includes(q));
     const isCollapsed = !!collapsed['lending_' + stage.key];
     const cardsHtml = leadsInStage.length ? leadsInStage.map(l => lendingLeadCardHtml(l, stage.color)).join('') : `<div class="kanban-empty">No leads in this stage</div>`;
