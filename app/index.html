@@ -1006,9 +1006,39 @@
   .note-item .txt{font-size:13.5px;}
   .note-item .note-del{position:absolute;top:6px;right:0;border:none;background:none;color:var(--slate-300);font-size:11px;cursor:pointer;}
   .note-item .note-del:hover{color:var(--red);}
-  .detail-row{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px;}
-  .detail-row .k{color:var(--slate-500);}
-  .detail-row .v{font-weight:600;color:var(--navy-700);}
+  .detail-row{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px;}
+  .detail-row .k{color:var(--slate-500);flex:none;}
+  .detail-row .v{font-weight:600;color:var(--navy-700);text-align:right;min-width:0;}
+
+  /* Inline edit.
+     The pencil sits at a third of opacity so the row still reads as
+     information rather than as a form, and comes up to full on hover of the
+     row. Always rendered, never display:none — a control that only exists on
+     hover cannot be found by someone who does not already know it is there,
+     and is invisible on a touch screen. */
+  .detail-row .v{display:inline-flex;align-items:center;justify-content:flex-end;gap:7px;}
+  .row-edit{
+    border:none;background:none;padding:0;line-height:0;cursor:pointer;flex:none;
+    color:var(--slate-300);opacity:.35;transition:opacity .12s ease,color .12s ease;
+  }
+  .row-edit svg{width:12px;height:12px;display:block;}
+  .detail-row:hover .row-edit{opacity:1;}
+  .row-edit:hover{color:var(--brand-accent-2);opacity:1;}
+  .row-edit:focus-visible{opacity:1;outline:2px solid var(--brand-accent-2);outline-offset:2px;border-radius:3px;}
+
+  .row-editing{display:flex;align-items:center;gap:6px;width:100%;justify-content:flex-end;}
+  .row-editing input, .row-editing select, .row-editing textarea{
+    font-size:12.5px;padding:5px 8px;border-radius:6px;border:1px solid var(--brand-accent-2);
+    background:var(--surface-1);color:var(--navy-700);font-weight:600;min-width:0;flex:1;max-width:230px;
+  }
+  .row-editing textarea{resize:vertical;min-height:52px;font-weight:400;}
+  .row-edit-btn{
+    border:1px solid var(--line);background:var(--surface-1);border-radius:6px;padding:4px 7px;
+    cursor:pointer;line-height:0;color:var(--slate-500);flex:none;
+  }
+  .row-edit-btn svg{width:12px;height:12px;display:block;}
+  .row-edit-btn.ok{border-color:var(--brand-accent-2);background:var(--brand-accent-2);color:#fff;}
+  .row-edit-err{font-size:11px;color:var(--red);margin-top:4px;text-align:right;}
 
   .sensitive-row{
     display:flex;align-items:center;justify-content:space-between;gap:10px;
@@ -2664,6 +2694,171 @@ function bothBrandsBadge(record){
   return (record && record.brand === 'both')
     ? ' <span class="integration-status connected" style="font-size:9.5px;">Both</span>'
     : '';
+}
+
+/* =========================================================================
+   INLINE EDIT
+   Every detail row that holds a value can be corrected where it is shown,
+   rather than only through whatever drawer originally created it.
+
+   The descriptor cannot travel through an onclick attribute, so each row
+   registers itself here and the handler looks it up by id. The registry is
+   cleared whenever a drawer re-renders, because the ids in it point at
+   elements that no longer exist.
+   ========================================================================= */
+const ROW_EDITS = {};
+let rowEditSeq = 0;
+
+function resetRowEdits(){
+  for(const k in ROW_EDITS) delete ROW_EDITS[k];
+}
+
+const PENCIL_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
+const TICK_SVG   = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+const CROSS_SVG  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+
+function escAttr(v){
+  return String(v == null ? '' : v)
+    .replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* -------------------------------------------------------------------------
+   editableRow(label, value, opts)
+
+   opts:
+     table    supabase table
+     id       row id
+     column   column to write
+     type     text | email | tel | number | date | textarea | select
+     options  [{value,label}] for select
+     display  v => shown text (defaults to the raw value or an em dash)
+     record   in-memory object to keep in step, so the drawer behind the row
+              does not go stale until the next full reload
+     onSaved  called after a successful write
+     can      false to render the row read-only
+     parse    v => value actually written (trim, null-if-empty, etc.)
+   ------------------------------------------------------------------------- */
+function editableRow(label, value, opts){
+  opts = opts || {};
+  const shown = opts.display ? opts.display(value) : (value == null || value === '' ? '—' : value);
+
+  // No table/column means nothing to write to — render it plain rather than
+  // offering a pencil that cannot do anything.
+  const editable = opts.can !== false && opts.table && opts.id && opts.column;
+  if(!editable){
+    return `<div class="detail-row"><span class="k">${label}</span><span class="v">${shown}</span></div>`;
+  }
+
+  const uid = 'row' + (++rowEditSeq);
+  ROW_EDITS[uid] = Object.assign({ label: label, value: value }, opts);
+
+  return `<div class="detail-row" id="${uid}">
+    <span class="k">${label}</span>
+    <span class="v" id="${uid}_v">
+      <span id="${uid}_text">${shown}</span>
+      <button type="button" class="row-edit" title="Edit ${escAttr(label)}"
+              aria-label="Edit ${escAttr(label)}" onclick="startRowEdit('${uid}')">${PENCIL_SVG}</button>
+    </span>
+  </div>`;
+}
+
+function startRowEdit(uid){
+  const cfg = ROW_EDITS[uid];
+  const cell = document.getElementById(uid + '_v');
+  if(!cfg || !cell) return;
+
+  const val = cfg.value == null ? '' : String(cfg.value);
+  let control;
+  if(cfg.type === 'select'){
+    control = `<select id="${uid}_i">${(cfg.options || []).map(o =>
+      `<option value="${escAttr(o.value)}" ${String(o.value) === val ? 'selected' : ''}>${o.label}</option>`).join('')}</select>`;
+  } else if(cfg.type === 'textarea'){
+    control = `<textarea id="${uid}_i">${escAttr(val)}</textarea>`;
+  } else {
+    control = `<input id="${uid}_i" type="${cfg.type || 'text'}" value="${escAttr(val)}">`;
+  }
+
+  cell.innerHTML = `<span class="row-editing">
+      ${control}
+      <button type="button" class="row-edit-btn ok" title="Save" onclick="commitRowEdit('${uid}')">${TICK_SVG}</button>
+      <button type="button" class="row-edit-btn" title="Cancel" onclick="cancelRowEdit('${uid}')">${CROSS_SVG}</button>
+    </span>`;
+
+  const input = document.getElementById(uid + '_i');
+  input.focus();
+  if(input.select) input.select();
+
+  // Enter saves, Escape abandons. A textarea keeps Enter for newlines, so it
+  // is saved with the tick or Cmd/Ctrl+Enter.
+  input.addEventListener('keydown', function(e){
+    if(e.key === 'Escape'){ e.preventDefault(); cancelRowEdit(uid); return; }
+    if(e.key === 'Enter'){
+      if(cfg.type === 'textarea' && !(e.metaKey || e.ctrlKey)) return;
+      e.preventDefault();
+      commitRowEdit(uid);
+    }
+  });
+}
+
+function renderRowValue(uid){
+  const cfg = ROW_EDITS[uid];
+  const cell = document.getElementById(uid + '_v');
+  if(!cfg || !cell) return;
+  const shown = cfg.display ? cfg.display(cfg.value) : (cfg.value == null || cfg.value === '' ? '—' : cfg.value);
+  cell.innerHTML = `<span id="${uid}_text">${shown}</span>
+    <button type="button" class="row-edit" title="Edit ${escAttr(cfg.label)}"
+            aria-label="Edit ${escAttr(cfg.label)}" onclick="startRowEdit('${uid}')">${PENCIL_SVG}</button>`;
+}
+
+function cancelRowEdit(uid){ renderRowValue(uid); }
+
+async function commitRowEdit(uid){
+  const cfg = ROW_EDITS[uid];
+  const input = document.getElementById(uid + '_i');
+  if(!cfg || !input) return;
+
+  let next = input.value;
+  if(cfg.parse){
+    try { next = cfg.parse(next); }
+    catch(e){ showRowEditError(uid, e.message || 'That value is not valid.'); return; }
+  } else if(typeof next === 'string'){
+    next = next.trim();
+    if(next === '') next = null;
+  }
+
+  // Unchanged: put the row back rather than writing and reporting success for
+  // a save that did nothing.
+  if(String(next == null ? '' : next) === String(cfg.value == null ? '' : cfg.value)){
+    renderRowValue(uid);
+    return;
+  }
+
+  const patch = {};
+  patch[cfg.column] = next;
+
+  const { error } = await supa.from(cfg.table).update(patch).eq('id', cfg.id);
+  if(error){ showRowEditError(uid, error.message); return; }
+
+  cfg.value = next;
+  // The record behind the drawer is updated too, so closing and reopening
+  // shows the new value instead of the old one until the next full reload.
+  if(cfg.record) cfg.record[cfg.column] = next;
+
+  renderRowValue(uid);
+  showToast(cfg.label + ' updated.', 'success');
+  if(cfg.onSaved) cfg.onSaved(next);
+}
+
+function showRowEditError(uid, message){
+  const cell = document.getElementById(uid + '_v');
+  if(!cell) return;
+  let err = cell.querySelector('.row-edit-err');
+  if(!err){
+    err = document.createElement('div');
+    err.className = 'row-edit-err';
+    cell.appendChild(err);
+  }
+  err.textContent = message;
 }
 
 function leadInBrand(lead, brand){
@@ -7543,6 +7738,10 @@ async function openReferralDetail(id){
   activeReferralId = id;
   const base = PARTNERS.find(x=>x.id===id);
   if(!base) return;
+  resetRowEdits();
+  // Editing a partner is gated on the same permission as the full edit form,
+  // so the pencil cannot become a way around a role that may only look.
+  const canEditPartners = roleOf(currentUser).perms.editPartners === true;
   // Same reveal-via-RPC pattern as openLeadDetail()/openApplicationDetail —
   // reveal_partner_banking() itself allows either viewBanking OR a portal
   // login viewing their OWN linked partner record, so the gate here has to
@@ -7592,11 +7791,17 @@ async function openReferralDetail(id){
       <button class="drawer-close" onclick="closeReferralDrawer()">&times;</button>
     </div>
     <div class="drawer-body">
-      <div class="detail-row"><span class="k">Contact</span><span class="v">${p.contact}</span></div>
-      <div class="detail-row"><span class="k">Email</span><span class="v">${p.email}</span></div>
-      <div class="detail-row"><span class="k">Phone</span><span class="v">${p.phone}</span></div>
-      <div class="detail-row"><span class="k">Website</span><span class="v">${p.website || '—'}</span></div>
-      <div class="detail-row"><span class="k">Address</span><span class="v">${p.address ? p.address + ', ' : ''}${p.city}, ${p.state}${p.zip ? ' ' + p.zip : ''}</span></div>
+      ${editableRow('Name', p.name, { table:'partners', id:p.id, column:'name', record:p,
+          can: canEditPartners, onSaved: () => { renderReferralTable(); renderAgentsTable(); } })}
+      ${editableRow('Contact', p.contact, { table:'partners', id:p.id, column:'contact', record:p, can: canEditPartners })}
+      ${editableRow('Email', p.email, { table:'partners', id:p.id, column:'email', type:'email', record:p, can: canEditPartners })}
+      ${editableRow('Phone', p.phone, { table:'partners', id:p.id, column:'phone', type:'tel', record:p, can: canEditPartners })}
+      ${editableRow('Website', p.website, { table:'partners', id:p.id, column:'website', record:p, can: canEditPartners })}
+      ${editableRow('Street', p.address, { table:'partners', id:p.id, column:'address', record:p, can: canEditPartners })}
+      ${editableRow('City', p.city, { table:'partners', id:p.id, column:'city', record:p, can: canEditPartners })}
+      ${editableRow('State', p.state, { table:'partners', id:p.id, column:'state', type:'select', record:p, can: canEditPartners,
+          options: [{value:'',label:'—'}].concat(US_STATES.map(st => ({value:st,label:st}))) })}
+      ${editableRow('ZIP', p.zip, { table:'partners', id:p.id, column:'zip', record:p, can: canEditPartners })}
 
       ${buildApplicationSectionHTML(p, decryptedPartnerSensitiveCache[p.id])}
 
@@ -11414,6 +11619,7 @@ async function sendApplicationEmail(id){
 async function openLeadDetail(id){
   const base = LEADS.find(x => x.id === id);
   if(!base) return;
+  resetRowEdits();
   // Work off a copy merged with the decrypted sensitive fields — same
   // reveal-via-RPC pattern as openApplicationDetail(). Everything below
   // still just reads `l.X` unchanged. The decrypted values are cached per
@@ -11471,11 +11677,15 @@ async function openLeadDetail(id){
   // lead could never actually be handed to the agent working it.
   const portalUsers = assignable.filter(u => roleOf(u).portal_scope === 'own').slice().sort((a,b)=> a.name.localeCompare(b.name));
   const overviewBody = `
-    <div class="detail-row"><span class="k">Contact</span><span class="v">${l.contact_name}</span></div>
-    <div class="detail-row"><span class="k">Phone</span><span class="v">${l.phone}</span></div>
-    <div class="detail-row"><span class="k">Email</span><span class="v">${l.email}</span></div>
-    <div class="detail-row"><span class="k">Lead source</span><span class="v">${l.lead_source || '—'}</span></div>
-    <div class="detail-row"><span class="k">Est. monthly volume</span><span class="v">${l.est_volume || '—'}</span></div>
+    ${editableRow('Business name', l.business_name, { table:'leads', id:l.id, column:'business_name', record:base,
+        onSaved: () => { renderLeadsBoard(); renderAccountsTable(); } })}
+    ${editableRow('Contact', l.contact_name, { table:'leads', id:l.id, column:'contact_name', record:base,
+        onSaved: () => renderLeadsBoard() })}
+    ${editableRow('Phone', l.phone, { table:'leads', id:l.id, column:'phone', type:'tel', record:base })}
+    ${editableRow('Email', l.email, { table:'leads', id:l.id, column:'email', type:'email', record:base })}
+    ${editableRow('Lead source', l.lead_source, { table:'leads', id:l.id, column:'lead_source', record:base })}
+    ${editableRow('Est. monthly volume', l.est_volume, { table:'leads', id:l.id, column:'est_volume', record:base })}
+    ${editableRow('Business address', l.business_address, { table:'leads', id:l.id, column:'business_address', type:'textarea', record:base })}
     <div class="detail-row"><span class="k">Created</span><span class="v">${formatDate(l.created_at)}</span></div>
     <div class="field" style="margin-top:12px;">
       <label>Show this in</label>
@@ -11995,6 +12205,7 @@ async function saveNewApplication(source){
 async function openApplicationDetail(id){
   const base = APPLICATIONS.find(x => x.id === id);
   if(!base) return;
+  resetRowEdits();
   // Work off a copy merged with the decrypted sensitive fields (fetched
   // fresh each open, never cached) rather than mutating the real record —
   // same "reveal via RPC" pattern as leads/partners banking.
@@ -12042,27 +12253,32 @@ async function openApplicationDetail(id){
 
       <hr style="border:none;border-top:1px solid var(--line);margin:16px 0;">
 
-      <div class="detail-row"><span class="k">Applicant</span><span class="v">${a.first_name} ${a.last_name}</span></div>
-      <div class="detail-row"><span class="k">Email</span><span class="v">${a.email}</span></div>
-      <div class="detail-row"><span class="k">Phone</span><span class="v">${a.phone}</span></div>
-      <div class="detail-row"><span class="k">Business type</span><span class="v">${a.business_type || '—'}</span></div>
-      <div class="detail-row"><span class="k">Pricing plan</span><span class="v">${a.pricing_plan || '—'}</span></div>
+      ${editableRow('First name', a.first_name, { table:'applications', id:a.id, column:'first_name', record:a,
+          onSaved: () => renderApplicationsTable() })}
+      ${editableRow('Last name', a.last_name, { table:'applications', id:a.id, column:'last_name', record:a,
+          onSaved: () => renderApplicationsTable() })}
+      ${editableRow('Email', a.email, { table:'applications', id:a.id, column:'email', type:'email', record:a })}
+      ${editableRow('Phone', a.phone, { table:'applications', id:a.id, column:'phone', type:'tel', record:a })}
+      ${editableRow('Business type', a.business_type, { table:'applications', id:a.id, column:'business_type', record:a })}
+      ${editableRow('Pricing plan', a.pricing_plan, { table:'applications', id:a.id, column:'pricing_plan', record:a })}
       <div class="detail-row"><span class="k">Date of birth</span><span class="v">${a.dob ? formatDate(a.dob) : '—'}</span></div>
       <div class="detail-row"><span class="k">Driver's license</span><span class="v">${a.drivers_license || '—'} ${a.drivers_license_state || ''}</span></div>
       <div class="detail-row"><span class="k">SSN</span><span class="v">${a.ssn ? '•••-••-'+a.ssn.slice(-4) : '—'}</span></div>
 
       <h3 style="font-size:14px;margin:20px 0 12px;">Business</h3>
-      <div class="detail-row"><span class="k">Legal name</span><span class="v">${a.legal_business_name || '—'}</span></div>
-      <div class="detail-row"><span class="k">DBA</span><span class="v">${a.dba_name || '—'}</span></div>
-      <div class="detail-row"><span class="k">Address</span><span class="v">${a.business_address || '—'}</span></div>
-      <div class="detail-row"><span class="k">Business email</span><span class="v">${a.business_email || '—'}</span></div>
-      <div class="detail-row"><span class="k">Business phone</span><span class="v">${a.business_phone || '—'}</span></div>
-      <div class="detail-row"><span class="k">Start date</span><span class="v">${a.business_start_date ? formatDate(a.business_start_date) : '—'}</span></div>
-      <div class="detail-row"><span class="k">Type &amp; services</span><span class="v">${a.business_type_services || '—'}</span></div>
+      ${editableRow('Legal name', a.legal_business_name, { table:'applications', id:a.id, column:'legal_business_name', record:a,
+          onSaved: () => renderApplicationsTable() })}
+      ${editableRow('DBA', a.dba_name, { table:'applications', id:a.id, column:'dba_name', record:a })}
+      ${editableRow('Address', a.business_address, { table:'applications', id:a.id, column:'business_address', type:'textarea', record:a })}
+      ${editableRow('Business email', a.business_email, { table:'applications', id:a.id, column:'business_email', type:'email', record:a })}
+      ${editableRow('Business phone', a.business_phone, { table:'applications', id:a.id, column:'business_phone', type:'tel', record:a })}
+      ${editableRow('Start date', a.business_start_date, { table:'applications', id:a.id, column:'business_start_date', type:'date', record:a,
+          display: v => v ? formatDate(v) : '—' })}
+      ${editableRow('Type &amp; services', a.business_type_services, { table:'applications', id:a.id, column:'business_type_services', type:'textarea', record:a })}
       <div class="detail-row"><span class="k">Tax ID</span><span class="v">${a.business_tax_id || '—'}</span></div>
-      <div class="detail-row"><span class="k">Highest sale</span><span class="v">${a.highest_sale_amount || '—'}</span></div>
-      <div class="detail-row"><span class="k">Average sale</span><span class="v">${a.average_sale_amount || '—'}</span></div>
-      <div class="detail-row"><span class="k">Monthly sales avg</span><span class="v">${a.monthly_sales_average || '—'}</span></div>
+      ${editableRow('Highest sale', a.highest_sale_amount, { table:'applications', id:a.id, column:'highest_sale_amount', record:a })}
+      ${editableRow('Average sale', a.average_sale_amount, { table:'applications', id:a.id, column:'average_sale_amount', record:a })}
+      ${editableRow('Monthly sales avg', a.monthly_sales_average, { table:'applications', id:a.id, column:'monthly_sales_average', record:a })}
 
       <h3 style="font-size:14px;margin:20px 0 12px;">Banking</h3>
       <div class="detail-row"><span class="k">Bank</span><span class="v">${a.bank_name || '—'}</span></div>
@@ -12226,6 +12442,7 @@ document.getElementById('deleteSelectedColdLeadsBtn').addEventListener('click', 
 function openColdLeadDetail(id){
   const c = COLD_LEADS.find(x => x.id === id);
   if(!c) return;
+  resetRowEdits();
   const temp = temperatureInfo(c.temperature);
   const fu = coldLeadFollowupStatus(c);
   const detailHtml = `
@@ -12240,14 +12457,18 @@ function openColdLeadDetail(id){
     </div>
     <div class="drawer-body">
       <div class="lr-group">
-        <div class="detail-row"><span class="k">Contact</span><span class="v">${c.contact_name}</span></div>
-        <div class="detail-row"><span class="k">Email</span><span class="v">${c.email}</span></div>
-        <div class="detail-row"><span class="k">Phone</span><span class="v">${c.phone}</span></div>
-        ${c.owner_name ? `<div class="detail-row"><span class="k">Owner</span><span class="v">${c.owner_name}${c.owner_title ? ' · '+c.owner_title : ''}</span></div>` : ''}
-        ${c.cell_phone ? `<div class="detail-row"><span class="k">Owner cell</span><span class="v">${c.cell_phone}</span></div>` : ''}
-        ${c.address ? `<div class="detail-row"><span class="k">Address</span><span class="v">${c.address}</span></div>` : ''}
-        ${c.website ? `<div class="detail-row"><span class="k">Website</span><span class="v">${c.website}</span></div>` : ''}
-        <div class="detail-row"><span class="k">Source detail</span><span class="v">${c.source || '—'}</span></div>
+        ${editableRow('Business name', c.business_name, { table:'cold_leads', id:c.id, column:'business_name', record:c,
+            onSaved: () => renderColdLeadsTable() })}
+        ${editableRow('Contact', c.contact_name, { table:'cold_leads', id:c.id, column:'contact_name', record:c,
+            onSaved: () => renderColdLeadsTable() })}
+        ${editableRow('Email', c.email, { table:'cold_leads', id:c.id, column:'email', type:'email', record:c })}
+        ${editableRow('Phone', c.phone, { table:'cold_leads', id:c.id, column:'phone', type:'tel', record:c })}
+        ${editableRow('Owner', c.owner_name, { table:'cold_leads', id:c.id, column:'owner_name', record:c })}
+        ${editableRow('Owner title', c.owner_title, { table:'cold_leads', id:c.id, column:'owner_title', record:c })}
+        ${editableRow('Owner cell', c.cell_phone, { table:'cold_leads', id:c.id, column:'cell_phone', type:'tel', record:c })}
+        ${editableRow('Address', c.address, { table:'cold_leads', id:c.id, column:'address', type:'textarea', record:c })}
+        ${editableRow('Website', c.website, { table:'cold_leads', id:c.id, column:'website', record:c })}
+        ${editableRow('Source detail', c.source, { table:'cold_leads', id:c.id, column:'source', record:c })}
         <div class="detail-row"><span class="k">Added</span><span class="v">${formatDate(c.created_at)}</span></div>
 
         ${(c.linkedin_url || c.facebook_url || c.instagram_url) ? `
