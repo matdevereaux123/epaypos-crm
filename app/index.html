@@ -1940,7 +1940,7 @@
             </div>
           </div>
           <table>
-            <thead><tr><th style="width:34px;"><input type="checkbox" id="coldLeadsSelectAll"></th><th>Business</th><th>Contact</th><th>Temp</th><th>Follow-up</th><th>Source</th><th></th></tr></thead>
+            <thead><tr><th style="width:34px;"><input type="checkbox" id="coldLeadsSelectAll"></th><th>Business</th><th>Contact</th><th>Temp</th><th>Added</th><th>Follow-up</th><th>Source</th><th></th></tr></thead>
             <tbody id="coldLeadsTableBody"></tbody>
           </table>
           <div id="coldLeadsEmptyState" class="empty-state" style="display:none;">No cold leads yet.</div>
@@ -12427,6 +12427,49 @@ const FOLLOWUP_METHODS = {
   email: { label:'Email reminder', icon:'<path d="M22 6c0-1.1-.9-2-2-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6z"/><polyline points="22 6 12 13 2 6"/>' },
   text: { label:'Text reminder', icon:'<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>' },
 };
+/* -------------------------------------------------------------------------
+   How long a cold lead has been sitting. Distinct from temperature, which is
+   how interested they are — a lead can be hot and three months old, and that
+   combination is the one worth noticing.
+
+   Thresholds are a week and a month: inside a week it is still worth the
+   first call, inside a month it is a working lead, past that it needs a
+   different approach or dropping.
+   ------------------------------------------------------------------------- */
+const COLD_AGE_NEW_DAYS = 7;
+const COLD_AGE_MEDIUM_DAYS = 30;
+
+function coldLeadAge(c){
+  const added = c && c.created_at;
+  if(!added) return { key:'unknown', label:'—', color:'#AEB9CC', days:null };
+
+  // Parsed as local parts, not new Date(str) — a bare yyyy-mm-dd is read as
+  // UTC and comes back a day early for anyone west of Greenwich, which would
+  // put a lead added today at "1 day old".
+  const [y, m, d] = String(added).slice(0,10).split('-').map(Number);
+  if(!y || !m || !d) return { key:'unknown', label:'—', color:'#AEB9CC', days:null };
+
+  const then = new Date(y, m - 1, d);
+  const now = new Date();
+  const days = Math.max(0, Math.round((new Date(now.getFullYear(), now.getMonth(), now.getDate()) - then) / 86400000));
+
+  if(days <= COLD_AGE_NEW_DAYS)    return { key:'new',    label:'New',    color:'var(--ok-text)',   days };
+  if(days <= COLD_AGE_MEDIUM_DAYS) return { key:'medium', label:'Medium', color:'var(--warn-text)', days };
+  return { key:'old', label:'Old', color:'var(--err-text)', days };
+}
+
+// "today" / "3d ago" / "2mo ago" — a date on its own makes the reader do the
+// subtraction, which is the whole question being asked.
+function coldLeadAgeSubtext(c){
+  const a = coldLeadAge(c);
+  if(a.days === null) return '';
+  if(a.days === 0) return 'today';
+  if(a.days === 1) return 'yesterday';
+  if(a.days < 30) return a.days + 'd ago';
+  const months = Math.round(a.days / 30);
+  return months + (months === 1 ? 'mo ago' : 'mo ago');
+}
+
 function coldLeadFollowupStatus(c){
   if(!c.follow_up_date) return { key:'none', label:'No follow-up set', color:'#AEB9CC' };
   if(isPast(c.follow_up_date)) return { key:'overdue', label:'Overdue', color:'var(--err-text)' };
@@ -12518,6 +12561,8 @@ function renderColdLeadsTable(filterText){
       renderPager('coldLeads', __pg_coldLeads, function(){ renderColdLeadsTable(); });
       document.getElementById('coldLeadsTableBody').innerHTML = __pg_coldLeads.rows.map(c => {
     const temp = temperatureInfo(c.temperature);
+    const age = coldLeadAge(c);
+    const ageSub = coldLeadAgeSubtext(c);
     const fu = coldLeadFollowupStatus(c);
     const method = FOLLOWUP_METHODS[c.follow_up_method || 'none'];
     return `
@@ -12526,6 +12571,10 @@ function renderColdLeadsTable(filterText){
       <td class="name-cell">${c.business_name}${bothBrandsBadge(c)}${c.notes ? `<div class="sub">${c.notes}</div>` : ''}</td>
       <td>${c.contact_name}<div class="sub">${c.email} · ${c.phone}</div></td>
       <td><span class="pill" style="background:${temp.color}22;color:${temp.color};">${temp.label}</span></td>
+      <td>
+        <span class="pill" style="background:${age.color}22;color:${age.color};">${age.label}</span>
+        <div class="sub">${c.created_at ? formatDate(c.created_at) : '—'}${ageSub ? ' · ' + ageSub : ''}</div>
+      </td>
       <td>
         <span class="pill" style="background:${fu.color}22;color:${fu.color};">${fu.label}</span>
         ${c.follow_up_date ? `<div class="sub">${formatDate(c.follow_up_date)}${method.icon ? ' · '+method.label : ''}</div>` : ''}
