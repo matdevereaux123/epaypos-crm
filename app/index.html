@@ -2742,9 +2742,10 @@ function editableRow(label, value, opts){
   opts = opts || {};
   const shown = opts.display ? opts.display(value) : (value == null || value === '' ? '—' : value);
 
-  // No table/column means nothing to write to — render it plain rather than
-  // offering a pencil that cannot do anything.
-  const editable = opts.can !== false && opts.table && opts.id && opts.column;
+  // Nothing to write to means no pencil, rather than one that cannot do
+  // anything. A row writes either straight to a column, or through an RPC —
+  // the latter for encrypted fields, which must never be written directly.
+  const editable = opts.can !== false && opts.id && (opts.column && opts.table || opts.rpc);
   if(!editable){
     return `<div class="detail-row"><span class="k">${label}</span><span class="v">${shown}</span></div>`;
   }
@@ -2833,16 +2834,42 @@ async function commitRowEdit(uid){
     return;
   }
 
-  const patch = {};
-  patch[cfg.column] = next;
+  let error;
+  if(cfg.rpc){
+    // Encrypted columns are bytea and only ever written through a
+    // SECURITY DEFINER setter that runs encrypt_sensitive() and checks
+    // editBanking. Writing the column directly would put plaintext in it.
+    const args = {};
+    args[cfg.rpc.idParam] = cfg.id;
 
-  const { error } = await supa.from(cfg.table).update(patch).eq('id', cfg.id);
+    if(cfg.rpc.json){
+      // Banking is one encrypted JSON blob, so changing one part means
+      // sending all of it back. Read from the live object rather than a copy
+      // taken when the row rendered, or editing two fields in a row would
+      // write the second over the first.
+      const current = Object.assign({}, cfg.rpc.json.source() || {});
+      current[cfg.rpc.json.key] = next;
+      args[cfg.rpc.valueParam] = JSON.stringify(current);
+    } else {
+      args[cfg.rpc.valueParam] = next == null ? '' : String(next);
+    }
+
+    ({ error } = await supa.rpc(cfg.rpc.fn, args));
+  } else {
+    const patch = {};
+    patch[cfg.column] = next;
+    ({ error } = await supa.from(cfg.table).update(patch).eq('id', cfg.id));
+  }
   if(error){ showRowEditError(uid, error.message); return; }
 
   cfg.value = next;
+  // Keep the decrypted working copy in step, so a second edit in the same
+  // drawer starts from what is actually stored. Written to the record rather
+  // than to source(), which returns a fresh object each call.
+  if(cfg.rpc && cfg.rpc.json && cfg.record) cfg.record[cfg.rpc.json.key] = next;
   // The record behind the drawer is updated too, so closing and reopening
   // shows the new value instead of the old one until the next full reload.
-  if(cfg.record) cfg.record[cfg.column] = next;
+  if(cfg.record && cfg.column) cfg.record[cfg.column] = next;
 
   renderRowValue(uid);
   showToast(cfg.label + ' updated.', 'success');
@@ -12206,6 +12233,10 @@ async function openApplicationDetail(id){
   const base = APPLICATIONS.find(x => x.id === id);
   if(!base) return;
   resetRowEdits();
+  // The encrypted fields are written through setters that check editBanking
+  // server-side. Mirrored here so the pencil does not appear for someone the
+  // database is going to refuse anyway.
+  const canEditSensitive = roleOf(currentUser).perms.editBanking === true;
   // Work off a copy merged with the decrypted sensitive fields (fetched
   // fresh each open, never cached) rather than mutating the real record —
   // same "reveal via RPC" pattern as leads/partners banking.
@@ -12261,9 +12292,19 @@ async function openApplicationDetail(id){
       ${editableRow('Phone', a.phone, { table:'applications', id:a.id, column:'phone', type:'tel', record:a })}
       ${editableRow('Business type', a.business_type, { table:'applications', id:a.id, column:'business_type', record:a })}
       ${editableRow('Pricing plan', a.pricing_plan, { table:'applications', id:a.id, column:'pricing_plan', record:a })}
-      <div class="detail-row"><span class="k">Date of birth</span><span class="v">${a.dob ? formatDate(a.dob) : '—'}</span></div>
-      <div class="detail-row"><span class="k">Driver's license</span><span class="v">${a.drivers_license || '—'} ${a.drivers_license_state || ''}</span></div>
-      <div class="detail-row"><span class="k">SSN</span><span class="v">${a.ssn ? '•••-••-'+a.ssn.slice(-4) : '—'}</span></div>
+      ${editableRow('Date of birth', a.dob, { id:a.id, type:'date', can:canEditSensitive,
+          display: v => v ? formatDate(v) : '—',
+          rpc:{ fn:'set_application_dob', idParam:'p_application_id', valueParam:'p_value' } })}
+      ${editableRow("Driver's license", a.drivers_license, { id:a.id, can:canEditSensitive,
+          rpc:{ fn:'set_application_drivers_license', idParam:'p_application_id', valueParam:'p_value' } })}
+      ${editableRow("Licence state", a.drivers_license_state, { table:'applications', id:a.id,
+          column:'drivers_license_state', type:'select', record:a,
+          options: [{value:'',label:'—'}].concat(US_STATES.map(st => ({value:st,label:st}))) })}
+      ${editableRow('SSN', a.ssn, { id:a.id, can:canEditSensitive,
+          // Masked when shown, full when editing — there is no point asking
+          // someone to retype nine digits they cannot see.
+          display: v => v ? '•••-••-' + String(v).slice(-4) : '—',
+          rpc:{ fn:'set_application_ssn', idParam:'p_application_id', valueParam:'p_value' } })}
 
       <h3 style="font-size:14px;margin:20px 0 12px;">Business</h3>
       ${editableRow('Legal name', a.legal_business_name, { table:'applications', id:a.id, column:'legal_business_name', record:a,
@@ -12275,15 +12316,33 @@ async function openApplicationDetail(id){
       ${editableRow('Start date', a.business_start_date, { table:'applications', id:a.id, column:'business_start_date', type:'date', record:a,
           display: v => v ? formatDate(v) : '—' })}
       ${editableRow('Type &amp; services', a.business_type_services, { table:'applications', id:a.id, column:'business_type_services', type:'textarea', record:a })}
-      <div class="detail-row"><span class="k">Tax ID</span><span class="v">${a.business_tax_id || '—'}</span></div>
+      ${editableRow('Tax ID', a.business_tax_id, { id:a.id, can:canEditSensitive,
+          rpc:{ fn:'set_application_tax_id', idParam:'p_application_id', valueParam:'p_value' } })}
       ${editableRow('Highest sale', a.highest_sale_amount, { table:'applications', id:a.id, column:'highest_sale_amount', record:a })}
       ${editableRow('Average sale', a.average_sale_amount, { table:'applications', id:a.id, column:'average_sale_amount', record:a })}
       ${editableRow('Monthly sales avg', a.monthly_sales_average, { table:'applications', id:a.id, column:'monthly_sales_average', record:a })}
 
       <h3 style="font-size:14px;margin:20px 0 12px;">Banking</h3>
-      <div class="detail-row"><span class="k">Bank</span><span class="v">${a.bank_name || '—'}</span></div>
-      <div class="detail-row"><span class="k">Routing #</span><span class="v">${a.routing_number || '—'}</span></div>
-      <div class="detail-row"><span class="k">Account #</span><span class="v">${a.account_number ? maskAccountNumber(a.account_number) : '—'}</span></div>
+      ${['bank_name','routing_number','account_number'].map((key, i) => {
+        const labels = { bank_name:'Bank', routing_number:'Routing #', account_number:'Account #' };
+        return editableRow(labels[key], a[key], { id:a.id, can:canEditSensitive, record:a,
+          display: key === 'account_number' ? (v => v ? maskAccountNumber(v) : '—') : undefined,
+          rpc:{ fn:'set_application_banking', idParam:'p_application_id', valueParam:'p_banking',
+                // Exactly the three banking keys, read live off `a` so editing
+                // the bank name and then the routing number does not send the
+                // old name back over the new one.
+                //
+                // Emphatically NOT `a` itself: that object is the application
+                // merged with every decrypted field, so returning it would
+                // encrypt the SSN, licence and tax ID into the banking blob —
+                // duplicating them into a column that has no business holding
+                // them, where nothing would ever look for or clear them.
+                json:{ source: () => ({
+                         bank_name:      a.bank_name,
+                         routing_number: a.routing_number,
+                         account_number: a.account_number
+                       }), key: key } } });
+      }).join('')}
       <div class="detail-row"><span class="k">Submitted</span><span class="v">${formatDate(a.submitted_at)}</span></div>
 
       ${a.paper_application_file_path ? `
