@@ -1922,6 +1922,7 @@
         <div class="cal-toolbar">
           <div class="phase-toggle" id="coldLeadsFollowupFilter"></div>
           <div class="phase-toggle" id="coldLeadsTempFilter"></div>
+          <div class="phase-toggle" id="coldLeadsSourceFilter"></div>
         </div>
 
         <div class="panel">
@@ -3368,6 +3369,30 @@ const SOURCE_CATEGORIES = [
   { key:'ai_scraped', label:'AI Scraped' },
 ];
 function temperatureInfo(key){ return TEMPERATURES.find(t=>t.key===key) || TEMPERATURES[0]; }
+/* -------------------------------------------------------------------------
+   Where a cold lead came from, as three buckets rather than the raw
+   source_category values.
+
+   'Other' is the catch-all on purpose: it takes marketing, anything with no
+   category at all (rows created before the field existed, or imported), and
+   any value added later that nobody has taught this list about. Without it a
+   lead could match none of the chips and be reachable only by clearing the
+   filter — findable by no route the person is actually using.
+   ------------------------------------------------------------------------- */
+const COLD_SOURCE_BUCKETS = [
+  { key:'all',          label:'All sources' },
+  { key:'ai_scraped',   label:'AI Scraped' },
+  { key:'self_added',   label:'Self Added' },
+  { key:'other',        label:'Other' },
+];
+
+function coldLeadSourceBucket(c){
+  const cat = (c && c.source_category) || '';
+  if(cat === 'ai_scraped') return 'ai_scraped';
+  if(cat === 'hand_entered') return 'self_added';
+  return 'other';
+}
+
 function sourceCategoryLabel(key){ return (SOURCE_CATEGORIES.find(s=>s.key===key) || SOURCE_CATEGORIES[0]).label; }
 
 function emptyColdLeadEnrichment(){
@@ -12393,6 +12418,7 @@ function coldLeadFollowupStatus(c){
 
 let coldLeadsFollowupFilter = 'all';
 let coldLeadsTempFilter = 'all';
+let coldLeadsSourceFilter = 'all';
 
 function renderColdLeadsStats(){
   const active = scopedColdLeads().filter(c => !c.promoted && leadInBrand(c));
@@ -12420,9 +12446,21 @@ function renderColdLeadsFilters(){
   document.getElementById('coldLeadsTempFilter').innerHTML = tempChips.map(t => `
     <button type="button" class="${coldLeadsTempFilter===t.key?'active':''}" onclick="setColdLeadsTempFilter('${t.key}')">${t.label}</button>
   `).join('');
+
+  // Counts on the chips, because the useful question is usually "how many did
+  // the scraper bring in" rather than only "show me those".
+  const pool = scopedColdLeads().filter(c => !c.promoted && leadInBrand(c));
+  const sourceChips = COLD_SOURCE_BUCKETS.map(b => ({
+    key: b.key, label: b.label,
+    count: b.key === 'all' ? pool.length : pool.filter(c => coldLeadSourceBucket(c) === b.key).length
+  }));
+  document.getElementById('coldLeadsSourceFilter').innerHTML = sourceChips.map(b => `
+    <button type="button" class="${coldLeadsSourceFilter===b.key?'active':''}" onclick="setColdLeadsSourceFilter('${b.key}')">${b.label} <span style="opacity:.6;">${b.count}</span></button>
+  `).join('');
 }
 function setColdLeadsFollowupFilter(key){ coldLeadsFollowupFilter = key; renderColdLeadsTable(); }
 function setColdLeadsTempFilter(key){ coldLeadsTempFilter = key; renderColdLeadsTable(); }
+function setColdLeadsSourceFilter(key){ coldLeadsSourceFilter = key; renderColdLeadsTable(); }
 
 function renderColdLeadsTable(filterText){
   renderColdLeadsStats();
@@ -12435,6 +12473,7 @@ function renderColdLeadsTable(filterText){
   if(q) rows = rows.filter(c => c.business_name.toLowerCase().includes(q) || c.contact_name.toLowerCase().includes(q));
   if(coldLeadsFollowupFilter !== 'all') rows = rows.filter(c => coldLeadFollowupStatus(c).key === coldLeadsFollowupFilter);
   if(coldLeadsTempFilter !== 'all') rows = rows.filter(c => c.temperature === coldLeadsTempFilter);
+  if(coldLeadsSourceFilter !== 'all') rows = rows.filter(c => coldLeadSourceBucket(c) === coldLeadsSourceFilter);
 
   const tempOrder = { hot:0, warm:1, cold:2 };
   if(sortBy === 'followup'){
