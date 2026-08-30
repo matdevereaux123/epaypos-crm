@@ -1350,7 +1350,7 @@
         <div class="nav-section-label">Partners</div>
         <button class="nav-item active" data-view="referrals">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          Referral Partners
+          Partners / Sales Team
         </button>
         <button class="nav-item" data-view="loaders" id="navLoadersItem" style="display:none;">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
@@ -1747,7 +1747,7 @@
       <section id="view-referrals" class="view" style="display:none;">
         <div class="topbar">
           <div>
-            <h1>Referral Partners</h1>
+            <h1>Partners / Sales Team</h1>
             <p class="subtext">Every partner gets a unique link — deals submitted through it are auto-tagged to their account.</p>
           </div>
           <div class="topbar-actions">
@@ -2114,7 +2114,7 @@
           </button>
           <button type="button" onclick="setAiSearchMode('partner')">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            Referral Partners &amp; Agents
+            Partners &amp; Sales Team
           </button>
         </div>
 
@@ -2399,8 +2399,8 @@
               <button class="btn btn-sm" style="color:var(--red);" onclick="purgeCollection('accounts')">Purge all Accounts</button>
             </div>
             <div class="integration-row" style="padding:0;border:none;">
-              <div class="integration-info"><div class="ii-name">Referral Partners</div><div class="ii-desc">Deletes every referral partner and agent record, for both brands.</div></div>
-              <button class="btn btn-sm" style="color:var(--red);" onclick="purgeCollection('referrals')">Purge all Referral Partners</button>
+              <div class="integration-info"><div class="ii-name">Partners / Sales Team</div><div class="ii-desc">Deletes every partner and agent record, for both brands.</div></div>
+              <button class="btn btn-sm" style="color:var(--red);" onclick="purgeCollection('referrals')">Purge all partner records</button>
             </div>
           </div>
         </div>
@@ -5646,7 +5646,7 @@ async function submitReferralLead(partnerId){
    NAV / VIEW ROUTING
    ========================================================================= */
 const viewTitles = {
-  dashboard:'Dashboard', referrals:'Referral Partners', agents:'Agents', map:'Partner Map',
+  dashboard:'Dashboard', referrals:'Partners / Sales Team', agents:'Sales Team & INT Agents', map:'Partner Map',
   leads:'Leads', deals:'Deals', followups:'Follow-Ups', settings:'Settings'
 };
 /* -----------------------------------------------------------------------
@@ -8466,7 +8466,7 @@ async function quickCreateFuRecord(name){
       if(error) throw error;
       PARTNERS.unshift(data);
       selectFuRecord(data.id, data.name);
-      showToast('Created partner \u201c' + data.name + '\u201d \u2014 add their details from Referral Partners', 'success');
+      showToast('Created partner \u201c' + data.name + '\u201d \u2014 add their details from Partners / Sales Team', 'success');
     } else {
       const fields = {
         business_name: name,
@@ -12033,7 +12033,7 @@ function purgeCollection(kind){
     label = 'Accounts';
   } else {
     count = PARTNERS.length;
-    label = 'Referral Partners';
+    label = 'Partner / Sales Team records';
   }
   if(count === 0){ alert(`No ${label.toLowerCase()} to purge.`); return; }
 
@@ -13058,7 +13058,7 @@ const UPLOAD_TARGETS = {
     sfExample: ['Example Bakery','(313) 555-0100','examplebakery.com','123 Main St','Detroit','MI','48201','Food & Beverage'],
   },
   partners: {
-    label: 'Referral Partners',
+    label: 'Partners / Sales Team',
     ourColumns: ['Business / Partner Name','Contact Name','Phone','Email','City','State','Type (referral_partner/agent)'],
     ourExample: ['Example Consulting','Jamie Rivera','(313) 555-0100','jamie@exampleconsulting.com','Detroit','MI','referral_partner'],
     sfColumns: ['Account Name','Contact Name','Phone','Email','Billing City','Billing State'],
