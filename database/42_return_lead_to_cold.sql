@@ -61,16 +61,32 @@ with pairs as (
      and (l.brand = c.brand or l.brand = 'both' or c.brand = 'both')
    where c.promoted = true
 ),
-unambiguous as (
-  select cold_id, min(lead_id) as lead_id
-    from pairs
-   group by cold_id
-  having count(*) = 1
+-- Unambiguous in BOTH directions: exactly one lead for that cold lead AND
+-- exactly one cold lead for that lead. One-sided uniqueness is not enough —
+-- two cold leads sharing a business name would otherwise both claim the same
+-- lead, and the second update below would then pick one of them arbitrarily.
+--
+-- (array_agg(...))[1] rather than min(): there is no min(uuid) in Postgres,
+-- and with a single row guaranteed this is only unwrapping it. Picking a
+-- "smallest" id was never the intent.
+one_lead_per_cold as (
+  select cold_id, (array_agg(lead_id))[1] as lead_id
+    from pairs group by cold_id having count(*) = 1
+),
+one_cold_per_lead as (
+  select lead_id, (array_agg(cold_id))[1] as cold_id
+    from pairs group by lead_id having count(*) = 1
+),
+matched as (
+  select a.cold_id, a.lead_id
+    from one_lead_per_cold a
+    join one_cold_per_lead b
+      on b.lead_id = a.lead_id and b.cold_id = a.cold_id
 )
 update cold_leads c
-   set promoted_lead_id = u.lead_id
-  from unambiguous u
- where c.id = u.cold_id
+   set promoted_lead_id = m.lead_id
+  from matched m
+ where c.id = m.cold_id
    and c.promoted_lead_id is null;
 
 update leads l
