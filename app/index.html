@@ -5919,6 +5919,7 @@ function residualPartnerRows(rows){
       byPartner[id] = {
         partner_id: id,
         name: p ? p.name : 'Unknown partner',
+        agent_id: p ? (p.agent_id || '') : '',
         type: p ? partnerTypeLabel(p) : '—',
         split: p ? (p.residual_percentage || '') : '',
         months: [], total: 0, paid: 0, pending: 0, merchants: null
@@ -5950,8 +5951,14 @@ function renderResidualsReport(){
   const mine = residualsAreMine();
   const rows = scopedResiduals();
 
-  document.getElementById('residualsSubtext').textContent = mine
-    ? 'Your monthly residual statements. Download any of it for your own records.'
+  // The agent's own ID, shown to them. An identifier only one side can see
+  // settles nothing when they ring up about a payout.
+  const myPartner = mine ? PARTNERS.find(p => p.id === currentUser.linked_partner_id) : null;
+  const myAgentId = myPartner && myPartner.agent_id ? myPartner.agent_id : '';
+
+  document.getElementById('residualsSubtext').innerHTML = mine
+    ? `Your monthly residual statements. Download any of it for your own records.${
+        myAgentId ? ` <span class="pill pill-agent-basic" style="margin-left:6px;">Agent ID ${myAgentId}</span>` : ''}`
     : 'Monthly residual payouts by partner. Log one at a time, or paste a whole month at once.';
 
   document.getElementById('residualsActions').innerHTML = mine ? '' : `
@@ -6023,7 +6030,7 @@ function renderResidualsByPartner(rows){
   document.getElementById('residualsTableWrap').innerHTML = `
     <table>
       <thead><tr>
-        <th>Partner</th><th>Type</th><th>Split</th><th>Merchants</th>
+        <th>Partner</th><th>Agent ID</th><th>Type</th><th>Split</th><th>Merchants</th>
         <th>Months</th><th>Paid</th><th>Pending</th><th>Total</th><th>Last payout</th><th></th>
       </tr></thead>
       <tbody>
@@ -6033,6 +6040,7 @@ function renderResidualsByPartner(rows){
           return `
           <tr style="cursor:pointer;" onclick="toggleResidualPartner('${g.partner_id}')">
             <td><b>${g.name}</b></td>
+            <td>${g.agent_id ? `<span class="pill pill-agent-basic">${g.agent_id}</span>` : '<span style="color:var(--slate-300);">—</span>'}</td>
             <td>${g.type}</td>
             <td>${g.split || '—'}</td>
             <td>${g.merchants == null ? '—' : g.merchants}</td>
@@ -6044,7 +6052,7 @@ function renderResidualsByPartner(rows){
             <td style="text-align:right;color:var(--slate-400);">${open ? '&#9650;' : '&#9660;'}</td>
           </tr>
           ${open ? `
-          <tr><td colspan="10" style="padding:0;background:var(--surface-2);">
+          <tr><td colspan="11" style="padding:0;background:var(--surface-2);">
             <table style="margin:0;">
               <thead><tr>
                 <th style="padding-left:26px;">Month</th><th>Merchants</th><th>Gross</th>
@@ -6068,7 +6076,7 @@ function renderResidualsByPartner(rows){
         }).join('')}
       </tbody>
       <tfoot><tr>
-        <td colspan="5" style="text-align:right;"><b>${groups.length} ${groups.length === 1 ? 'partner' : 'partners'}</b></td>
+        <td colspan="6" style="text-align:right;"><b>${groups.length} ${groups.length === 1 ? 'partner' : 'partners'}</b></td>
         <td><b>${money(grand.paid)}</b></td>
         <td><b>${grand.pending ? money(grand.pending) : '—'}</b></td>
         <td><b>${money(grand.total)}</b></td>
@@ -6125,9 +6133,9 @@ function downloadResidualsCsv(){
   // were reading, which they would only notice after sending it on.
   if(!mine && residualView === 'partner'){
     const groups = residualPartnerRows(rows);
-    const header = ['Partner','Type','Split','Merchants','Months','Paid','Pending','Total','Last payout','Last amount'];
+    const header = ['Partner','Agent ID','Type','Split','Merchants','Months','Paid','Pending','Total','Last payout','Last amount'];
     const body = groups.map(g => [
-      g.name, g.type, g.split || '',
+      g.name, g.agent_id || '', g.type, g.split || '',
       g.merchants == null ? '' : g.merchants,
       g.months.length,
       g.paid.toFixed(2), g.pending.toFixed(2), g.total.toFixed(2),
@@ -6136,7 +6144,7 @@ function downloadResidualsCsv(){
     ]);
     const totals = groups.reduce((s,g) => ({ paid:s.paid+g.paid, pending:s.pending+g.pending, total:s.total+g.total }),
                                  { paid:0, pending:0, total:0 });
-    body.push(['TOTAL','','','', groups.reduce((n,g)=>n+g.months.length,0),
+    body.push(['TOTAL','','','','', groups.reduce((n,g)=>n+g.months.length,0),
                totals.paid.toFixed(2), totals.pending.toFixed(2), totals.total.toFixed(2), '', '']);
 
     const csv = [header, ...body].map(line => line.map(csvCell).join(',')).join('\r\n');
@@ -6145,11 +6153,13 @@ function downloadResidualsCsv(){
     return;
   }
 
-  const header = ['Month', ...(mine ? [] : ['Partner']), 'Merchants', 'Gross', 'Adjustments',
+  const agentIdFor = pid => { const p = PARTNERS.find(x => x.id === pid); return (p && p.agent_id) || ''; };
+  const header = ['Month', ...(mine ? [] : ['Partner']), 'Agent ID', 'Merchants', 'Gross', 'Adjustments',
                   'Net payout', 'Status', 'Paid on', 'Reference', 'Notes'];
   const body = rows.map(r => [
     monthLabel(r.period_month),
     ...(mine ? [] : [partnerNameById(r.partner_id)]),
+    agentIdFor(r.partner_id),
     r.merchant_count == null ? '' : r.merchant_count,
     r.gross_residual == null ? '' : Number(r.gross_residual).toFixed(2),
     Number(r.adjustments || 0).toFixed(2),
@@ -7837,6 +7847,10 @@ function buildResidualsSectionHTML(p){
         <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--slate-500);">Split</div>
         <div style="font-size:17px;font-weight:700;font-family:'Space Grotesk';">${p.residual_percentage || '—'}</div>
       </div>
+      <div style="flex:1;padding:9px 11px;border:1px solid var(--line);border-radius:8px;">
+        <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--slate-500);">Agent ID</div>
+        <div style="font-size:17px;font-weight:700;font-family:'Space Grotesk';${p.agent_id ? '' : 'color:var(--slate-300);'}">${p.agent_id || 'Not set'}</div>
+      </div>
     </div>
 
     ${mine.length === 0
@@ -8130,6 +8144,14 @@ async function openReferralDetail(id){
     <div class="drawer-body">
       ${editableRow('Name', p.name, { table:'partners', id:p.id, column:'name', record:p,
           can: canEditPartners, onSaved: () => { renderReferralTable(); renderAgentsTable(); } })}
+      ${editableRow('Agent ID', p.agent_id, { table:'partners', id:p.id, column:'agent_id', record:p,
+          can: canEditPartners,
+          // Uppercased and trimmed by a trigger, so the row is re-read rather
+          // than assumed — an ID typed lowercase would otherwise sit on screen
+          // in a form the database does not hold.
+          parse: v => { const t = String(v||'').trim().toUpperCase(); return t || null; },
+          onSaved: () => { renderReferralTable(); renderAgentsTable();
+                           if(document.getElementById('view-residuals').style.display !== 'none') renderResidualsReport(); } })}
       ${editableRow('Contact', p.contact, { table:'partners', id:p.id, column:'contact', record:p, can: canEditPartners })}
       ${editableRow('Email', p.email, { table:'partners', id:p.id, column:'email', type:'email', record:p, can: canEditPartners })}
       ${editableRow('Phone', p.phone, { table:'partners', id:p.id, column:'phone', type:'tel', record:p, can: canEditPartners })}
