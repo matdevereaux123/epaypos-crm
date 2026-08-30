@@ -1358,7 +1358,7 @@
         </button>
         <button class="nav-item" data-view="agents" id="navAgentsItem">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
-          Agents
+          Sales Team &amp; INT Agents
         </button>
         <button class="nav-item" data-view="authresellers" id="navAuthResellersItem">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 3 7v6c0 5 3.8 8.4 9 9 5.2-.6 9-4 9-9V7l-9-5z"/><path d="m9 12 2 2 4-4"/></svg>
@@ -1830,10 +1830,10 @@
       <section id="view-agents" class="view" style="display:none;">
         <div class="topbar">
           <div>
-            <h1>Agents</h1>
-            <p class="subtext">1099 sales agents — same record model as Referral Partners, filtered to the Agent type.</p>
+            <h1>Sales Team &amp; INT Agents</h1>
+            <p class="subtext">The people selling for us — in-house sales team and INT agents.</p>
           </div>
-          <button class="btn btn-accent" id="addAgentBtn">+ Add Agent</button>
+          <button class="btn btn-accent" id="addAgentBtn">+ Add</button>
         </div>
         <div class="cards-row" id="agentsStats"></div>
 
@@ -1843,7 +1843,7 @@
 
         <div class="panel">
           <div class="panel-head">
-            <h2>All agents</h2>
+            <h2>Everyone</h2>
             <div style="display:flex;align-items:center;gap:10px;">
               <select id="agentsSort" style="padding:8px 10px;border-radius:7px;border:1px solid var(--line);font-size:12.5px;">
                 <option value="last_deal">Sort: Last deal</option>
@@ -1855,10 +1855,10 @@
             </div>
           </div>
           <table>
-            <thead><tr><th>Agent</th><th>Reseller tier</th><th>Activity</th><th>Custom link</th><th>Leads</th><th>Last deal</th></tr></thead>
+            <thead><tr><th>Name</th><th>Reseller tier</th><th>Activity</th><th>Custom link</th><th>Leads</th><th>Last deal</th></tr></thead>
             <tbody id="agentsTableBody"></tbody>
           </table>
-          <div id="agentsEmptyState" class="empty-state" style="display:none;">No agents match your search.</div>
+          <div id="agentsEmptyState" class="empty-state" style="display:none;">Nobody matches your search.</div>
         </div>
       </section>
 
