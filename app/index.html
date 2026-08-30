@@ -945,7 +945,38 @@
   }
   .lead-card:hover{box-shadow:0 6px 18px -6px rgba(20,40,80,0.2);transform:translateY(-1px);border-color:var(--brand-accent-2);}
   .lead-card.dragging{opacity:.4;}
+
+  /* Per-card actions. Faint until the card is hovered, same reasoning as the
+     inline-edit pencil: always present so it can be found, quiet enough that
+     a column of cards still reads as a pipeline. */
+  .lc-menu-btn{
+    flex-shrink:0;border:none;background:none;padding:2px 3px;margin:-2px -4px -2px 0;
+    color:var(--slate-300);opacity:.4;cursor:pointer;line-height:0;border-radius:5px;
+    transition:opacity .12s ease,color .12s ease,background .12s ease;
+  }
+  .lc-menu-btn svg{width:14px;height:14px;display:block;}
+  .lead-card:hover .lc-menu-btn{opacity:1;}
+  .lc-menu-btn:hover{color:var(--brand-accent-2);background:var(--hover);}
+
+  /* Fixed, not absolute inside the card: .stage-body clips its overflow, so a
+     menu on the last card in a column would be cut off by its own container. */
+  .card-menu{
+    position:fixed;z-index:900;min-width:150px;background:var(--card);
+    border:1px solid var(--line-strong);border-radius:9px;padding:5px;
+    box-shadow:0 10px 30px -8px rgba(20,40,80,0.28);
+  }
+  .card-menu button{
+    display:flex;align-items:center;gap:8px;width:100%;border:none;background:none;
+    padding:7px 9px;border-radius:6px;font-size:12.5px;color:var(--navy-700);
+    cursor:pointer;text-align:left;
+  }
+  .card-menu button:hover{background:var(--hover);}
+  .card-menu button.danger{color:var(--red);}
+  .card-menu button svg{width:13px;height:13px;flex:none;}
+  .card-menu hr{border:none;border-top:1px solid var(--line);margin:4px 0;}
   .lead-card .lc-top{display:flex;align-items:flex-start;gap:9px;margin-bottom:9px;}
+  /* Pushes the menu to the right edge when there is no assignee avatar to do it. */
+  .lead-card .lc-top > div:not([class]){margin-right:auto;}
   .lead-card .lc-avatar{
     flex-shrink:0;width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;
     color:#fff;font-family:'Space Grotesk';font-weight:700;font-size:11px;
@@ -9818,6 +9849,10 @@ function leadCardHtml(l, phaseColor){
           <div class="lc-sub">${l.contact_name}</div>
         </div>
         ${assignee ? `<span class="lc-assignee" title="Assigned to ${assignee.name}">${assigneeInitials}</span>` : ''}
+        <button class="lc-menu-btn" draggable="false" title="More" aria-label="More actions for ${(l.business_name||'').replace(/"/g,'&quot;')}"
+                onclick="openLeadCardMenu(event, '${l.id}')" onmousedown="event.stopPropagation();">
+          <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>
+        </button>
       </div>
       <div class="lc-badges">
         <span class="lc-badge age ${age>=10?'stale':''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>${age}d</span>
@@ -11903,13 +11938,126 @@ async function openLeadDetail(id){
   updateEpayAppsTotal();
 }
 
+/* -------------------------------------------------------------------------
+   PER-CARD ACTIONS
+   Duplicate and delete without opening the lead first. The menu is appended
+   to the body rather than the card because .stage-body clips its overflow —
+   the last card in a column would otherwise open a menu its own container
+   cuts in half.
+   ------------------------------------------------------------------------- */
+function closeLeadCardMenu(){
+  const existing = document.getElementById('leadCardMenu');
+  if(existing) existing.remove();
+}
+
+function openLeadCardMenu(ev, leadId){
+  ev.stopPropagation();      // the card itself opens the drawer
+  ev.preventDefault();
+  const already = document.getElementById('leadCardMenu');
+  closeLeadCardMenu();
+  // Clicking the same button again closes it rather than reopening.
+  if(already && already.dataset.leadId === leadId) return;
+
+  const l = LEADS.find(x => x.id === leadId);
+  if(!l) return;
+
+  const menu = document.createElement('div');
+  menu.className = 'card-menu';
+  menu.id = 'leadCardMenu';
+  menu.dataset.leadId = leadId;
+  menu.innerHTML = `
+    <button onclick="duplicateLead('${leadId}')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+      Duplicate
+    </button>
+    <hr>
+    <button class="danger" onclick="deleteLeadFromCard('${leadId}')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+      Delete
+    </button>`;
+  document.body.appendChild(menu);
+
+  // Placed against the button, then nudged back inside the viewport — a card
+  // near the right edge or the bottom of the screen would otherwise open a
+  // menu partly off it.
+  const r = ev.currentTarget.getBoundingClientRect();
+  const m = menu.getBoundingClientRect();
+  let left = r.right - m.width;
+  let top = r.bottom + 6;
+  if(left < 8) left = 8;
+  if(left + m.width > window.innerWidth - 8) left = window.innerWidth - m.width - 8;
+  if(top + m.height > window.innerHeight - 8) top = r.top - m.height - 6;
+  menu.style.left = Math.round(left) + 'px';
+  menu.style.top = Math.round(Math.max(8, top)) + 'px';
+
+  // Dismissal. Registered on the next tick so the click that opened it does
+  // not immediately close it again.
+  setTimeout(() => {
+    document.addEventListener('click', closeLeadCardMenu, { once: true });
+    document.addEventListener('keydown', function esc(e){
+      if(e.key === 'Escape'){ closeLeadCardMenu(); document.removeEventListener('keydown', esc); }
+    });
+    // Fixed position does not follow a scrolling column, so it closes instead
+    // of drifting away from the card it belongs to.
+    window.addEventListener('scroll', closeLeadCardMenu, { once: true, capture: true });
+  }, 0);
+}
+
+async function deleteLeadFromCard(id){
+  closeLeadCardMenu();
+  await deleteLead(id);
+}
+
+async function duplicateLead(id){
+  closeLeadCardMenu();
+  const l = LEADS.find(x => x.id === id);
+  if(!l) return;
+
+  // Deliberately not a full copy. Notes, call history and documents belong to
+  // the original — they are a record of what happened to that lead, not
+  // details of the business. Sensitive fields are encrypted and are not
+  // readable here at all, so they cannot be copied even in principle.
+  const fields = {
+    business_name:    (l.business_name || 'Lead') + ' (copy)',
+    contact_name:     l.contact_name || '—',
+    phone:            l.phone || '—',
+    email:            l.email || '—',
+    business_address: l.business_address || null,
+    est_volume:       l.est_volume || '',
+    lead_source:      l.lead_source || null,
+    brand:            l.brand || 'epay',
+    // Starts where the original sits, since duplicating is usually a second
+    // location for a business already at that point rather than a new lead.
+    stage:            l.stage || 'inbound_lead',
+    atm_stage:        l.atm_stage || 'inbound_placement',
+    linked_partner_id: l.linked_partner_id || null,
+    assigned_to:      l.assigned_to || null,
+    // The copy has not been anywhere yet, whatever the original had done.
+    converted_to_account: false,
+    converted_at:     null,
+    returned_to_cold_at: null,
+    from_cold_lead_id: null
+  };
+
+  const { data, error } = await supa.from('leads').insert(fields).select().single();
+  if(error){ showToast('Could not duplicate: ' + error.message, 'error'); return; }
+  LEADS.unshift(data);
+  renderLeadsBoard();
+  showToast(`Copied as “${data.business_name}”.`, 'success');
+}
+
 async function deleteLead(id){
   const l = LEADS.find(x => x.id === id);
   if(!l) return;
   if(!confirm(`Delete "${l.business_name}"? This can't be undone.`)) return;
   const { error } = await supa.from('leads').delete().eq('id', id);
   if(error){ alert('Could not delete: ' + error.message); return; }
-  LEADS = scopedLeads().filter(x => x.id !== id);
+  // LEADS, not scopedLeads(): the scoped list is a filtered view — for a
+  // portal login it holds only their own leads, and it now also excludes
+  // anything sent back to cold. Assigning it back over LEADS dropped every
+  // record it had filtered out, so deleting one lead quietly discarded a
+  // pile of others from memory until the next reload.
+  LEADS = LEADS.filter(x => x.id !== id);
   closeLeadDrawer();
   if(document.getElementById('view-leads').style.display !== 'none') renderLeadsBoard();
   if(document.getElementById('view-accounts').style.display !== 'none') renderAccountsTable();
