@@ -2051,7 +2051,7 @@
         <div class="topbar">
           <div>
             <h1>Applications</h1>
-            <p class="subtext">Applications from the Wix sign-up form, auto-linked to accounts by email, phone, or business name. EPAY POS only.</p>
+            <p class="subtext">Applications from the website sign-up form, auto-linked to accounts by email, phone, or business name. EPAY POS only.</p>
           </div>
           <div class="topbar-actions">
             <button class="btn btn-accent btn-sm" id="applicationLinksBtn" onclick="openApplicationLinksDrawer()">
@@ -2260,7 +2260,7 @@
         </div>
 
         <p style="font-size:11.5px;color:var(--slate-500);margin:-10px 0 0;">
-          This demo runs on sample outreach data. A live version needs a backend endpoint that receives Instantly's webhooks (reply_received, lead_meeting_booked, etc. — available on Instantly's Hypergrowth plan and up) and calls this same conversion logic server-side — same pattern as the Wix Applications sync and the AI Lead Scraper.
+          This demo runs on sample outreach data. A live version needs a backend endpoint that receives Instantly's webhooks (reply_received, lead_meeting_booked, etc. — available on Instantly's Hypergrowth plan and up) and calls this same conversion logic server-side — same pattern as the website application sync and the AI Lead Scraper.
         </p>
       </section>
 
@@ -3327,14 +3327,15 @@ async function loadPartnerDocumentsFromSupabase(){
 
 /* =========================================================================
    APPLICATIONS
-   Field set copied 1:1 from the live Wix application form at
+   Field set copied 1:1 from the live application form at
    epaypos.net/copy-of-free-processing, so a hand-entered application here
-   captures exactly what a Wix submission would. `source` distinguishes a
-   real Wix submission from one entered by hand; `linked_account_id` and
-   `match_status` are set by matchApplicationToAccount() below.
-   Wiring up real Wix submissions later just means a webhook (Wix
-   Automations -> a small endpoint, e.g. a Supabase Edge Function) that
-   inserts a row here and calls the same matching function server-side.
+   captures exactly what a website submission would. `source` distinguishes a
+   submission that arrived through the website from one entered by hand;
+   `linked_account_id` and `match_status` are set by
+   matchApplicationToAccount() below.
+   Wiring up real submissions later just means a webhook from the form
+   provider to a small endpoint, e.g. a Supabase Edge Function, that inserts
+   a row here and calls the same matching function server-side.
    ========================================================================= */
 const LS_APPLICATIONS_KEY = 'epay_crm_applications_v1';
 
@@ -3491,7 +3492,8 @@ async function loadNlTemplatesFromSupabase(){
    INTEGRATIONS (Settings)
    Stores connection config locally so the "connected" state and API
    key/webhook fields persist in the demo. None of these actually call out
-   anywhere yet — Wix, Instantly, and the AI scraper backend all need a real
+   anywhere yet — the website form sync, Instantly, and the AI scraper
+   backend all need a real
    server-side endpoint before a key entered here does anything live. This
    panel is the config surface that endpoint would read from once it exists.
    ========================================================================= */
@@ -3501,6 +3503,10 @@ const INTEGRATION_DEFS = [
     icon:'<path d="M22 6c0-1.1-.9-2-2-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6z"/><polyline points="22 6 12 13 2 6"/>',
     fields:[{key:'api_key', label:'Instantly API key', type:'password'}],
     webhookNote:'On Instantly (Hypergrowth plan or higher): Integrations → Webhooks → add reply_received and lead_meeting_booked pointed at your backend endpoint.' },
+  // Named for the product it connects to, like every other integration here.
+  // "Wix" is removed from the rest of the portal's wording, but this card
+  // configures Wix specifically and a generic label would make its API key
+  // and site ID fields meaningless.
   { key:'wix', name:'Wix Applications', desc:'Feeds Free Processing form submissions into the Applications tab.',
     icon:'<rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/>',
     fields:[{key:'api_key', label:'Wix API key', type:'password'}, {key:'site_id', label:'Wix Site ID', type:'text'}],
@@ -4871,12 +4877,12 @@ async function loadApplicationLinkTokensFromSupabase(){
 /* -----------------------------------------------------------------------
    REFERRAL LINK BASE
    These used to read 'epaypos.net/r/' regardless — a link that 404s, because
-   that domain is Wix and knows nothing about /r/. Partners were being handed
-   addresses that did not work.
+   the marketing site is served elsewhere and knows nothing about /r/.
+   Partners were being handed addresses that did not work.
 
    Now it points at wherever the CRM is actually served, where netlify.toml
    rewrites /r/* to the app. To move to the marketing domain later, set a
-   redirect on Wix from /r/* to this origin and change PREFERRED_LINK_HOST
+   redirect there from /r/* to this origin and change PREFERRED_LINK_HOST
    below — every link in the app follows from here.
    ----------------------------------------------------------------------- */
 // go.epaypos.net is a CNAME to the Netlify site, so it serves this app with
@@ -6819,7 +6825,7 @@ function renderDashboard(){
   const primaryLabel = document.getElementById('dashPrimaryLabel');
 
   // Both brands now have a Leads/Accounts/Cold Leads pipeline, so this is
-  // no longer EPAY-exclusive — only "Applications" (Wix form submissions)
+  // no longer EPAY-exclusive — only "Applications" (website form submissions)
   // stays EPAY-only, since that integration is specific to that brand.
   const coldConvertedCount = scopedColdLeads().filter(c => c.promoted && leadInBrand(c)).length;
   const activeLeadsCount = scopedLeads().filter(l => !l.converted_to_account && leadInBrand(l)).length;
@@ -6882,7 +6888,7 @@ function renderQuickActions(){
     });
     if(currentBrand === 'epay'){
       actions.push({
-        label:'New Application', sub:'Matches Wix form fields',
+        label:'New Application', sub:'Matches the website form fields',
         icon:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>',
         onclick:"showView('applications'); document.getElementById('addApplicationBtn').click();",
       });
@@ -12310,7 +12316,7 @@ function applicationFormFieldsHtml(a){
 document.getElementById('addApplicationBtn').addEventListener('click', function(){
   document.getElementById('applicationDrawer').innerHTML = `
     <div class="drawer-head">
-      <div><h2>New application</h2><p style="font-size:11.5px;color:var(--slate-500);margin:4px 0 0;">Fields match the live Wix application form.</p></div>
+      <div><h2>New application</h2><p style="font-size:11.5px;color:var(--slate-500);margin:4px 0 0;">Fields match the live application form on the website.</p></div>
       <button class="drawer-close" onclick="closeApplicationDrawer()">&times;</button>
     </div>
     <div class="drawer-body">
