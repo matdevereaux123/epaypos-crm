@@ -6716,9 +6716,15 @@ function assignableUsers(){
 
 function scopedLeads(){
   const perms = roleOf(currentUser).perms;
-  if(perms.fullDashboard) return LEADS;
+  // A lead sent back to cold is out of the pipeline everywhere — the board,
+  // accounts, follow-ups, dashboard counts, search. Filtered here, in the one
+  // function they all go through, rather than remembered at 28 call sites
+  // where the one that gets forgotten is a lead haunting a stage nobody can
+  // explain. LEADS still holds it, so the record and its history survive.
+  const inPlay = LEADS.filter(l => !l.returned_to_cold_at);
+  if(perms.fullDashboard) return inPlay;
   const pid = currentUser.linked_partner_id;
-  return LEADS.filter(l =>
+  return inPlay.filter(l =>
     (pid && l.linked_partner_id === pid) || l.assigned_to === currentUser.id);
 }
 
@@ -11879,6 +11885,9 @@ async function openLeadDetail(id){
       ${buildDocsSectionHTML(l)}
 
       <hr style="border:none;border-top:1px solid var(--line);margin:20px 0;">
+      ${l.converted_to_account ? '' : `
+        <button class="btn" style="width:100%;margin-bottom:8px;" onclick="returnLeadToCold('${l.id}')">Send back to cold leads</button>
+        <p style="font-size:11px;color:var(--slate-400);margin:0 0 14px;text-align:center;">Leaves the pipeline and keeps its notes and documents. Promote it again and it picks up where it left off.</p>`}
       <button class="btn" style="width:100%;color:var(--red);" onclick="deleteLead('${l.id}')">Delete ${l.converted_to_account ? 'account' : 'lead'}</button>
     </div>
   `;
@@ -12815,6 +12824,28 @@ async function saveNewColdLead(){
 async function promoteColdLead(id){
   const c = COLD_LEADS.find(x => x.id === id);
   if(!c) return;
+
+  // If this cold lead was promoted before and then sent back, bring the same
+  // lead back rather than starting a second one. Its notes, call log and
+  // documents are all still attached to it — creating a fresh lead would
+  // leave that history orphaned on a record nobody can reach.
+  const previous = c.promoted_lead_id && LEADS.find(l => l.id === c.promoted_lead_id && l.returned_to_cold_at);
+  if(previous){
+    const { error } = await supa.from('leads')
+      .update({ returned_to_cold_at: null }).eq('id', previous.id);
+    if(error){ showToast('Could not restore the lead: ' + error.message, 'error'); return; }
+    previous.returned_to_cold_at = null;
+
+    const { error: cErr } = await supa.from('cold_leads').update({ promoted: true }).eq('id', id);
+    if(cErr){ showToast('Lead restored, but the cold lead is still showing: ' + cErr.message, 'error'); return; }
+    c.promoted = true;
+
+    renderColdLeadsTable();
+    renderLeadsBoard();
+    showToast(`${c.business_name} is back in the pipeline at ${stageInfo(leadStage(previous)).label}, with its notes and documents.`, 'success');
+    return;
+  }
+
   const fields = {
     business_name: c.business_name,
     contact_name: c.contact_name,
@@ -12827,16 +12858,105 @@ async function promoteColdLead(id){
     converted_to_account: false,
     converted_at: null,
   };
+  fields.from_cold_lead_id = id;
   const { data: lead, error } = await supa.from('leads').insert(fields).select().single();
-  if(error){ alert('Could not promote: ' + error.message); return; }
+  if(error){ showToast('Could not promote: ' + error.message, 'error'); return; }
   LEADS.unshift(lead);
 
-  const { error: cErr } = await supa.from('cold_leads').update({ promoted: true }).eq('id', id);
-  if(cErr){ alert('Lead created, but could not mark the cold lead as promoted: ' + cErr.message); return; }
+  // Linked both ways so sending it back finds this cold lead again instead of
+  // creating a second record for the same business.
+  const { error: cErr } = await supa.from('cold_leads')
+    .update({ promoted: true, promoted_lead_id: lead.id }).eq('id', id);
+  if(cErr){ showToast('Lead created, but the cold lead is still showing: ' + cErr.message, 'error'); return; }
   c.promoted = true;
+  c.promoted_lead_id = lead.id;
   renderColdLeadsTable();
+  renderLeadsBoard();
 
-  alert(`${c.business_name} promoted to the Leads pipeline at the Inbound Lead stage.`);
+  showToast(`${c.business_name} promoted to the pipeline at ${stageInfo(leadStage(lead)).label}.`, 'success');
+}
+
+/* -------------------------------------------------------------------------
+   The way back.
+
+   Nothing is deleted. lead_notes, lead_call_notes and lead_documents are all
+   `on delete cascade`, so removing the lead would take the call history and
+   every uploaded document with it — in an action that reads like "move this
+   to the other list". The lead is stamped as returned, drops out of the
+   pipeline, and keeps everything.
+   ------------------------------------------------------------------------- */
+async function returnLeadToCold(leadId){
+  const l = LEADS.find(x => x.id === leadId);
+  if(!l) return;
+
+  const existing = l.from_cold_lead_id
+    ? COLD_LEADS.find(c => c.id === l.from_cold_lead_id)
+    : null;
+
+  const noteCount = LEAD_NOTES.filter(n => n.lead_id === leadId).length
+                  + LEAD_CALL_NOTES.filter(n => n.lead_id === leadId).length;
+  const docCount = LEAD_DOCUMENTS.filter(d => d.lead_id === leadId).length;
+  const keeps = [];
+  if(noteCount) keeps.push(noteCount + (noteCount === 1 ? ' note' : ' notes'));
+  if(docCount) keeps.push(docCount + (docCount === 1 ? ' document' : ' documents'));
+
+  const ok = confirm(
+    `Send ${l.business_name} back to cold leads?\n\n` +
+    `It leaves the pipeline${existing ? ' and reappears on the cold list' : ' and is added to the cold list'}. ` +
+    `Nothing is deleted${keeps.length ? ' — its ' + keeps.join(' and ') + ' stay on the record' : ''}, ` +
+    `and promoting it again brings it back where it left off.`);
+  if(!ok) return;
+
+  let coldId = existing ? existing.id : null;
+
+  if(existing){
+    // Refresh the cold record from the lead: whatever was learned while it
+    // was in the pipeline is newer than what the cold lead was created with.
+    const patch = {
+      promoted: false,
+      promoted_lead_id: l.id,
+      business_name: l.business_name,
+      contact_name: l.contact_name || existing.contact_name,
+      phone: l.phone || existing.phone,
+      email: l.email || existing.email,
+      brand: l.brand || existing.brand
+    };
+    const { error } = await supa.from('cold_leads').update(patch).eq('id', existing.id);
+    if(error){ showToast('Could not move it back: ' + error.message, 'error'); return; }
+    Object.assign(existing, patch);
+  } else {
+    const { data, error } = await supa.from('cold_leads').insert({
+      business_name: l.business_name,
+      contact_name: l.contact_name || '—',
+      phone: l.phone || '—',
+      email: l.email || '—',
+      brand: l.brand || 'epay',
+      temperature: 'cold',
+      source_category: 'hand_entered',
+      source: 'Returned from pipeline',
+      address: l.business_address || null,
+      promoted: false,
+      promoted_lead_id: l.id
+    }).select().single();
+    if(error){ showToast('Could not move it back: ' + error.message, 'error'); return; }
+    COLD_LEADS.unshift(data);
+    coldId = data.id;
+  }
+
+  const stamp = new Date().toISOString();
+  const { error: lErr } = await supa.from('leads')
+    .update({ returned_to_cold_at: stamp, from_cold_lead_id: coldId }).eq('id', leadId);
+  if(lErr){
+    showToast('It is on the cold list, but still in the pipeline: ' + lErr.message, 'error');
+    return;
+  }
+  l.returned_to_cold_at = stamp;
+  l.from_cold_lead_id = coldId;
+
+  closeLeadDrawer();
+  renderLeadsBoard();
+  renderColdLeadsTable();
+  showToast(`${l.business_name} moved back to cold leads.`, 'success');
 }
 
 // Cross-sell: recreate an Envision ATM referral partner or existing client
