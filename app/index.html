@@ -1952,7 +1952,7 @@
         <div class="topbar">
           <div>
             <h1>Leads Pipeline</h1>
-            <p class="subtext">Inbound / Boarding → Post Boarding/Processing. EPAY POS only.</p>
+            <p class="subtext" id="leadsSubtext">Inbound / Boarding → Post Boarding/Processing.</p>
           </div>
           <div class="topbar-actions">
             <a class="btn btn-sm" href="https://envisionprocessingdb.com" target="_blank" rel="noopener noreferrer">
@@ -2944,6 +2944,9 @@ function brandPickerHtml(id, current, note){
 }
 
 const ATM_LEAD_STAGES = [
+  // Leads that arrive through an ISO rather than our own placement form. An
+  // intake stage, so it sits leftmost alongside the other way in.
+  { key:'iso_lead', label:'ISO Lead', color:'#0891B2' },
   { key:'inbound_placement', label:'Inbound Placement Form/Lead', color:'var(--info-text)' },
   { key:'on_hold_waiting', label:'On Hold/Waiting', color:'var(--warn-text)' },
   { key:'follow_up', label:'Follow Up', color:'var(--info-text)' },
@@ -2966,6 +2969,15 @@ function stageInfo(key){
   return STAGES.find(s => s.key === key) || ATM_LEAD_STAGES.find(s => s.key === key) || STAGES[0];
 }
 function stagesForBrand(brand){ return brand === 'atm' ? ATM_LEAD_STAGES : STAGES; }
+
+// Where a new lead starts, stated rather than taken from whichever stage
+// happens to be first. Adding the ISO Lead column at the front of the ATM
+// board would otherwise have silently changed the default for every new ATM
+// lead — the board's left-to-right order is a presentation choice and the
+// intake stage is not, so they should not be the same fact.
+function defaultStageFor(brand){
+  return brand === 'atm' ? 'inbound_placement' : 'inbound_lead';
+}
 
 // 'both' is not a pipeline, it is a membership. Which stage set applies to a
 // dual-brand lead depends entirely on which board you are looking at.
@@ -8454,7 +8466,7 @@ async function quickCreateFuRecord(name){
         business_name: name,
         contact_name: '\u2014', phone: '\u2014', email: '\u2014',
         est_volume: '',
-        stage: stagesForBrand(currentBrand)[0].key,
+        stage: defaultStageFor(currentBrand),
         brand: currentBrand,
         converted_to_account: false,
         converted_at: null,
@@ -9691,6 +9703,12 @@ function toggleStageCollapse(stageKey){
 }
 
 function renderLeadsBoard(){
+  const subtext = document.getElementById('leadsSubtext');
+  if(subtext){
+    subtext.textContent = currentBrand === 'atm'
+      ? 'ISO and inbound placement leads through to installation.'
+      : 'Inbound / Boarding \u2192 Post Boarding/Processing.';
+  }
   const board = document.getElementById('leadsBoard');
   if(!board) return;
 
