@@ -5890,6 +5890,62 @@ function scopedResiduals(){
     || partnerNameById(a.partner_id).localeCompare(partnerNameById(b.partner_id)));
 }
 
+/* -------------------------------------------------------------------------
+   BY PARTNER
+   The flat payout history answers "what went out in August". It does not
+   answer "what has this agent earned from us", which is the question that
+   comes up in a conversation with the agent — and getting it out of the flat
+   list means reading down it and adding up by eye.
+   ------------------------------------------------------------------------- */
+let residualView = 'partner';          // 'partner' | 'month'
+const residualExpanded = {};           // partner_id -> showing their months
+
+function setResidualView(v){ residualView = v; renderResidualsReport(); }
+function toggleResidualPartner(pid){
+  residualExpanded[pid] = !residualExpanded[pid];
+  renderResidualsReport();
+}
+
+// Agents and EPAY resellers are who residuals are paid to. A partner with
+// payouts against them is included whatever their type says — the money is
+// the fact, and excluding it would make the totals here disagree with the
+// totals on the other tab.
+function residualPartnerRows(rows){
+  const byPartner = {};
+  rows.forEach(r => {
+    const id = r.partner_id;
+    if(!byPartner[id]){
+      const p = PARTNERS.find(x => x.id === id);
+      byPartner[id] = {
+        partner_id: id,
+        name: p ? p.name : 'Unknown partner',
+        type: p ? partnerTypeLabel(p) : '—',
+        split: p ? (p.residual_percentage || '') : '',
+        months: [], total: 0, paid: 0, pending: 0, merchants: null
+      };
+    }
+    const g = byPartner[id];
+    const net = Number(r.net_payout) || 0;
+    g.months.push(r);
+    g.total += net;
+    if(r.status === 'paid') g.paid += net; else g.pending += net;
+    // The latest month's merchant count, not a sum — adding a headcount across
+    // months would produce a number that means nothing.
+    if(r.merchant_count != null && (!g.latest || String(r.period_month) > String(g.latest.period_month))){
+      g.merchants = r.merchant_count;
+    }
+    if(!g.latest || String(r.period_month) > String(g.latest.period_month)) g.latest = r;
+  });
+
+  return Object.values(byPartner).sort((a,b) => b.total - a.total);
+}
+
+function partnerTypeLabel(p){
+  if(p.reseller_type === 'authorized_reseller') return 'EPAY Reseller';
+  if(p.type === 'referral_partner' || p.partner_type === 'referral') return 'Referral Partner';
+  return 'Agent';
+}
+
 function renderResidualsReport(){
   const mine = residualsAreMine();
   const rows = scopedResiduals();
@@ -5902,7 +5958,14 @@ function renderResidualsReport(){
     <button class="btn" onclick="openResidualUploadDrawer()">Upload a month</button>
     <button class="btn btn-accent" onclick="openResidualDrawer(null)">+ Log payout</button>`;
 
-  document.getElementById('residualsTableTitle').textContent = mine ? 'Your statements' : 'Payout history';
+  document.getElementById('residualsTableTitle').innerHTML = mine ? 'Your statements' : `
+    <span style="display:inline-flex;align-items:center;gap:12px;">
+      <span>${residualView === 'partner' ? 'By partner' : 'Payout history'}</span>
+      <span class="phase-toggle" style="display:inline-flex;">
+        <button type="button" class="${residualView==='partner'?'active':''}" onclick="setResidualView('partner')">By partner</button>
+        <button type="button" class="${residualView==='month'?'active':''}" onclick="setResidualView('month')">All payouts</button>
+      </span>
+    </span>`;
 
   // Year filter, built from what actually exists rather than a fixed range.
   const years = [...new Set(RESIDUALS
@@ -5919,6 +5982,11 @@ function renderResidualsReport(){
       `<div class="stub-panel" style="padding:40px 20px;">${mine
         ? 'No residual statements yet. They appear here once a payout has been posted for you.'
         : 'Nothing logged yet. Use “Log payout” for a single partner, or “Upload a month” to paste a batch.'}</div>`;
+    return;
+  }
+
+  if(!mine && residualView === 'partner'){
+    renderResidualsByPartner(rows);
     return;
   }
 
@@ -5944,6 +6012,68 @@ function renderResidualsReport(){
             ${mine ? '' : `<td style="text-align:right;"><button class="btn btn-sm" onclick="openResidualDrawer('${r.id}')">Edit</button></td>`}
           </tr>`).join('')}
       </tbody>
+    </table>`;
+}
+
+function renderResidualsByPartner(rows){
+  const groups = residualPartnerRows(rows);
+  const grand = groups.reduce((s,g) => ({ total:s.total+g.total, paid:s.paid+g.paid, pending:s.pending+g.pending }),
+                               { total:0, paid:0, pending:0 });
+
+  document.getElementById('residualsTableWrap').innerHTML = `
+    <table>
+      <thead><tr>
+        <th>Partner</th><th>Type</th><th>Split</th><th>Merchants</th>
+        <th>Months</th><th>Paid</th><th>Pending</th><th>Total</th><th>Last payout</th><th></th>
+      </tr></thead>
+      <tbody>
+        ${groups.map(g => {
+          const open = !!residualExpanded[g.partner_id];
+          const months = g.months.slice().sort((a,b) => String(b.period_month).localeCompare(String(a.period_month)));
+          return `
+          <tr style="cursor:pointer;" onclick="toggleResidualPartner('${g.partner_id}')">
+            <td><b>${g.name}</b></td>
+            <td>${g.type}</td>
+            <td>${g.split || '—'}</td>
+            <td>${g.merchants == null ? '—' : g.merchants}</td>
+            <td>${g.months.length}</td>
+            <td>${money(g.paid)}</td>
+            <td>${g.pending ? `<span style="color:var(--warn-text);">${money(g.pending)}</span>` : '—'}</td>
+            <td><b>${money(g.total)}</b></td>
+            <td>${g.latest ? monthLabel(g.latest.period_month) : '—'}<div class="sub">${g.latest ? money(g.latest.net_payout) : ''}</div></td>
+            <td style="text-align:right;color:var(--slate-400);">${open ? '&#9650;' : '&#9660;'}</td>
+          </tr>
+          ${open ? `
+          <tr><td colspan="10" style="padding:0;background:var(--surface-2);">
+            <table style="margin:0;">
+              <thead><tr>
+                <th style="padding-left:26px;">Month</th><th>Merchants</th><th>Gross</th>
+                <th>Adjustments</th><th>Net</th><th>Status</th><th>Reference</th><th></th>
+              </tr></thead>
+              <tbody>
+                ${months.map(r => `
+                  <tr>
+                    <td style="padding-left:26px;">${monthLabel(r.period_month)}</td>
+                    <td>${r.merchant_count == null ? '—' : r.merchant_count}</td>
+                    <td>${r.gross_residual == null ? '—' : money(r.gross_residual)}</td>
+                    <td>${Number(r.adjustments) ? money(r.adjustments) : '—'}</td>
+                    <td><b>${money(r.net_payout)}</b></td>
+                    <td><span class="integration-status ${r.status === 'paid' ? 'connected' : 'not-connected'}">${r.status === 'paid' ? 'Paid' + (r.paid_on ? ' ' + formatDate(r.paid_on) : '') : 'Pending'}</span></td>
+                    <td>${r.reference || '—'}</td>
+                    <td style="text-align:right;"><button class="btn btn-xs" onclick="event.stopPropagation(); openResidualDrawer('${r.id}')">Edit</button></td>
+                  </tr>`).join('')}
+              </tbody>
+            </table>
+          </td></tr>` : ''}`;
+        }).join('')}
+      </tbody>
+      <tfoot><tr>
+        <td colspan="5" style="text-align:right;"><b>${groups.length} ${groups.length === 1 ? 'partner' : 'partners'}</b></td>
+        <td><b>${money(grand.paid)}</b></td>
+        <td><b>${grand.pending ? money(grand.pending) : '—'}</b></td>
+        <td><b>${money(grand.total)}</b></td>
+        <td colspan="2"></td>
+      </tr></tfoot>
     </table>`;
 }
 
@@ -5989,6 +6119,31 @@ function downloadResidualsCsv(){
   const mine = residualsAreMine();
   const rows = scopedResiduals();
   if(rows.length === 0){ showToast('Nothing to download.', 'info'); return; }
+
+  // Follows the view on screen. Downloading a per-month list while looking at
+  // a per-partner summary hands someone a different report from the one they
+  // were reading, which they would only notice after sending it on.
+  if(!mine && residualView === 'partner'){
+    const groups = residualPartnerRows(rows);
+    const header = ['Partner','Type','Split','Merchants','Months','Paid','Pending','Total','Last payout','Last amount'];
+    const body = groups.map(g => [
+      g.name, g.type, g.split || '',
+      g.merchants == null ? '' : g.merchants,
+      g.months.length,
+      g.paid.toFixed(2), g.pending.toFixed(2), g.total.toFixed(2),
+      g.latest ? monthLabel(g.latest.period_month) : '',
+      g.latest ? Number(g.latest.net_payout).toFixed(2) : ''
+    ]);
+    const totals = groups.reduce((s,g) => ({ paid:s.paid+g.paid, pending:s.pending+g.pending, total:s.total+g.total }),
+                                 { paid:0, pending:0, total:0 });
+    body.push(['TOTAL','','','', groups.reduce((n,g)=>n+g.months.length,0),
+               totals.paid.toFixed(2), totals.pending.toFixed(2), totals.total.toFixed(2), '', '']);
+
+    const csv = [header, ...body].map(line => line.map(csvCell).join(',')).join('\r\n');
+    downloadTextFile(`residuals-by-partner-${todayISO()}.csv`, csv, 'text/csv;charset=utf-8');
+    showToast(`Downloaded ${groups.length} ${groups.length === 1 ? 'partner' : 'partners'}.`, 'success');
+    return;
+  }
 
   const header = ['Month', ...(mine ? [] : ['Partner']), 'Merchants', 'Gross', 'Adjustments',
                   'Net payout', 'Status', 'Paid on', 'Reference', 'Notes'];
