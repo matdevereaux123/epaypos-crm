@@ -6199,7 +6199,10 @@ function thisMonthISO(){
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
 }
 
-function openResidualDrawer(payoutId){
+// prefillPartnerId lets the agent's own record open this already pointed at
+// them, so logging a payout from their page does not mean finding their name
+// again in a list of every partner.
+function openResidualDrawer(payoutId, prefillPartnerId){
   const r = payoutId ? RESIDUALS.find(x => x.id === payoutId) : null;
   document.getElementById('residualDrawer').innerHTML = `
     <div class="drawer-head">
@@ -6211,7 +6214,7 @@ function openResidualDrawer(payoutId){
       <div id="residualError" style="display:none;margin-bottom:12px;padding:10px 12px;background:var(--danger-bg);border:1px solid var(--danger-border);border-radius:8px;color:var(--red);font-size:12.5px;"></div>
 
       <div class="field"><label>Partner</label>
-        <select id="rpPartner" ${r ? 'disabled' : ''}>${residualPartnerOptions(r ? r.partner_id : null)}</select>
+        <select id="rpPartner" ${r ? 'disabled' : ''}>${residualPartnerOptions(r ? r.partner_id : (prefillPartnerId || null))}</select>
         ${r ? `<p style="font-size:11px;color:var(--slate-400);margin:6px 0 0;">The partner and month identify the record. To move it, delete this one and log a new one.</p>` : ''}
       </div>
 
@@ -6312,7 +6315,10 @@ async function saveResidualPayout(){
 
   RESIDUALS = await loadResidualsFromSupabase();
   closeResidualDrawer();
-  renderResidualsReport();
+  if(document.getElementById('view-residuals').style.display !== 'none') renderResidualsReport();
+  // Logged from a partner's own record, that drawer is what is on screen and
+  // would otherwise still show the figures from before the save.
+  if(activeReferralId) openReferralDetail(activeReferralId);
   showToast('Payout saved. The partner can see it in their portal.', 'success');
 }
 
@@ -7789,6 +7795,75 @@ function buildApplicationSectionHTML(p, sens){
   `;
 }
 
+/* -------------------------------------------------------------------------
+   Residual payouts on the partner's own record.
+
+   The Reports tab is where the whole book lives; this is the same thing from
+   the other end — you are looking at an agent, so logging or checking their
+   month should not mean leaving, finding the report, and finding their name
+   again in a list of everyone.
+
+   Internal only. It reads and writes the same residual_payouts rows, whose
+   RLS lets a partner see their own and write nothing.
+   ------------------------------------------------------------------------- */
+function buildResidualsSectionHTML(p){
+  if(roleOf(currentUser).portal_scope !== 'internal') return '';
+  if(!roleOf(currentUser).perms.fullDashboard) return '';
+
+  // Referral partners are on commission, not residuals — the section is
+  // offered to anyone who could be paid one, plus anyone who already has been.
+  const isResidualType = ['agent','reseller','iso'].includes(p.partner_type)
+    || p.reseller_type === 'authorized_reseller'
+    || !!p.residual_percentage;
+  const mine = RESIDUALS.filter(r => r.partner_id === p.id)
+    .sort((a,b) => String(b.period_month).localeCompare(String(a.period_month)));
+  if(!isResidualType && mine.length === 0) return '';
+
+  const total   = mine.reduce((s,r) => s + (Number(r.net_payout) || 0), 0);
+  const pending = mine.filter(r => r.status !== 'paid').reduce((s,r) => s + (Number(r.net_payout) || 0), 0);
+  const recent  = mine.slice(0, 6);
+
+  const body = `
+    <div style="display:flex;gap:10px;margin-bottom:12px;">
+      <div style="flex:1;padding:9px 11px;border:1px solid var(--line);border-radius:8px;">
+        <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--slate-500);">Paid to date</div>
+        <div style="font-size:17px;font-weight:700;font-family:'Space Grotesk';">${money(total - pending)}</div>
+      </div>
+      <div style="flex:1;padding:9px 11px;border:1px solid var(--line);border-radius:8px;">
+        <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--slate-500);">Pending</div>
+        <div style="font-size:17px;font-weight:700;font-family:'Space Grotesk';${pending ? 'color:var(--warn-text);' : ''}">${money(pending)}</div>
+      </div>
+      <div style="flex:1;padding:9px 11px;border:1px solid var(--line);border-radius:8px;">
+        <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--slate-500);">Split</div>
+        <div style="font-size:17px;font-weight:700;font-family:'Space Grotesk';">${p.residual_percentage || '—'}</div>
+      </div>
+    </div>
+
+    ${mine.length === 0
+      ? `<div class="stub-panel" style="padding:22px;">No residual payouts logged yet.</div>`
+      : `<table style="font-size:12px;margin-bottom:10px;">
+          <thead><tr><th>Month</th><th>Merchants</th><th>Net</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            ${recent.map(r => `
+              <tr>
+                <td>${monthLabel(r.period_month)}</td>
+                <td>${r.merchant_count == null ? '—' : r.merchant_count}</td>
+                <td><b>${money(r.net_payout)}</b></td>
+                <td><span class="integration-status ${r.status === 'paid' ? 'connected' : 'not-connected'}">${r.status === 'paid' ? 'Paid' : 'Pending'}</span></td>
+                <td style="text-align:right;"><button class="btn btn-xs" onclick="openResidualDrawer('${r.id}')">Edit</button></td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+        ${mine.length > recent.length
+          ? `<p style="font-size:11px;color:var(--slate-400);margin:0 0 10px;">Showing the last ${recent.length} of ${mine.length}. The full history is on Reports &rarr; Residual Payouts.</p>`
+          : ''}`}
+
+    <button class="btn btn-accent" style="width:100%;" onclick="openResidualDrawer(null, '${p.id}')">+ Log a monthly payout</button>
+    <p style="font-size:11px;color:var(--slate-400);margin:8px 0 0;text-align:center;">Appears in their portal under Reports &rarr; Residual Payouts as soon as it is saved.</p>`;
+
+  return drawerSection('sec-residuals-' + p.id, 'Residual payouts', body, false);
+}
+
 function buildOnboardingSectionHTML(p){
   // Portal logins have no business seeing their own onboarding controls.
   if(!roleOf(currentUser).perms.editPartners) return '';
@@ -8066,6 +8141,8 @@ async function openReferralDetail(id){
       ${editableRow('ZIP', p.zip, { table:'partners', id:p.id, column:'zip', record:p, can: canEditPartners })}
 
       ${buildApplicationSectionHTML(p, decryptedPartnerSensitiveCache[p.id])}
+
+      ${buildResidualsSectionHTML(p)}
 
       ${buildOnboardingSectionHTML(p)}
 
