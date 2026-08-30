@@ -8099,6 +8099,10 @@ async function openReferralDetail(id){
   // match that, not just canViewSensitive(). Cached per partner so
   // re-opening this same drawer (e.g. toggling the banking eye icon)
   // re-renders from memory instead of re-hitting the RPC each time.
+  // A copy, so decrypted sensitive fields can be merged in for display
+  // without writing them into the stored record. NOTE: anything that saves
+  // must sync `base`, not this — `base` is the PARTNERS entry the tables
+  // render from. See the editableRow calls below, which pass record:base.
   const p = Object.assign({}, base);
   // Third place this decision gets made — the other two are
   // scopedPartnersForCurrentUser() and current_partner_is_own() in
@@ -8142,9 +8146,9 @@ async function openReferralDetail(id){
       <button class="drawer-close" onclick="closeReferralDrawer()">&times;</button>
     </div>
     <div class="drawer-body">
-      ${editableRow('Name', p.name, { table:'partners', id:p.id, column:'name', record:p,
+      ${editableRow('Name', p.name, { table:'partners', id:p.id, column:'name', record:base,
           can: canEditPartners, onSaved: () => { renderReferralTable(); renderAgentsTable(); } })}
-      ${editableRow('Agent ID', p.agent_id, { table:'partners', id:p.id, column:'agent_id', record:p,
+      ${editableRow('Agent ID', p.agent_id, { table:'partners', id:p.id, column:'agent_id', record:base,
           can: canEditPartners,
           // Uppercased and trimmed by a trigger, so the row is re-read rather
           // than assumed — an ID typed lowercase would otherwise sit on screen
@@ -8152,15 +8156,15 @@ async function openReferralDetail(id){
           parse: v => { const t = String(v||'').trim().toUpperCase(); return t || null; },
           onSaved: () => { renderReferralTable(); renderAgentsTable();
                            if(document.getElementById('view-residuals').style.display !== 'none') renderResidualsReport(); } })}
-      ${editableRow('Contact', p.contact, { table:'partners', id:p.id, column:'contact', record:p, can: canEditPartners })}
-      ${editableRow('Email', p.email, { table:'partners', id:p.id, column:'email', type:'email', record:p, can: canEditPartners })}
-      ${editableRow('Phone', p.phone, { table:'partners', id:p.id, column:'phone', type:'tel', record:p, can: canEditPartners })}
-      ${editableRow('Website', p.website, { table:'partners', id:p.id, column:'website', record:p, can: canEditPartners })}
-      ${editableRow('Street', p.address, { table:'partners', id:p.id, column:'address', record:p, can: canEditPartners })}
-      ${editableRow('City', p.city, { table:'partners', id:p.id, column:'city', record:p, can: canEditPartners })}
-      ${editableRow('State', p.state, { table:'partners', id:p.id, column:'state', type:'select', record:p, can: canEditPartners,
+      ${editableRow('Contact', p.contact, { table:'partners', id:p.id, column:'contact', record:base, can: canEditPartners })}
+      ${editableRow('Email', p.email, { table:'partners', id:p.id, column:'email', type:'email', record:base, can: canEditPartners })}
+      ${editableRow('Phone', p.phone, { table:'partners', id:p.id, column:'phone', type:'tel', record:base, can: canEditPartners })}
+      ${editableRow('Website', p.website, { table:'partners', id:p.id, column:'website', record:base, can: canEditPartners })}
+      ${editableRow('Street', p.address, { table:'partners', id:p.id, column:'address', record:base, can: canEditPartners })}
+      ${editableRow('City', p.city, { table:'partners', id:p.id, column:'city', record:base, can: canEditPartners })}
+      ${editableRow('State', p.state, { table:'partners', id:p.id, column:'state', type:'select', record:base, can: canEditPartners,
           options: [{value:'',label:'—'}].concat(US_STATES.map(st => ({value:st,label:st}))) })}
-      ${editableRow('ZIP', p.zip, { table:'partners', id:p.id, column:'zip', record:p, can: canEditPartners })}
+      ${editableRow('ZIP', p.zip, { table:'partners', id:p.id, column:'zip', record:base, can: canEditPartners })}
 
       ${buildApplicationSectionHTML(p, decryptedPartnerSensitiveCache[p.id])}
 
