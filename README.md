@@ -91,6 +91,43 @@ fixed billing cycle. Available on both brands. Backed by
 `leads.in_collections/collections_marked_at/collections_marked_by/
 collections_note` — see `database/13_collections.sql`.
 
+Also new: **Envision ISO Leads** — a standalone Kanban pipeline (Envision
+ATM side only) for leads sourced through independent ISOs, structured like
+Lending Leads (own stage set, own notes) but with each lead linking back
+to the specific ISO who submitted it, since an ISO is a real portal login
+(`roles.iso`) that should see its own submissions. Required adding `'iso'`
+as a third `partners.type` value alongside `referral_partner`/`agent` — a
+new "Add ISO" button lives on the Partners tab (Envision ATM brand only).
+See `database/44_iso_leads.sql`.
+
+Also new: a **Contacts** tab — a general business-contacts directory
+(manufacturers, internal team, anyone else worth tracking), not a sales
+pipeline. Simple filterable table like Loaders, filtered between
+customer-facing and internal/manufacturer contacts. Both brands, internal
+staff only. See `database/45_contacts.sql`.
+
+Also new: **"Created by"** tracking on Leads, Cold Leads, ISO Leads, and
+Lending Leads — every insert path across all four now stamps which
+internal user created the row, shown in each detail drawer to staff with
+`fullDashboard` only. The public referral landing page is the one path
+with no logged-in user behind it (runs as anon); those leads show
+"Public referral link (self-submitted)" instead of a blank. See
+`database/46_lead_created_by.sql`.
+
+Fixed: a partner added without an email never got a portal login created
+for them, and the "Send invite" error's own suggested fix ("re-save the
+partner with an email address") didn't actually do anything — that logic
+only ever ran on brand-new partners. Extracted into a shared
+`ensurePartnerPortalUser()` now called from both the Add Partner flow and
+the Email field's inline edit on an existing partner. No SQL — app-code only.
+
+Fixed: the Calendar tab was visible to every portal-scoped login (Agent,
+EPAY Reseller, ISO, Referral Partner) — nav visibility only checked brand,
+never role, even though Calendar's RLS has required `fullDashboard` since
+`database/38_calendar_ownership.sql`. Now hidden from the nav and hard-gated
+in `showView()` for anyone without it, matching the access the database
+already enforced. No SQL — app-code only.
+
 **Known gaps inside already-converted collections** (each flagged in code
 where it applies):
 - The "purge demo data" utility is deliberately NOT wired to real deletes —
@@ -101,17 +138,70 @@ where it applies):
 16. Stand up the real referral link routes (`epaypos.net/r/[slug]`, `envisionatm.com/r/[slug]`) — currently simulated via a `?ref=` query param on the same file
 
 ### Phase 6 — Wire up the rest
-17. Connect the same Resend account as the CRM's own Outbound Email integration (separate from Auth's invite emails) — unlocks welcome emails, tracking emails, application emails, and the Newsletter tool
-18. Google Calendar
+17. ~~Connect the same Resend account as the CRM's own Outbound Email integration~~ **Done** — `supabase/functions/send-email`, every send logged to `email_log`
+18. ~~Google Calendar~~ **Done** — per-user OAuth, two-way sync, per-user event ownership (`database/35`–`38`)
 19. Wix form capture
 20. Instantly
 21. AI Lead Scraper — needs a server-side Claude API key; never call it directly from `app/index.html`, since that would expose the key in the browser
 
 ### Phase 7 — Prove it before real data goes in
 22. Multi-user test — two people logged in simultaneously, confirm data actually syncs
-23. Re-confirm encryption one final time
+23. Re-confirm encryption one final time — use `database/tools/check_encryption.sql`, which is what caught the vault key never having been created
 24. Real merchant/client data goes in
 25. Launch
+
+### Phase 8 — Training
+
+Nobody has been taught this system yet, and it is now large enough that
+handing someone a login is not the same as handing them a working tool.
+
+- **Record training videos**, one per role rather than one long tour — an
+  agent never sees Cold Leads or Applications, and a video that walks
+  through them teaches an agent things that are not true of their account
+- **A Training tab inside the CRM** so the videos live where the work does.
+  A link in an email is found once and lost; a tab is there on the day
+  someone actually needs it
+- **Per-role tracks** — Admin, In-House Sales, Agent, EPAY Reseller, ISO,
+  Referral Partner. Each sees only their own, driven by `portal_scope` and
+  role perms the same way the nav already is
+- **Decide where the video files live** before recording. They are the one
+  asset here that does not belong in Supabase Storage on cost alone; an
+  unlisted host with a plain embed is likely enough
+- **Written quick-reference beside each video** — the answer to "how do I
+  log a residual" should be findable without watching six minutes to reach
+  it
+- **Track completion per user**, so onboarding a new agent has a state
+  rather than an assumption. Same shape as `partner_documents`: a row per
+  user per module, stamped when finished
+- **Decide whether any module gates access.** Signing the admit packet
+  already gates an agent's portal; whether training should too is a
+  business call, not a technical one — and worth making deliberately
+  rather than discovering later that nobody watched anything
+- **Cover the destructive paths explicitly** — deleting a lead cascades to
+  its notes and documents, "send back to cold" does not, and the
+  difference is not obvious from either button
+
+### Operational, not yet scheduled
+
+- **Move the repo off iCloud-synced storage.** It has corrupted the git
+  repository twice — once truncating a file mid-commit, once clobbering
+  `refs/heads/master` and leaving a single orphan commit where the history
+  had been. Nothing was lost either time, but both were luck. Either turn
+  off "Optimise Mac Storage" or move the working copy outside
+  Desktop/Documents
+- **Automatic Google Calendar sync.** Currently manual, on the Sync button.
+  Automatic needs Google push notifications and a public webhook endpoint
+- **New / Medium / Old filter chips on Cold Leads** — the ages are shown
+  but cannot be filtered on
+- **The "preview as" banner reads the viewer's own onboarding status**
+  rather than the previewed user's. Cosmetic, but misleading in the one
+  place built for checking what someone else sees
+- **Two tabs both read "Sales Team"** in the sidebar — Partners / Sales
+  Team and Sales Team & INT Agents. Deliberate or not, worth settling
+- **Sensitive fields on an application are not yet inline-editable.** DOB,
+  SSN, licence, tax ID and banking write through encrypting RPCs and have
+  the pencil; the equivalent fields on a *lead* still go through the older
+  form. Worth unifying so there is one way to edit a sensitive field
 
 ## Working in this codebase
 

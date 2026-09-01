@@ -1387,6 +1387,10 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
           Loaders
         </button>
+        <button class="nav-item" data-view="contacts" id="navContactsItem">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Contacts
+        </button>
         <button class="nav-item" data-view="agents" id="navAgentsItem">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
           Sales Team &amp; INT Agents
@@ -1404,6 +1408,17 @@
           <button class="nav-item" data-view="lendingleads">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
             Leads
+          </button>
+        </div>
+
+        <button class="nav-section-toggle" id="isoSectionToggle" type="button" style="display:none;">
+          <span>Envision ISO</span>
+          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="nav-collapsible" id="isoSectionItems" style="display:none;">
+          <button class="nav-item" data-view="isoleads">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            ISO Leads
           </button>
         </div>
 
@@ -1774,6 +1789,28 @@
         <div id="lendingLeadsBoard"></div>
       </section>
 
+      <section id="view-isoleads" class="view" style="display:none;">
+        <div class="topbar">
+          <div>
+            <h1>Envision ISO Leads</h1>
+            <p class="subtext">Leads submitted by independent ISOs for ATM placement — separate from the general Envision ATM Leads board.</p>
+          </div>
+          <div class="topbar-actions">
+            <button class="btn btn-accent btn-sm" id="addIsoLeadBtn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              New ISO Lead
+            </button>
+          </div>
+        </div>
+
+        <div class="kanban-search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input id="isoLeadsSearch" placeholder="Search ISO leads...">
+        </div>
+
+        <div id="isoLeadsBoard"></div>
+      </section>
+
       <!-- REFERRAL PARTNERS -->
       <section id="view-referrals" class="view" style="display:none;">
         <div class="topbar">
@@ -1789,6 +1826,10 @@
             <button class="btn btn-accent btn-sm" id="addReferralBtn">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               Add Referral Partner
+            </button>
+            <button class="btn btn-accent btn-sm" id="addIsoBtn" style="display:none;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Add ISO
             </button>
           </div>
         </div>
@@ -1855,6 +1896,36 @@
             <tbody id="loadersTableBody"></tbody>
           </table>
           <div id="loadersEmptyState" class="empty-state" style="display:none;"></div>
+        </div>
+      </section>
+
+      <!-- CONTACTS -->
+      <section id="view-contacts" class="view" style="display:none;">
+        <div class="topbar">
+          <div>
+            <h1>Contacts</h1>
+            <p class="subtext">A general business-contacts directory — manufacturers, internal team, anyone else worth keeping track of. Both brands.</p>
+          </div>
+          <button class="btn btn-accent" id="addContactBtn">+ Add Contact</button>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h2 id="contactsCount">All contacts</h2>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <select id="contactsCategoryFilter" style="width:auto;min-width:180px;">
+                <option value="all">All categories</option>
+                <option value="customer_facing">Customer-facing</option>
+                <option value="internal_manufacturer">Internal / Manufacturer</option>
+              </select>
+              <input class="search-input" placeholder="Search name, business, notes..." id="contactsSearch">
+            </div>
+          </div>
+          <table>
+            <thead><tr><th>Name</th><th>Business</th><th>Category</th><th>Phone</th><th>Email</th><th></th></tr></thead>
+            <tbody id="contactsTableBody"></tbody>
+          </table>
+          <div id="contactsEmptyState" class="empty-state" style="display:none;"></div>
         </div>
       </section>
 
@@ -2504,6 +2575,11 @@
   <div class="drawer" id="loaderDrawer"></div>
 </div>
 
+<!-- ================= DRAWER: ADD / EDIT CONTACT ================= -->
+<div class="overlay" id="contactOverlay">
+  <div class="drawer" id="contactDrawer"></div>
+</div>
+
 <div class="overlay" id="residualOverlay">
   <div class="drawer" id="residualDrawer"></div>
 </div>
@@ -2520,6 +2596,11 @@
 <!-- ================= DRAWER: LENDING LEAD (add/view) ================= -->
 <div class="overlay" id="lendingLeadOverlay">
   <div class="drawer" id="lendingLeadDrawer"></div>
+</div>
+
+<!-- ================= DRAWER: ISO LEAD (add/view) ================= -->
+<div class="overlay" id="isoLeadOverlay">
+  <div class="drawer" id="isoLeadDrawer"></div>
 </div>
 
 <!-- ================= DRAWER: SUBSCRIPTION REPORT QUICK VIEW ================= -->
@@ -3057,6 +3138,50 @@ async function loadLendingLeadNotesFromSupabase(){
 async function loadLendingLeadCallNotesFromSupabase(){
   const { data, error } = await supa.from('lending_lead_call_notes').select('*').order('created_at', { ascending: false });
   if(error){ console.error('Failed to load lending lead call notes from Supabase', error); return []; }
+  return data;
+}
+
+/* =========================================================================
+   ENVISION ISO LEADS — another fully separate, deliberately basic pipeline,
+   same shape as Lending above, for leads sourced through independent ISOs
+   on the Envision ATM side. Unlike Lending, each lead links back to the
+   specific ISO (a partners row with type:'iso') who submitted it via
+   linked_partner_id — an ISO's own portal login sees only their own
+   submissions, same access model as the main leads table.
+   ========================================================================= */
+const ISO_LEAD_STAGES = [
+  { key:'new_lead', label:'New Lead', color:'var(--info-text)' },
+  { key:'contacted', label:'Contacted', color:'var(--info-text)' },
+  { key:'app_sent', label:'Application Sent', color:'var(--warn-text)' },
+  { key:'underwriting', label:'Underwriting', color:'var(--warn-text)' },
+  { key:'approved', label:'Approved', color:'var(--ok-text)' },
+  { key:'installed', label:'Installed', color:'var(--ok-text)' },
+  { key:'declined', label:'Declined', color:'var(--err-text)' },
+];
+function isoStageIndex(key){ return ISO_LEAD_STAGES.findIndex(s => s.key === key); }
+function isoStageInfo(key){ return ISO_LEAD_STAGES.find(s => s.key === key) || ISO_LEAD_STAGES[0]; }
+
+function emptyIsoLeadFields(){
+  return {
+    id:'', business_name:'', contact_name:'', phone:'', email:'',
+    est_volume:'', source:'', stage:'new_lead', linked_partner_id:null, assigned_to:null,
+    created_at: new Date().toISOString().slice(0,10),
+    stage_entered_at: new Date().toISOString().slice(0,10),
+  };
+}
+async function loadIsoLeadsFromSupabase(){
+  const { data, error } = await supa.from('iso_leads').select('*').order('created_at', { ascending: false });
+  if(error){ console.error('Failed to load ISO leads from Supabase', error); return []; }
+  return data;
+}
+async function loadIsoLeadNotesFromSupabase(){
+  const { data, error } = await supa.from('iso_lead_notes').select('*').order('created_at', { ascending: false });
+  if(error){ console.error('Failed to load ISO lead notes from Supabase', error); return []; }
+  return data;
+}
+async function loadIsoLeadCallNotesFromSupabase(){
+  const { data, error } = await supa.from('iso_lead_call_notes').select('*').order('created_at', { ascending: false });
+  if(error){ console.error('Failed to load ISO lead call notes from Supabase', error); return []; }
   return data;
 }
 
@@ -3785,6 +3910,9 @@ let LEADS = [];
 let LENDING_LEADS = [];
 let LENDING_LEAD_NOTES = [];
 let LENDING_LEAD_CALL_NOTES = [];
+let ISO_LEADS = [];
+let ISO_LEAD_NOTES = [];
+let ISO_LEAD_CALL_NOTES = [];
 // Populated for real from Supabase in enterAppAsAuthUser().
 let LEAD_NOTES = [];
 let LEAD_CALL_NOTES = [];
@@ -3812,7 +3940,7 @@ const ADMIN_ONLY_VIEWS = ['aiscraper', 'coldemail', 'newsletter'];
 const EPAY_ONLY_VIEWS = ['applications', 'aiscraper', 'coldemail', 'reportsubs', 'calendar', 'authresellers', 'lendingleads', 'agents'];
 // Loaders are an Envision ATM concept — nobody loads cash into a card
 // terminal. Same hard gate as EPAY_ONLY_VIEWS, mirrored.
-const ATM_ONLY_VIEWS = ['loaders'];
+const ATM_ONLY_VIEWS = ['loaders', 'isoleads'];
 // Controls where openLeadDetail()/openColdLeadDetail() render: the normal
 // slide-over drawer everywhere in the app, or full-width inline content —
 // used only by the Live Recall tab. Every internal re-render (after a save,
@@ -3892,6 +4020,8 @@ function setBrand(brand){
   const navAuthResellers = document.getElementById('navAuthResellersItem');
   const lendingToggle = document.getElementById('lendingSectionToggle');
   const lendingItems = document.getElementById('lendingSectionItems');
+  const isoToggle = document.getElementById('isoSectionToggle');
+  const isoItems = document.getElementById('isoSectionItems');
   const reportsToggle = document.getElementById('reportsSectionToggle');
   const reportsItems = document.getElementById('reportsSectionItems');
   navApplications.style.display = (brand === 'epay') ? 'flex' : 'none';
@@ -3909,6 +4039,12 @@ function setBrand(brand){
   if(navLoaders) navLoaders.style.display = (brand === 'atm')  ? 'flex' : 'none';
   lendingToggle.style.display = (brand === 'epay') ? 'flex' : 'none';
   lendingItems.style.display = (brand === 'epay') ? 'block' : 'none';
+  isoToggle.style.display = (brand === 'atm') ? 'flex' : 'none';
+  isoItems.style.display = (brand === 'atm') ? 'block' : 'none';
+  // addIsoBtn's own visibility also needs the editPartners permission check,
+  // which runs after this in applyRolePermissions() (called at the end of
+  // this same function) — that's the one authoritative place it's set, same
+  // as addReferralBtn, so it isn't touched here.
   // Reports section itself stays visible on both brands now — Collections
   // applies to ATM units same as EPAY terminals. Only the Subscription
   // report inside it (navReportSubs, just above) stays EPAY-only.
@@ -4018,6 +4154,17 @@ function applyRolePermissions(){
 
   const addReferralBtn = document.getElementById('addReferralBtn');
   if(addReferralBtn) addReferralBtn.style.display = perms.editPartners ? 'inline-block' : 'none';
+
+  const addIsoBtn = document.getElementById('addIsoBtn');
+  if(addIsoBtn) addIsoBtn.style.display = (perms.editPartners && currentBrand === 'atm') ? 'inline-block' : 'none';
+
+  // Calendar's own RLS (database/38_calendar_ownership.sql) requires
+  // fullDashboard on every policy — a portal-scoped login (Agent, EPAY
+  // Reseller, ISO, Referral Partner) was never meant to see this at all,
+  // it just wasn't hidden from the nav. Only ever tightens past the
+  // brand-only check in setBrand() above, never loosens past it.
+  const navCalendar = document.getElementById('navCalendarItem');
+  if(navCalendar && !perms.fullDashboard) navCalendar.style.display = 'none';
 
   const addUserBtn = document.getElementById('addUserBtn');
   if(addUserBtn) addUserBtn.style.display = perms.manageUsers ? 'inline-block' : 'none';
@@ -4343,6 +4490,9 @@ async function enterAppAsAuthUser(authUser){
     loadLendingLeadsFromSupabase(),
     loadLendingLeadNotesFromSupabase(),
     loadLendingLeadCallNotesFromSupabase(),
+    loadIsoLeadsFromSupabase(),
+    loadIsoLeadNotesFromSupabase(),
+    loadIsoLeadCallNotesFromSupabase(),
     loadNewslettersFromSupabase(),
     loadNlTemplatesFromSupabase(),
     loadConnectedCalendarsFromSupabase(),
@@ -4352,7 +4502,8 @@ async function enterAppAsAuthUser(authUser){
     loadInstantlyContactsFromSupabase(),
     loadPartnerDocumentsFromSupabase(),
     loadApplicationLinksFromSupabase(),
-    loadIntegrationsFromSupabase()
+    loadIntegrationsFromSupabase(),
+    loadContactsFromSupabase()
   ]);
 
   const appUser = await userPromise;
@@ -4378,9 +4529,10 @@ async function enterAppAsAuthUser(authUser){
   const [
     users, partners, leads, applications, coldLeads, notes, leadNotes,
     leadCallNotes, leadDocuments, offices, lendingLeads, lendingLeadNotes,
-    lendingLeadCallNotes, newsletters, nlTemplates, connectedCalendars,
+    lendingLeadCallNotes, isoLeads, isoLeadNotes, isoLeadCallNotes,
+    newsletters, nlTemplates, connectedCalendars,
     calendarEvents, residualPayouts, atmLoaders, instantlyContacts, partnerDocuments, applicationLinks,
-    integrationsFromDb
+    integrationsFromDb, contacts
   ] = await tablesPromise;
 
   USERS = users;
@@ -4396,6 +4548,9 @@ async function enterAppAsAuthUser(authUser){
   LENDING_LEADS = lendingLeads;
   LENDING_LEAD_NOTES = lendingLeadNotes;
   LENDING_LEAD_CALL_NOTES = lendingLeadCallNotes;
+  ISO_LEADS = isoLeads;
+  ISO_LEAD_NOTES = isoLeadNotes;
+  ISO_LEAD_CALL_NOTES = isoLeadCallNotes;
   NEWSLETTERS = newsletters;
   NL_TEMPLATES = nlTemplates;
   CONNECTED_CALENDARS = connectedCalendars;
@@ -4405,6 +4560,7 @@ async function enterAppAsAuthUser(authUser){
   LOADERS = atmLoaders;
   INSTANTLY_CONTACTS = instantlyContacts;
   PARTNER_DOCUMENTS = partnerDocuments;
+  CONTACTS = contacts;
   // Null means the read was refused, so the localStorage mirror stands rather
   // than blanking Settings for someone who simply cannot see it.
   if(integrationsFromDb){
@@ -5943,7 +6099,8 @@ function residualPartnerRows(rows){
 
 function partnerTypeLabel(p){
   if(p.reseller_type === 'authorized_reseller') return 'EPAY Reseller';
-  if(p.type === 'referral_partner' || p.partner_type === 'referral') return 'Referral Partner';
+  if(p.type === 'referral_partner') return 'Referral Partner';
+  if(p.type === 'iso') return 'ISO';
   return 'Agent';
 }
 
@@ -6198,7 +6355,7 @@ function residualPartnerOptions(selectedId){
   // Agents and resellers get paid residuals; referral partners are commission
   // and are deliberately not in this list.
   const eligible = PARTNERS
-    .filter(p => ['agent','reseller','iso'].includes(p.partner_type) || p.residual_percentage)
+    .filter(p => ['agent','iso'].includes(p.type) || p.residual_percentage)
     .sort((a,b) => (a.name||'').localeCompare(b.name||''));
   const list = eligible.length ? eligible : PARTNERS.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   return list.map(p => `<option value="${p.id}" ${p.id===selectedId?'selected':''}>${p.name}${p.residual_percentage ? ' — ' + p.residual_percentage : ''}</option>`).join('');
@@ -6768,6 +6925,163 @@ async function deleteLoader(id){
   showToast('Loader deleted.', 'success');
 }
 
+/* =========================================================================
+   CONTACTS — a general business-contacts directory, not a sales pipeline.
+   Same simple table+drawer shape as Loaders above, filtered by category
+   (customer-facing vs internal/manufacturer) instead of state. Not brand-
+   restricted — shared across both EPAY POS and Envision ATM.
+   ========================================================================= */
+const CONTACT_CATEGORIES = {
+  customer_facing: 'Customer-facing',
+  internal_manufacturer: 'Internal / Manufacturer',
+};
+let CONTACTS = [];
+let contactCategoryFilter = 'all';
+let contactSearch = '';
+
+async function loadContactsFromSupabase(){
+  const { data, error } = await supa.from('contacts').select('*').order('name');
+  if(error){ console.error('Failed to load contacts from Supabase', error); return []; }
+  return data || [];
+}
+
+function scopedContacts(){
+  const q = contactSearch.trim().toLowerCase();
+  return CONTACTS.filter(c => {
+    if(contactCategoryFilter !== 'all' && c.category !== contactCategoryFilter) return false;
+    if(!q) return true;
+    return [c.name, c.business_name, c.email, c.phone, c.notes]
+      .some(v => (v || '').toLowerCase().includes(q));
+  });
+}
+
+function renderContacts(){
+  const rows = scopedContacts();
+
+  document.getElementById('contactsCount').textContent =
+    rows.length === CONTACTS.length ? `All contacts (${rows.length})` : `${rows.length} of ${CONTACTS.length} contacts`;
+
+  const body = document.getElementById('contactsTableBody');
+  const empty = document.getElementById('contactsEmptyState');
+
+  if(rows.length === 0){
+    body.innerHTML = '';
+    empty.style.display = 'block';
+    empty.textContent = CONTACTS.length === 0
+      ? 'No contacts yet. Add the first one to start building the list.'
+      : 'No contacts match that search.';
+    return;
+  }
+  empty.style.display = 'none';
+
+  body.innerHTML = rows.map(c => `
+    <tr style="cursor:pointer;" onclick="openContactDrawer('${c.id}')">
+      <td><b>${c.name}</b>${c.notes ? `<div style="font-size:11.5px;color:var(--slate-500);">${c.notes}</div>` : ''}</td>
+      <td>${c.business_name || '—'}</td>
+      <td><span class="pill ${c.category==='customer_facing' ? 'pill-status-active' : 'pill-agent-basic'}">${CONTACT_CATEGORIES[c.category] || c.category}</span></td>
+      <td>${c.phone || '—'}</td>
+      <td>${c.email || '—'}</td>
+      <td style="text-align:right;"><button class="btn btn-sm" onclick="event.stopPropagation(); openContactDrawer('${c.id}')">Edit</button></td>
+    </tr>`).join('');
+}
+
+function openContactDrawer(contactId){
+  const c = contactId ? CONTACTS.find(x => x.id === contactId) : null;
+  const v = (k, d) => (c && c[k] != null ? String(c[k]) : (d || ''));
+
+  document.getElementById('contactDrawer').innerHTML = `
+    <div class="drawer-head">
+      <div><h2>${c ? 'Edit contact' : 'Add contact'}</h2></div>
+      <button class="drawer-close" onclick="closeContactDrawer()">&times;</button>
+    </div>
+    <div class="drawer-body">
+      <div id="contactError" style="display:none;margin-bottom:12px;padding:10px 12px;background:var(--danger-bg);border:1px solid var(--danger-border);border-radius:8px;color:var(--red);font-size:12.5px;"></div>
+
+      <div class="field"><label>Name</label>
+        <input id="cnName" value="${v('name')}" placeholder="e.g. Dana Whitfield"></div>
+
+      <div class="field"><label>Business name <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
+        <input id="cnBusiness" value="${v('business_name')}" placeholder="e.g. Great Lakes Manufacturing"></div>
+
+      <div class="field"><label>Phone <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
+        <input id="cnPhone" type="tel" value="${v('phone')}"></div>
+
+      <div class="field"><label>Email <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
+        <input id="cnEmail" type="email" value="${v('email')}"></div>
+
+      <div class="field"><label>Category</label>
+        <select id="cnCategory">
+          ${Object.keys(CONTACT_CATEGORIES).map(k => `<option value="${k}" ${v('category','customer_facing')===k?'selected':''}>${CONTACT_CATEGORIES[k]}</option>`).join('')}
+        </select>
+      </div>
+
+      <div class="field"><label>Notes <span style="color:var(--slate-300);font-weight:400;">(who they are, how you know them...)</span></label>
+        <textarea id="cnNotes" rows="3">${v('notes')}</textarea></div>
+    </div>
+    <div class="drawer-footer">
+      ${c ? `<button class="btn" style="flex:1;" onclick="deleteContact('${c.id}')">Delete</button>`
+          : `<button class="btn" style="flex:1;" onclick="closeContactDrawer()">Cancel</button>`}
+      <button class="btn btn-accent" style="flex:1;" id="cnSaveBtn" onclick="saveContact(${c ? `'${c.id}'` : 'null'})">${c ? 'Save changes' : 'Add contact'}</button>
+    </div>`;
+  document.getElementById('contactOverlay').classList.add('open');
+}
+
+function closeContactDrawer(){ document.getElementById('contactOverlay').classList.remove('open'); }
+
+async function saveContact(contactId){
+  const val = id => ((document.getElementById(id) || {}).value || '').trim();
+  const err = document.getElementById('contactError');
+  const btn = document.getElementById('cnSaveBtn');
+  err.style.display = 'none';
+
+  const name = val('cnName');
+  if(!name){ err.textContent = 'A name is required.'; err.style.display = 'block'; return; }
+
+  const fields = {
+    name,
+    business_name: val('cnBusiness') || null,
+    phone:         val('cnPhone')    || null,
+    email:         val('cnEmail')    || null,
+    category:      val('cnCategory'),
+    notes:         val('cnNotes')    || null,
+  };
+
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.textContent = 'Saving…';
+
+  let error;
+  if(contactId){
+    ({ error } = await supa.from('contacts').update(fields).eq('id', contactId));
+    if(!error) Object.assign(CONTACTS.find(x => x.id === contactId), fields);
+  } else {
+    const res = await supa.from('contacts')
+      .insert(Object.assign({ created_by: currentUser.id }, fields)).select().single();
+    error = res.error;
+    if(!error) CONTACTS.push(res.data);
+  }
+
+  btn.disabled = false;
+  btn.textContent = original;
+  if(error){ err.textContent = error.message; err.style.display = 'block'; return; }
+
+  closeContactDrawer();
+  renderContacts();
+  showToast(contactId ? 'Contact updated.' : 'Contact added.', 'success');
+}
+
+async function deleteContact(id){
+  const c = CONTACTS.find(x => x.id === id);
+  if(!c) return;
+  if(!confirm(`Delete ${c.name}? This can't be undone.`)) return;
+  const { error } = await supa.from('contacts').delete().eq('id', id);
+  if(error){ showToast('Could not delete: ' + error.message, 'error'); return; }
+  CONTACTS = CONTACTS.filter(x => x.id !== id);
+  closeContactDrawer();
+  renderContacts();
+  showToast('Contact deleted.', 'success');
+}
+
 function showView(view, fromHistory){
   // Hard gate, checked on every navigation (not just at login/role-switch) —
   // this is what actually stops a non-admin from landing on these views if
@@ -6785,6 +7099,12 @@ function showView(view, fromHistory){
   if(ATM_ONLY_VIEWS.includes(view) && currentBrand !== 'atm'){
     view = 'referrals';
   }
+  // Calendar's RLS is fullDashboard-only (database/38_calendar_ownership.sql)
+  // — a portal-scoped login was never meant to land here even by a direct
+  // showView() call, same reasoning as the two gates above.
+  if(view === 'calendar' && !roleOf(currentUser).perms.fullDashboard){
+    view = 'dashboard';
+  }
   // Live Recall's inline detail mode should never leak into other tabs —
   // clicking any lead/cold lead elsewhere in the app must always open the
   // normal drawer, so leaving this tab always resets it.
@@ -6801,6 +7121,7 @@ function showView(view, fromHistory){
   if(view === 'settings'){ renderUsersTable(); renderRolesTable(); renderIntegrationsList(); renderConnectedCalendarsList(); renderApplicationLinksTable(); }
   if(view === 'agents') renderAgentsTable();
   if(view === 'loaders') renderLoaders();
+  if(view === 'contacts') renderContacts();
   if(view === 'authresellers') renderResellersTable();
   if(view === 'coldleads') renderColdLeadsTable();
   if(view === 'leads') renderLeadsBoard();
@@ -6812,6 +7133,7 @@ function showView(view, fromHistory){
   if(view === 'reportsubs') renderSubscriptionReport();
   if(view === 'collections') renderCollectionsReport();
   if(view === 'lendingleads') renderLendingLeadsBoard();
+  if(view === 'isoleads') renderIsoLeadsBoard();
   if(view === 'calendar') renderCalendar();
   if(view === 'liverecall') renderLiveRecall();
   if(view === 'teamstructure') renderTeamStructure();
@@ -7148,6 +7470,23 @@ function showErrorToast(message, duration){
 function formatDate(d){
   const dt = new Date(d + 'T00:00:00');
   return dt.toLocaleDateString('en-US', { month:'short', day:'numeric' });
+}
+// Shared across every lead-like table's detail drawer (Leads, Cold Leads,
+// ISO Leads, Lending Leads) — all four have a created_by uuid pointing at
+// users.id (database/46_lead_created_by.sql), stamped by whichever insert
+// path actually created the row. Only ever shown to internal staff — a
+// portal login has no business seeing which employee added a record.
+// The one path with no logged-in user behind it is the public referral
+// landing page (runs as anon) — that gets its own label rather than
+// reading as an unexplained blank.
+function createdByLabel(record){
+  if(!roleOf(currentUser).perms.fullDashboard) return '';
+  if(!record.created_by){
+    if((record.lead_source || '').startsWith('Referral link — ')) return 'Public referral link (self-submitted)';
+    return '—';
+  }
+  const u = USERS.find(x => x.id === record.created_by);
+  return u ? `${u.name} (${u.email})` : 'Unknown user';
 }
 function isPast(d){ return new Date(d+'T00:00:00') < new Date(new Date().toDateString()); }
 function isWithinDays(d, days){
@@ -7822,7 +8161,7 @@ function buildResidualsSectionHTML(p){
 
   // Referral partners are on commission, not residuals — the section is
   // offered to anyone who could be paid one, plus anyone who already has been.
-  const isResidualType = ['agent','reseller','iso'].includes(p.partner_type)
+  const isResidualType = ['agent','iso'].includes(p.type)
     || p.reseller_type === 'authorized_reseller'
     || !!p.residual_percentage;
   const mine = RESIDUALS.filter(r => r.partner_id === p.id)
@@ -8157,7 +8496,11 @@ async function openReferralDetail(id){
           onSaved: () => { renderReferralTable(); renderAgentsTable();
                            if(document.getElementById('view-residuals').style.display !== 'none') renderResidualsReport(); } })}
       ${editableRow('Contact', p.contact, { table:'partners', id:p.id, column:'contact', record:base, can: canEditPartners })}
-      ${editableRow('Email', p.email, { table:'partners', id:p.id, column:'email', type:'email', record:base, can: canEditPartners })}
+      ${editableRow('Email', p.email, { table:'partners', id:p.id, column:'email', type:'email', record:base, can: canEditPartners,
+          // A partner added without an email has no portal login yet —
+          // filling one in here is exactly the "re-save with an email
+          // address" sendPartnerInvite() asks for, so make it actually work.
+          onSaved: () => ensurePartnerPortalUser(base) })}
       ${editableRow('Phone', p.phone, { table:'partners', id:p.id, column:'phone', type:'tel', record:base, can: canEditPartners })}
       ${editableRow('Website', p.website, { table:'partners', id:p.id, column:'website', record:base, can: canEditPartners })}
       ${editableRow('Street', p.address, { table:'partners', id:p.id, column:'address', record:base, can: canEditPartners })}
@@ -8452,7 +8795,7 @@ function openAddPartnerForm(defaultType, defaultReseller){
   activeReferralId = null;
   document.getElementById('referralDrawer').innerHTML = `
     <div class="drawer-head">
-      <div><h2>Add ${defaultType === 'agent' ? 'agent' : 'referral partner'}</h2></div>
+      <div><h2>Add ${defaultType === 'agent' ? 'agent' : defaultType === 'iso' ? 'ISO' : 'referral partner'}</h2></div>
       <button class="drawer-close" onclick="closeReferralDrawer()">&times;</button>
     </div>
     <div class="drawer-body">
@@ -8467,6 +8810,7 @@ function openAddPartnerForm(defaultType, defaultReseller){
         <select id="fType">
           <option value="referral_partner" ${defaultType==='referral_partner'?'selected':''}>Referral partner</option>
           <option value="agent" ${defaultType==='agent'?'selected':''}>Agent</option>
+          <option value="iso" ${defaultType==='iso'?'selected':''}>ISO (Independent Sales Organization)</option>
         </select>
       </div>
       <div class="field" id="fResellerWrap" style="${defaultType==='agent'?'':'display:none;'}">
@@ -8507,6 +8851,68 @@ function openAddPartnerForm(defaultType, defaultReseller){
 document.getElementById('addReferralBtn').addEventListener('click', () => openAddPartnerForm('referral_partner', null));
 document.getElementById('addAgentBtn').addEventListener('click', () => openAddPartnerForm('agent', 'basic_payments'));
 document.getElementById('addResellerBtn').addEventListener('click', () => openAddPartnerForm('agent', 'authorized_reseller'));
+document.getElementById('addIsoBtn').addEventListener('click', () => openAddPartnerForm('iso', null));
+
+// Referral Partners, Agents, EPAY Resellers, and ISOs all get a portal
+// login the moment they have a real email on file — matched by email so
+// scopedPartnersForCurrentUser() (portal_scope:'own') already recognizes
+// them once they log in, with zero extra wiring needed there. Shared
+// between saveNewReferral() (a brand-new partner) and the "Email"
+// editableRow on an existing partner's detail drawer (partner added
+// without one, email filled in later) — sendPartnerInvite()'s "no portal
+// login exists yet, re-save the partner with an email address" error is a
+// promise this function is what actually keeps.
+async function ensurePartnerPortalUser(partner){
+  if(!partner.email || partner.email === '—') return;
+  const existingUser = USERS.find(u => u.email.toLowerCase() === partner.email.toLowerCase());
+
+  // A user row already on this address used to be left completely alone,
+  // which quietly produced a partner with no portal login attached: nothing
+  // was created and nothing was linked. Everything downstream keys off
+  // users.linked_partner_id — who can invite them, current_partner_is_own(),
+  // what the portal shows them — so the partner ends up unreachable.
+  if(existingUser && !existingUser.linked_partner_id){
+    const { error: linkErr } = await supa.from('users')
+      .update({ linked_partner_id: partner.id }).eq('id', existingUser.id);
+    if(linkErr){
+      showToast('Could not link their existing login: ' + linkErr.message, 'error');
+    } else {
+      existingUser.linked_partner_id = partner.id;
+      showToast(`Linked the existing login for ${partner.email} to this partner.`, 'success');
+    }
+    return;
+  }
+  if(existingUser && existingUser.linked_partner_id !== partner.id){
+    // Already tied to a different partner — linking would silently move
+    // their access, so say so and leave it alone.
+    const other = PARTNERS.find(x => x.id === existingUser.linked_partner_id);
+    showToast(`${partner.email} already has a login linked to ${other ? other.name : 'another partner'}. Sort that out before inviting.`, 'error');
+    return;
+  }
+  if(existingUser) return; // already linked to this exact partner — nothing to do
+
+  const role = partner.type === 'referral_partner' ? 'referral_partner'
+    : partner.type === 'iso' ? 'iso'
+    : (partner.reseller_type === 'authorized_reseller' ? 'epay_reseller' : 'agent');
+  const { data: newUser, error: userErr } = await supa.from('users').insert({
+    name: partner.contact && partner.contact !== '—' ? partner.contact : partner.name,
+    email: partner.email,
+    brands: partner.brand === 'both' ? ['epay','atm'] : [partner.brand],
+    role,
+    linked_partner_id: partner.id,
+  }).select().single();
+  if(userErr){ showToast('Could not create their portal login: ' + userErr.message, 'error'); return; }
+  USERS.push(newUser);
+  if(document.getElementById('view-settings').style.display !== 'none') renderUsersTable();
+  // Deliberately does NOT offer to invite here. Onboarding requires the
+  // signed admit packet on file first, and this prompt was a second route
+  // to inviting that skipped that gate. The database would still refuse —
+  // mark_partner_invited raises without a packet — but only after an email
+  // had gone out from a path that never checked. The one way to invite is
+  // the Onboarding section on their record, where the button stays
+  // disabled until the packet exists.
+  showToast(`${newUser.name} added as a portal user. Upload their signed admit packet to unlock the invite.`, 'success');
+}
 
 async function saveNewReferral(){
   const name = document.getElementById('fName').value.trim();
@@ -8549,59 +8955,7 @@ async function saveNewReferral(){
   if(document.getElementById('view-agents').style.display !== 'none') renderAgentsTable();
   if(document.getElementById('view-authresellers').style.display !== 'none') renderResellersTable();
 
-  // Referral Partners, Agents, and EPAY Resellers all get a portal login the
-  // moment they're added — one user account per partner, matched by email so
-  // scopedPartnersForCurrentUser() (portal_scope:'own') already recognizes
-  // them once they log in, with zero extra wiring needed there. newPartner.id
-  // is now a real Supabase partners.id, so this FK resolves correctly (it
-  // didn't before Partners was converted — see git history).
-  if(newPartner.email && newPartner.email !== '—'){
-    const existingUser = USERS.find(u => u.email.toLowerCase() === newPartner.email.toLowerCase());
-
-    // A user row already on this address used to be left completely alone,
-    // which quietly produced a partner with no portal login attached: nothing
-    // was created and nothing was linked. Everything downstream keys off
-    // users.linked_partner_id — who can invite them, current_partner_is_own(),
-    // what the portal shows them — so the partner ends up unreachable.
-    if(existingUser && !existingUser.linked_partner_id){
-      const { error: linkErr } = await supa.from('users')
-        .update({ linked_partner_id: newPartner.id }).eq('id', existingUser.id);
-      if(linkErr){
-        showToast('Partner saved, but their existing login could not be linked: ' + linkErr.message, 'error');
-      } else {
-        existingUser.linked_partner_id = newPartner.id;
-        showToast(`Linked the existing login for ${newPartner.email} to this partner.`, 'success');
-      }
-    } else if(existingUser && existingUser.linked_partner_id !== newPartner.id){
-      // Already tied to a different partner — linking would silently move
-      // their access, so say so and leave it alone.
-      const other = PARTNERS.find(x => x.id === existingUser.linked_partner_id);
-      showToast(`${newPartner.email} already has a login linked to ${other ? other.name : 'another partner'}. Sort that out before inviting.`, 'error');
-    }
-
-    if(!existingUser){
-      const role = type === 'referral_partner' ? 'referral_partner'
-        : (newPartner.reseller_type === 'authorized_reseller' ? 'epay_reseller' : 'agent');
-      const { data: newUser, error: userErr } = await supa.from('users').insert({
-        name: newPartner.contact !== '—' ? newPartner.contact : newPartner.name,
-        email: newPartner.email,
-        brands: newPartner.brand === 'both' ? ['epay','atm'] : [newPartner.brand],
-        role,
-        linked_partner_id: newPartner.id,
-      }).select().single();
-      if(userErr){ alert('Partner saved, but could not create their portal login: ' + userErr.message); return; }
-      USERS.push(newUser);
-      if(document.getElementById('view-settings').style.display !== 'none') renderUsersTable();
-      // Deliberately does NOT offer to invite here. Onboarding requires the
-      // signed admit packet on file first, and this prompt was a second route
-      // to inviting that skipped that gate. The database would still refuse —
-      // mark_partner_invited raises without a packet — but only after an email
-      // had gone out from a path that never checked. The one way to invite is
-      // the Onboarding section on their record, where the button stays
-      // disabled until the packet exists.
-      showToast(`${newUser.name} added as a portal user. Upload their signed admit packet to unlock the invite.`, 'success');
-    }
-  }
+  await ensurePartnerPortalUser(newPartner);
 }
 
 /* =========================================================================
@@ -8771,7 +9125,8 @@ async function quickCreateFuRecord(name){
         brand: currentBrand,
         converted_to_account: false,
         converted_at: null,
-        linked_partner_id: null
+        linked_partner_id: null,
+        created_by: currentUser.id
       };
       const { data, error } = await supa.from('leads').insert(fields).select().single();
       if(error) throw error;
@@ -10576,6 +10931,7 @@ async function saveNewLead(){
     converted_to_account: startsConverted,
     converted_at: startsConverted ? new Date().toISOString().slice(0,10) : null,
     linked_partner_id: document.getElementById('lLinkedPartner').value || null,
+    created_by: currentUser.id,
   };
   const { data: lead, error } = await supa.from('leads').insert(fields).select().single();
   if(error){ alert('Could not add lead: ' + error.message); return; }
@@ -10635,6 +10991,7 @@ async function saveNewAccount(){
     converted_to_account: true,
     converted_at: today,
     linked_partner_id: document.getElementById('aaLinkedPartner').value || null,
+    created_by: currentUser.id,
   };
   const { data: account, error } = await supa.from('leads').insert(fields).select().single();
   if(error){ alert('Could not add account: ' + error.message); return; }
@@ -12062,6 +12419,7 @@ async function openLeadDetail(id){
     ${editableRow('Est. monthly volume', l.est_volume, { table:'leads', id:l.id, column:'est_volume', record:base })}
     ${editableRow('Business address', l.business_address, { table:'leads', id:l.id, column:'business_address', type:'textarea', record:base })}
     <div class="detail-row"><span class="k">Created</span><span class="v">${formatDate(l.created_at)}</span></div>
+    ${createdByLabel(l) ? `<div class="detail-row"><span class="k">Created by</span><span class="v">${createdByLabel(l)}</span></div>` : ''}
     <div class="field" style="margin-top:12px;">
       <label>Show this in</label>
       <select id="leadBrandSelect" onchange="saveLeadBrand('${l.id}', this.value)">
@@ -12300,7 +12658,8 @@ async function duplicateLead(id){
     converted_to_account: false,
     converted_at:     null,
     returned_to_cold_at: null,
-    from_cold_lead_id: null
+    from_cold_lead_id: null,
+    created_by: currentUser.id
   };
 
   const { data, error } = await supa.from('leads').insert(fields).select().single();
@@ -13056,6 +13415,7 @@ function openColdLeadDetail(id){
         ${editableRow('Website', c.website, { table:'cold_leads', id:c.id, column:'website', record:c })}
         ${editableRow('Source detail', c.source, { table:'cold_leads', id:c.id, column:'source', record:c })}
         <div class="detail-row"><span class="k">Added</span><span class="v">${formatDate(c.created_at)}</span></div>
+        ${createdByLabel(c) ? `<div class="detail-row"><span class="k">Added by</span><span class="v">${createdByLabel(c)}</span></div>` : ''}
 
         ${(c.linkedin_url || c.facebook_url || c.instagram_url) ? `
         <div style="margin-top:14px;">
@@ -13174,6 +13534,7 @@ document.getElementById('addColdLeadBtn').addEventListener('click', function(){
       <div class="field"><label>Contact name</label><input id="clContact" placeholder="e.g. Wes Turner"></div>
       <div class="field"><label>Phone</label><input id="clPhone" placeholder="(555) 555-5555"></div>
       <div class="field"><label>Email</label><input id="clEmail" type="email" placeholder="name@business.com"></div>
+      <div class="field"><label>Address (if known)</label><input id="clAddress" placeholder="Street, city, state, ZIP"></div>
       <div class="field">
         <label>Temperature</label>
         <select id="clTemp">
@@ -13219,12 +13580,14 @@ async function saveNewColdLead(){
     contact_name: document.getElementById('clContact').value.trim() || '—',
     phone: document.getElementById('clPhone').value.trim() || '—',
     email: document.getElementById('clEmail').value.trim() || '—',
+    address: document.getElementById('clAddress').value.trim(),
     temperature: document.getElementById('clTemp').value,
     source_category: document.getElementById('clSourceCategory').value,
     source: document.getElementById('clSource').value,
     notes: document.getElementById('clNotes').value.trim(),
     brand: (document.getElementById('clBrand') || {}).value || currentBrand,
     promoted: false,
+    created_by: currentUser.id,
   };
   const { data: coldLead, error } = await supa.from('cold_leads').insert(fields).select().single();
   if(error){ alert('Could not add cold lead: ' + error.message); return; }
@@ -13269,6 +13632,7 @@ async function promoteColdLead(id){
     brand: c.brand || 'epay',
     converted_to_account: false,
     converted_at: null,
+    created_by: currentUser.id,
   };
   fields.from_cold_lead_id = id;
   const { data: lead, error } = await supa.from('leads').insert(fields).select().single();
@@ -13348,7 +13712,8 @@ async function returnLeadToCold(leadId){
       source: 'Returned from pipeline',
       address: l.business_address || null,
       promoted: false,
-      promoted_lead_id: l.id
+      promoted_lead_id: l.id,
+      created_by: currentUser.id
     }).select().single();
     if(error){ showToast('Could not move it back: ' + error.message, 'error'); return; }
     COLD_LEADS.unshift(data);
@@ -13389,6 +13754,7 @@ async function createEpayLeadFromPartner(partnerId){
     converted_to_account: false,
     converted_at: null,
     business_address: p.address ? `${p.address}, ${p.city}, ${p.state}${p.zip ? ' '+p.zip : ''}` : '',
+    created_by: currentUser.id,
   };
   const { data: lead, error } = await supa.from('leads').insert(fields).select().single();
   if(error){ alert('Could not create lead: ' + error.message); return; }
@@ -13425,6 +13791,7 @@ async function createEpayLeadFromAtmLead(leadId){
     business_address: src.business_address || '',
     lead_source: 'Envision ATM cross-sell',
     linked_partner_id: src.linked_partner_id || null,
+    created_by: currentUser.id,
   };
   const { data: lead, error } = await supa.from('leads').insert(fields).select().single();
   if(error){ alert('Could not create lead: ' + error.message); return; }
@@ -13685,6 +14052,9 @@ function processBulkUpload(target){
       }
 
       const table = target === 'coldleads' ? 'cold_leads' : target === 'partners' ? 'partners' : 'leads';
+      // Partners aren't leads — created_by tracking here is specifically for
+      // "who added this lead", so it's stamped on every target except that one.
+      if(table !== 'partners') newRecords.forEach(r => { r.created_by = currentUser.id; });
       const { data: saved, error } = await supa.from(table).insert(newRecords).select();
       if(error){
         summaryEl.textContent = 'Import failed: ' + error.message;
@@ -14106,6 +14476,7 @@ async function pushAiResults(checked){
     linkedin_url: r.linkedin_url || '',
     facebook_url: r.facebook_url || '',
     instagram_url: r.instagram_url || '',
+    created_by: currentUser.id,
   }));
   const { data: saved, error } = await supa.from('cold_leads').insert(newColdLeads).select();
   if(error){ alert('Could not push to Cold Leads: ' + error.message); return; }
@@ -14187,6 +14558,7 @@ document.getElementById('syncInstantlyBtn').addEventListener('click', function()
       source: c.status === 'meeting_booked' ? 'Instantly — Meeting Booked' : 'Instantly — Reply',
       notes: `Campaign: ${c.campaign_name}.${c.reply_snippet ? ' Reply: "'+c.reply_snippet+'"' : ''}`,
       promoted: false,
+      created_by: currentUser.id,
     }));
     const { data: savedColdLeads, error: coldLeadErr } = await supa.from('cold_leads').insert(newColdLeads).select();
     if(coldLeadErr){
@@ -14945,6 +15317,14 @@ document.getElementById('loadersSearch').addEventListener('input', function(){
   loaderSearch = this.value; renderLoaders();
 });
 
+document.getElementById('addContactBtn').addEventListener('click', function(){ openContactDrawer(null); });
+document.getElementById('contactsCategoryFilter').addEventListener('change', function(){
+  contactCategoryFilter = this.value; renderContacts();
+});
+document.getElementById('contactsSearch').addEventListener('input', function(){
+  contactSearch = this.value; renderContacts();
+});
+
 document.getElementById('residualsYearFilter').addEventListener('change', function(){
   residualYearFilter = this.value; renderResidualsReport();
 });
@@ -15683,6 +16063,7 @@ async function saveNewLendingLead(){
     loan_amount: document.getElementById('llAmount').value.trim(),
     source: document.getElementById('llSource').value.trim(),
     stage,
+    created_by: currentUser.id,
   };
   const { data: lead, error } = await supa.from('lending_leads').insert(fields).select().single();
   if(error){ alert('Could not add lead: ' + error.message); return; }
@@ -15723,6 +16104,8 @@ function openLendingLeadDetail(id){
       <div class="field"><label>Email</label><input id="llDetailEmail" value="${l.email}"></div>
       <div class="field"><label>Loan amount interested in</label><input id="llDetailAmount" value="${l.loan_amount||''}"></div>
       <div class="field"><label>Source</label><input id="llDetailSource" value="${l.source||''}"></div>
+      <div class="detail-row"><span class="k">Created</span><span class="v">${formatDate(l.created_at)}</span></div>
+      ${createdByLabel(l) ? `<div class="detail-row"><span class="k">Created by</span><span class="v">${createdByLabel(l)}</span></div>` : ''}
       <button class="btn btn-accent" style="width:100%;" onclick="saveLendingLeadDetails('${l.id}')">Save</button>
 
       <hr style="border:none;border-top:1px solid var(--line);margin:20px 0;">
@@ -15831,6 +16214,347 @@ async function deleteLendingLeadCallNote(noteId, leadId){
   if(error){ alert('Could not delete: ' + error.message); return; }
   LENDING_LEAD_CALL_NOTES = LENDING_LEAD_CALL_NOTES.filter(n => n.id !== noteId);
   openLendingLeadDetail(leadId);
+}
+
+/* =========================================================================
+   ENVISION ISO LEADS — CRUD, board, and drawer. Same shapes as Lending
+   above; the two differences are the "Submitted by (ISO)" and "Assigned to"
+   selects in the detail drawer, since iso_leads (unlike lending_leads) has
+   linked_partner_id/assigned_to and portal-scoped RLS to match.
+   ========================================================================= */
+let _draggingIsoLeadId = null;
+function handleIsoCardDragStart(e){
+  _draggingIsoLeadId = e.currentTarget.dataset.leadId;
+  e.currentTarget.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+}
+function handleIsoCardDragEnd(e){
+  e.currentTarget.classList.remove('dragging');
+  _draggingIsoLeadId = null;
+}
+function handleIsoStageDrop(e){
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  const stageKey = e.currentTarget.dataset.stage;
+  if(_draggingIsoLeadId){
+    moveIsoLeadToStage(_draggingIsoLeadId, stageKey);
+  }
+}
+
+async function moveIsoLeadToStage(id, stageKey){
+  const l = ISO_LEADS.find(x => x.id === id);
+  if(!l) return;
+  const stage_entered_at = todayISO();
+  const { error } = await supa.from('iso_leads').update({ stage: stageKey, stage_entered_at }).eq('id', id);
+  if(error){ alert('Could not move lead: ' + error.message); return; }
+  l.stage = stageKey;
+  l.stage_entered_at = stage_entered_at;
+  renderIsoLeadsBoard();
+}
+function advanceIsoLead(id){
+  const l = ISO_LEADS.find(x => x.id === id);
+  if(!l) return;
+  const idx = isoStageIndex(l.stage);
+  if(idx < ISO_LEAD_STAGES.length - 1){
+    moveIsoLeadToStage(id, ISO_LEAD_STAGES[idx + 1].key);
+  }
+}
+
+function toggleIsoStageCollapse(stageKey){
+  const state = loadCollapsedStages();
+  state[stageKey] = !state[stageKey];
+  localStorage.setItem(LS_COLLAPSED_STAGES_KEY, JSON.stringify(state));
+  renderIsoLeadsBoard();
+}
+
+function renderIsoLeadsBoard(){
+  const board = document.getElementById('isoLeadsBoard');
+  if(!board) return;
+  const collapsed = loadCollapsedStages();
+  const q = (document.getElementById('isoLeadsSearch') ? document.getElementById('isoLeadsSearch').value : '').trim().toLowerCase();
+
+  const columnsHtml = ISO_LEAD_STAGES.map(stage => {
+    let leadsInStage = ISO_LEADS.filter(l => l.stage === stage.key);
+    if(q) leadsInStage = leadsInStage.filter(l => l.business_name.toLowerCase().includes(q) || (l.contact_name||'').toLowerCase().includes(q));
+    const isCollapsed = !!collapsed['iso_' + stage.key];
+    const cardsHtml = leadsInStage.length ? leadsInStage.map(l => isoLeadCardHtml(l, stage.color)).join('') : `<div class="kanban-empty">No leads in this stage</div>`;
+    return `
+      <div class="stage-column ${isCollapsed?'collapsed':''}">
+        <button type="button" class="stage-head" onclick="toggleIsoStageCollapse('iso_${stage.key}')">
+          <span class="stage-dot" style="background:${stage.color};"></span>
+          <span class="stage-name">${stage.label}</span>
+          <span class="stage-count">${leadsInStage.length}</span>
+          <span class="stage-collapse-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+          </span>
+        </button>
+        <div class="stage-body" data-stage="${stage.key}" ondragover="handleStageDragOver(event)" ondragleave="handleStageDragLeave(event)" ondrop="handleIsoStageDrop(event)">
+          ${cardsHtml}
+        </div>
+      </div>`;
+  }).join('');
+
+  board.innerHTML = `<div class="phase-columns">${columnsHtml}</div>`;
+}
+document.getElementById('isoLeadsSearch').addEventListener('input', renderIsoLeadsBoard);
+
+function isoLeadCardHtml(l, stageColor){
+  const idx = isoStageIndex(l.stage);
+  const isLast = idx === ISO_LEAD_STAGES.length - 1;
+  const age = daysSince(l.stage_entered_at);
+  const noteCount = ISO_LEAD_NOTES.filter(n => n.iso_lead_id === l.id).length + ISO_LEAD_CALL_NOTES.filter(n => n.iso_lead_id === l.id).length;
+  const initials = l.business_name.split(' ').filter(Boolean).map(w=>w[0]).slice(0,2).join('').toUpperCase();
+  const iso = l.linked_partner_id ? PARTNERS.find(p => p.id === l.linked_partner_id) : null;
+
+  return `
+    <div class="lead-card" draggable="true" data-lead-id="${l.id}"
+         ondragstart="handleIsoCardDragStart(event)" ondragend="handleIsoCardDragEnd(event)"
+         onclick="openIsoLeadDetail('${l.id}')">
+      <div class="lc-top">
+        <span class="lc-avatar" style="background:linear-gradient(135deg, ${stageColor}, ${stageColor}cc);">${initials}</span>
+        <div>
+          <div class="lc-name">${l.business_name}</div>
+          <div class="lc-sub">${l.contact_name || (iso ? 'via ' + iso.name : '')}</div>
+        </div>
+      </div>
+      <div class="lc-badges">
+        <span class="lc-badge age ${age>=10?'stale':''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>${age}d</span>
+        ${noteCount ? `<span class="lc-badge notes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>${noteCount}</span>` : ''}
+      </div>
+      <div class="lc-footer">
+        <span class="lc-vol">${l.est_volume || ''}</span>
+        <button class="lc-advance" title="Move to next stage" ${isLast ? 'disabled' : ''} onclick="event.stopPropagation(); advanceIsoLead('${l.id}');">→</button>
+      </div>
+    </div>`;
+}
+
+document.getElementById('addIsoLeadBtn').addEventListener('click', function(){
+  const isoPartners = PARTNERS.filter(p => p.type === 'iso').sort((a,b)=>a.name.localeCompare(b.name));
+  document.getElementById('isoLeadDrawer').innerHTML = `
+    <div class="drawer-head">
+      <div><h2>New ISO lead</h2></div>
+      <button class="drawer-close" onclick="closeIsoLeadDrawer()">&times;</button>
+    </div>
+    <div class="drawer-body">
+      <div class="field"><label>Business name</label><input id="ilBusiness" placeholder="e.g. Riverside Pizza Co"></div>
+      <div class="field"><label>Contact name</label><input id="ilContact" placeholder="e.g. Tony Russo"></div>
+      <div class="field"><label>Phone</label><input id="ilPhone" placeholder="(555) 555-5555"></div>
+      <div class="field"><label>Email</label><input id="ilEmail" type="email" placeholder="name@business.com"></div>
+      <div class="field"><label>Estimated monthly volume</label><input id="ilVolume" placeholder="e.g. $20k/mo"></div>
+      <div class="field">
+        <label>Submitted by (ISO)</label>
+        <select id="ilIso">
+          <option value="">— Select the ISO —</option>
+          ${isoPartners.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}
+        </select>
+        ${isoPartners.length === 0 ? `<p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">No ISOs added yet — use "Add ISO" on the Partners tab first.</p>` : ''}
+      </div>
+      <div class="field"><label>Source (optional)</label><input id="ilSource" placeholder="e.g. Referral, Cold Call, Website"></div>
+      <div class="field">
+        <label>Starting stage</label>
+        <select id="ilStage">
+          ${ISO_LEAD_STAGES.map(s=>`<option value="${s.key}">${s.label}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field"><label>Notes</label><textarea id="ilNotes" placeholder="Where this came from, anything relevant..."></textarea></div>
+    </div>
+    <div class="drawer-footer">
+      <button class="btn" style="flex:1;" onclick="closeIsoLeadDrawer()">Cancel</button>
+      <button class="btn btn-accent" style="flex:1;" onclick="saveNewIsoLead()">Add lead</button>
+    </div>
+  `;
+  document.getElementById('isoLeadOverlay').classList.add('open');
+});
+
+async function saveNewIsoLead(){
+  const business_name = document.getElementById('ilBusiness').value.trim();
+  if(!business_name){ alert('Business name is required.'); return; }
+  const stage = document.getElementById('ilStage').value;
+  const notes = document.getElementById('ilNotes').value.trim();
+  const fields = {
+    business_name,
+    contact_name: document.getElementById('ilContact').value.trim() || '—',
+    phone: document.getElementById('ilPhone').value.trim() || '—',
+    email: document.getElementById('ilEmail').value.trim() || '—',
+    est_volume: document.getElementById('ilVolume').value.trim(),
+    linked_partner_id: document.getElementById('ilIso').value || null,
+    source: document.getElementById('ilSource').value.trim(),
+    stage,
+    created_by: currentUser.id,
+  };
+  const { data: lead, error } = await supa.from('iso_leads').insert(fields).select().single();
+  if(error){ alert('Could not add lead: ' + error.message); return; }
+  ISO_LEADS.unshift(lead);
+  // Goes into iso_lead_notes (the same activity-log table the detail drawer
+  // uses) rather than a plain column on iso_leads, so a note jotted down at
+  // creation shows up in the same dated, attributed list as every note
+  // added afterward — one notes system, not two.
+  if(notes){
+    const { data: note, error: noteErr } = await supa.from('iso_lead_notes').insert({
+      iso_lead_id: lead.id, text: notes, created_by: currentUser.email,
+    }).select().single();
+    if(noteErr){ alert('Lead saved, but the note could not be added: ' + noteErr.message); }
+    else ISO_LEAD_NOTES.unshift(note);
+  }
+  closeIsoLeadDrawer();
+  renderIsoLeadsBoard();
+}
+
+function closeIsoLeadDrawer(){
+  document.getElementById('isoLeadOverlay').classList.remove('open');
+}
+
+function openIsoLeadDetail(id){
+  const l = ISO_LEADS.find(x => x.id === id);
+  if(!l) return;
+  const notesForLead = ISO_LEAD_NOTES.filter(n => n.iso_lead_id === id).sort((a,b)=> new Date(b.created_at)-new Date(a.created_at));
+  const callNotesForLead = ISO_LEAD_CALL_NOTES.filter(n => n.iso_lead_id === id).sort((a,b)=> new Date(b.created_at)-new Date(a.created_at));
+  const isoPartners = PARTNERS.filter(p => p.type === 'iso').sort((a,b)=>a.name.localeCompare(b.name));
+  const internalUsers = USERS.filter(u => roleOf(u).portal_scope === 'internal').slice().sort((a,b)=> a.name.localeCompare(b.name));
+
+  document.getElementById('isoLeadDrawer').innerHTML = `
+    <div class="drawer-head">
+      <div>
+        <h2>${l.business_name}</h2>
+        <span class="pill" style="background:${isoStageInfo(l.stage).color}22;color:${isoStageInfo(l.stage).color};margin-top:4px;display:inline-block;">${isoStageInfo(l.stage).label}</span>
+      </div>
+      <button class="drawer-close" onclick="closeIsoLeadDrawer()">&times;</button>
+    </div>
+    <div class="drawer-body">
+      <div style="margin-bottom:16px;">
+        <label style="display:block;font-size:11.5px;text-transform:uppercase;color:var(--slate-500);margin-bottom:6px;">Move stage</label>
+        <select onchange="moveIsoLeadToStage('${l.id}', this.value).then(() => openIsoLeadDetail('${l.id}'));" style="width:100%;padding:9px 11px;border-radius:7px;border:1px solid var(--line);font-size:13.5px;">
+          ${ISO_LEAD_STAGES.map(s=>`<option value="${s.key}" ${s.key===l.stage?'selected':''}>${s.label}</option>`).join('')}
+        </select>
+      </div>
+
+      <div class="field"><label>Business name</label><input id="ilDetailBusiness" value="${l.business_name}"></div>
+      <div class="field"><label>Contact name</label><input id="ilDetailContact" value="${l.contact_name||''}"></div>
+      <div class="field"><label>Phone</label><input id="ilDetailPhone" value="${l.phone||''}"></div>
+      <div class="field"><label>Email</label><input id="ilDetailEmail" value="${l.email||''}"></div>
+      <div class="field"><label>Estimated monthly volume</label><input id="ilDetailVolume" value="${l.est_volume||''}"></div>
+      <div class="field">
+        <label>Submitted by (ISO)</label>
+        <select id="ilDetailIso">
+          <option value="">— None —</option>
+          ${isoPartners.map(p=>`<option value="${p.id}" ${l.linked_partner_id===p.id?'selected':''}>${p.name}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field">
+        <label>Assigned to</label>
+        <select id="ilDetailAssigned">
+          <option value="">Unassigned</option>
+          ${internalUsers.map(u => `<option value="${u.id}" ${l.assigned_to===u.id?'selected':''}>${u.name} — ${roleOf(u).label}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field"><label>Source</label><input id="ilDetailSource" value="${l.source||''}"></div>
+      <div class="detail-row"><span class="k">Created</span><span class="v">${formatDate(l.created_at)}</span></div>
+      ${createdByLabel(l) ? `<div class="detail-row"><span class="k">Created by (staff)</span><span class="v">${createdByLabel(l)}</span></div>` : ''}
+      <button class="btn btn-accent" style="width:100%;" onclick="saveIsoLeadDetails('${l.id}')">Save</button>
+
+      <hr style="border:none;border-top:1px solid var(--line);margin:20px 0;">
+
+      <h3 style="font-size:14px;margin:0 0 12px;">Call notes</h3>
+      <div class="field"><textarea id="newIsoCallNoteText" placeholder="What was discussed on the call..."></textarea></div>
+      <button class="btn btn-accent" style="width:100%;" onclick="addIsoLeadCallNote('${l.id}')">Save call note</button>
+      <div style="margin-top:14px;">
+        ${callNotesForLead.length ? callNotesForLead.map(n => `
+          <div class="note-item">
+            <button class="note-del" onclick="deleteIsoLeadCallNote('${n.id}','${l.id}')" title="Delete">Delete</button>
+            <div class="meta">${formatDate(n.created_at)} · ${n.created_by}</div>
+            <div class="txt">${n.text}</div>
+          </div>
+        `).join('') : '<p style="color:var(--slate-500);font-size:13px;">No call notes yet.</p>'}
+      </div>
+
+      <hr style="border:none;border-top:1px solid var(--line);margin:20px 0;">
+
+      <h3 style="font-size:14px;margin:0 0 12px;">Notes / activity log</h3>
+      <div class="field"><textarea id="newIsoNoteText" placeholder="What happened, what's next..."></textarea></div>
+      <button class="btn btn-accent" style="width:100%;" onclick="addIsoLeadNote('${l.id}')">Save note</button>
+      <div style="margin-top:14px;">
+        ${notesForLead.length ? notesForLead.map(n => `
+          <div class="note-item">
+            <button class="note-del" onclick="deleteIsoLeadNote('${n.id}','${l.id}')" title="Delete">Delete</button>
+            <div class="meta">${formatDate(n.created_at)} · ${n.created_by}</div>
+            <div class="txt">${n.text}</div>
+          </div>
+        `).join('') : '<p style="color:var(--slate-500);font-size:13px;">No notes yet.</p>'}
+      </div>
+
+      <hr style="border:none;border-top:1px solid var(--line);margin:20px 0;">
+      <button class="btn" style="width:100%;color:var(--red);" onclick="deleteIsoLead('${l.id}')">Delete lead</button>
+    </div>
+  `;
+  document.getElementById('isoLeadOverlay').classList.add('open');
+}
+
+async function saveIsoLeadDetails(id){
+  const l = ISO_LEADS.find(x => x.id === id);
+  if(!l) return;
+  const fields = {
+    business_name: document.getElementById('ilDetailBusiness').value.trim(),
+    contact_name: document.getElementById('ilDetailContact').value.trim(),
+    phone: document.getElementById('ilDetailPhone').value.trim(),
+    email: document.getElementById('ilDetailEmail').value.trim(),
+    est_volume: document.getElementById('ilDetailVolume').value.trim(),
+    linked_partner_id: document.getElementById('ilDetailIso').value || null,
+    assigned_to: document.getElementById('ilDetailAssigned').value || null,
+    source: document.getElementById('ilDetailSource').value.trim(),
+  };
+  const { error } = await supa.from('iso_leads').update(fields).eq('id', id);
+  if(error){ alert('Could not save: ' + error.message); return; }
+  Object.assign(l, fields);
+  renderIsoLeadsBoard();
+  openIsoLeadDetail(id);
+}
+
+async function deleteIsoLead(id){
+  const l = ISO_LEADS.find(x => x.id === id);
+  if(!l) return;
+  if(!confirm(`Delete "${l.business_name}"? This can't be undone.`)) return;
+  const { error } = await supa.from('iso_leads').delete().eq('id', id);
+  if(error){ alert('Could not delete: ' + error.message); return; }
+  ISO_LEADS = ISO_LEADS.filter(x => x.id !== id);
+  closeIsoLeadDrawer();
+  renderIsoLeadsBoard();
+}
+
+async function addIsoLeadNote(leadId){
+  const text = document.getElementById('newIsoNoteText').value.trim();
+  if(!text) return;
+  const { data: note, error } = await supa.from('iso_lead_notes').insert({
+    iso_lead_id: leadId, text, created_by: currentUser.email,
+  }).select().single();
+  if(error){ alert('Could not save note: ' + error.message); return; }
+  ISO_LEAD_NOTES.unshift(note);
+  renderIsoLeadsBoard();
+  openIsoLeadDetail(leadId);
+}
+async function deleteIsoLeadNote(noteId, leadId){
+  if(!confirm("Delete this note? This can't be undone.")) return;
+  const { error } = await supa.from('iso_lead_notes').delete().eq('id', noteId);
+  if(error){ alert('Could not delete: ' + error.message); return; }
+  ISO_LEAD_NOTES = ISO_LEAD_NOTES.filter(n => n.id !== noteId);
+  openIsoLeadDetail(leadId);
+}
+async function addIsoLeadCallNote(leadId){
+  const text = document.getElementById('newIsoCallNoteText').value.trim();
+  if(!text) return;
+  const { data: note, error } = await supa.from('iso_lead_call_notes').insert({
+    iso_lead_id: leadId, text, created_by: currentUser.email,
+  }).select().single();
+  if(error){ alert('Could not save note: ' + error.message); return; }
+  ISO_LEAD_CALL_NOTES.unshift(note);
+  renderIsoLeadsBoard();
+  openIsoLeadDetail(leadId);
+}
+async function deleteIsoLeadCallNote(noteId, leadId){
+  if(!confirm("Delete this call note? This can't be undone.")) return;
+  const { error } = await supa.from('iso_lead_call_notes').delete().eq('id', noteId);
+  if(error){ alert('Could not delete: ' + error.message); return; }
+  ISO_LEAD_CALL_NOTES = ISO_LEAD_CALL_NOTES.filter(n => n.id !== noteId);
+  openIsoLeadDetail(leadId);
 }
 </script>
 </body>
