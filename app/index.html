@@ -956,6 +956,7 @@
   }
   .lc-menu-btn svg{width:14px;height:14px;display:block;}
   .lead-card:hover .lc-menu-btn{opacity:1;}
+  tbody tr:hover .lc-menu-btn{opacity:1;}
   .lc-menu-btn:hover{color:var(--brand-accent-2);background:var(--hover);}
 
   /* Fixed, not absolute inside the card: .stage-body clips its overflow, so a
@@ -2122,7 +2123,7 @@
         <div class="topbar">
           <div>
             <h1>Applications</h1>
-            <p class="subtext">Applications from the website sign-up form, auto-linked to accounts by email, phone, or business name. EPAY POS only.</p>
+            <p class="subtext">Applications from the website sign-up form and shared links, auto-linked to accounts by email, phone, or business name. Both brands.</p>
           </div>
           <div class="topbar-actions">
             <button class="btn btn-accent btn-sm" id="applicationLinksBtn" onclick="openApplicationLinksDrawer()">
@@ -2145,7 +2146,7 @@
             <input class="search-input" placeholder="Search applications..." id="applicationsSearch">
           </div>
           <table>
-            <thead><tr><th>Applicant / business</th><th>Contact</th><th>Submitted</th><th>Source</th><th>Linked account</th></tr></thead>
+            <thead><tr><th>Applicant / business</th><th>Contact</th><th>Submitted</th><th>Source</th><th>Linked account</th><th style="width:34px;"></th></tr></thead>
             <tbody id="applicationsTableBody"></tbody>
           </table>
           <div id="applicationsEmptyState" class="empty-state" style="display:none;">No applications yet.</div>
@@ -10558,7 +10559,7 @@ function leadCardHtml(l, phaseColor){
         ${assignee ? `<span class="lc-assignee" title="Assigned to ${assignee.name}">${assigneeInitials}</span>` : ''}
         <button class="lc-menu-btn" draggable="false" title="More" aria-label="More actions for ${(l.business_name||'').replace(/"/g,'&quot;')}"
                 onclick="openLeadCardMenu(event, '${l.id}')" onmousedown="event.stopPropagation();">
-          <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>
+          ${MENU_DOTS_SVG}
         </button>
       </div>
       <div class="lc-badges">
@@ -12660,36 +12661,28 @@ function closeLeadCardMenu(){
   if(existing) existing.remove();
 }
 
-function openLeadCardMenu(ev, leadId){
-  ev.stopPropagation();      // the card itself opens the drawer
+/* -------------------------------------------------------------------------
+   The little ⋮ menu, shared by the lead cards and the applications table.
+
+   Appended to the body and positioned fixed rather than nested where it was
+   opened from: both live inside containers that clip their overflow, so a
+   menu on the last row would be cut in half by its own container.
+   ------------------------------------------------------------------------- */
+function openMiniMenu(ev, ownerId, itemsHtml){
+  ev.stopPropagation();      // the row underneath opens a drawer
   ev.preventDefault();
   const already = document.getElementById('leadCardMenu');
   closeLeadCardMenu();
   // Clicking the same button again closes it rather than reopening.
-  if(already && already.dataset.leadId === leadId) return;
-
-  const l = LEADS.find(x => x.id === leadId);
-  if(!l) return;
+  if(already && already.dataset.leadId === ownerId) return;
 
   const menu = document.createElement('div');
   menu.className = 'card-menu';
   menu.id = 'leadCardMenu';
-  menu.dataset.leadId = leadId;
-  menu.innerHTML = `
-    <button onclick="duplicateLead('${leadId}')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-      Duplicate
-    </button>
-    <hr>
-    <button class="danger" onclick="deleteLeadFromCard('${leadId}')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-      Delete
-    </button>`;
+  menu.dataset.leadId = ownerId;
+  menu.innerHTML = itemsHtml;
   document.body.appendChild(menu);
 
-  // Placed against the button, then nudged back inside the viewport — a card
-  // near the right edge or the bottom of the screen would otherwise open a
-  // menu partly off it.
   const r = ev.currentTarget.getBoundingClientRect();
   const m = menu.getBoundingClientRect();
   let left = r.right - m.width;
@@ -12700,17 +12693,82 @@ function openLeadCardMenu(ev, leadId){
   menu.style.left = Math.round(left) + 'px';
   menu.style.top = Math.round(Math.max(8, top)) + 'px';
 
-  // Dismissal. Registered on the next tick so the click that opened it does
-  // not immediately close it again.
+  // Registered on the next tick so the click that opened it does not close it.
   setTimeout(() => {
     document.addEventListener('click', closeLeadCardMenu, { once: true });
     document.addEventListener('keydown', function esc(e){
       if(e.key === 'Escape'){ closeLeadCardMenu(); document.removeEventListener('keydown', esc); }
     });
-    // Fixed position does not follow a scrolling column, so it closes instead
-    // of drifting away from the card it belongs to.
     window.addEventListener('scroll', closeLeadCardMenu, { once: true, capture: true });
   }, 0);
+}
+
+const MENU_DOTS_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>';
+const MENU_TRASH_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
+
+function openApplicationMenu(ev, id){
+  const a = APPLICATIONS.find(x => x.id === id);
+  if(!a) return;
+  openMiniMenu(ev, id, `
+    <button class="danger" onclick="deleteApplication('${id}')">
+      ${MENU_TRASH_SVG}
+      Delete application
+    </button>`);
+}
+
+async function deleteApplication(id){
+  closeLeadCardMenu();
+  const a = APPLICATIONS.find(x => x.id === id);
+  if(!a) return;
+
+  const who = a.legal_business_name || `${a.first_name || ''} ${a.last_name || ''}`.trim() || 'this application';
+  const linked = a.linked_account_id ? LEADS.find(l => l.id === a.linked_account_id) : null;
+
+  // Names what goes with it. An application carries the SSN, DOB, licence and
+  // banking the applicant typed in, and there is no other copy — this is not
+  // a record that can be reconstructed from somewhere else.
+  const warnings = [
+    'This cannot be undone.',
+    'The applicant’s details go with it, including anything encrypted.',
+    linked ? `It is currently linked to the account “${linked.business_name}”, which is not deleted.` : null,
+    a.paper_application_file_path ? 'Its uploaded paper application is removed too.' : null
+  ].filter(Boolean);
+
+  if(!confirm(`Delete the application for ${who}?\n\n${warnings.join('\n')}`)) return;
+
+  // The stored file first. Deleting the row first and failing here would
+  // orphan a file in the bucket that nothing points at any more, which
+  // nobody would ever find to clean up.
+  if(a.paper_application_file_path){
+    const { error: fileErr } = await supa.storage.from('applications').remove([a.paper_application_file_path]);
+    if(fileErr){
+      showToast('Could not remove the uploaded file, so nothing was deleted: ' + fileErr.message, 'error');
+      return;
+    }
+  }
+
+  const { error } = await supa.from('applications').delete().eq('id', id);
+  if(error){ showToast('Could not delete: ' + error.message, 'error'); return; }
+
+  APPLICATIONS = APPLICATIONS.filter(x => x.id !== id);
+  if(document.getElementById('applicationOverlay').classList.contains('open')) closeApplicationDrawer();
+  renderApplicationsTable();
+  showToast(`Application for ${who} deleted.`, 'success');
+}
+
+function openLeadCardMenu(ev, leadId){
+  const l = LEADS.find(x => x.id === leadId);
+  if(!l) return;
+  openMiniMenu(ev, leadId, `
+    <button onclick="duplicateLead('${leadId}')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+      Duplicate
+    </button>
+    <hr>
+    <button class="danger" onclick="deleteLeadFromCard('${leadId}')">
+      ${MENU_TRASH_SVG}
+      Delete
+    </button>`);
 }
 
 async function deleteLeadFromCard(id){
@@ -12977,6 +13035,10 @@ function renderApplicationsTable(filterText){
       <td>${formatDate(a.submitted_at)}</td>
       <td>${a.source === 'wix' ? '<span class="pill pill-referral">Wix</span>' : a.source === 'paper' ? '<span class="pill pill-agent-auth">Paper</span>' : a.source === 'link' ? '<span class="pill pill-status-active">Portal link</span>' : '<span class="pill pill-agent-basic">Manual</span>'}</td>
       <td>${linkCell}</td>
+      <td style="text-align:right;">
+        <button class="lc-menu-btn" title="More" aria-label="More actions for ${(a.legal_business_name || (a.first_name+' '+a.last_name) || '').replace(/"/g,'&quot;')}"
+                onclick="openApplicationMenu(event, '${a.id}')">${MENU_DOTS_SVG}</button>
+      </td>
     </tr>`;
   }).join('');
 }
