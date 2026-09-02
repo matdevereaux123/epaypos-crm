@@ -2750,7 +2750,7 @@ async function loadCustomRolesFromSupabase(){
 function saveUsers(list){ localStorage.setItem(LS_USERS_KEY, JSON.stringify(list)); }
 async function loadUsersFromSupabase(){
   const { data, error } = await supa.from('users').select('*').order('name');
-  if(error){ console.error('Failed to load users from Supabase', error); return []; }
+  if(error){ reportLoadFailure('users from Supabase', error); return []; }
   return data;
 }
 
@@ -3127,17 +3127,17 @@ function emptyLendingLeadFields(){
 }
 async function loadLendingLeadsFromSupabase(){
   const { data, error } = await supa.from('lending_leads').select('*').order('created_at', { ascending: false });
-  if(error){ console.error('Failed to load lending leads from Supabase', error); return []; }
+  if(error){ reportLoadFailure('lending leads from Supabase', error); return []; }
   return data;
 }
 async function loadLendingLeadNotesFromSupabase(){
   const { data, error } = await supa.from('lending_lead_notes').select('*').order('created_at', { ascending: false });
-  if(error){ console.error('Failed to load lending lead notes from Supabase', error); return []; }
+  if(error){ reportLoadFailure('lending lead notes from Supabase', error); return []; }
   return data;
 }
 async function loadLendingLeadCallNotesFromSupabase(){
   const { data, error } = await supa.from('lending_lead_call_notes').select('*').order('created_at', { ascending: false });
-  if(error){ console.error('Failed to load lending lead call notes from Supabase', error); return []; }
+  if(error){ reportLoadFailure('lending lead call notes from Supabase', error); return []; }
   return data;
 }
 
@@ -3171,17 +3171,17 @@ function emptyIsoLeadFields(){
 }
 async function loadIsoLeadsFromSupabase(){
   const { data, error } = await supa.from('iso_leads').select('*').order('created_at', { ascending: false });
-  if(error){ console.error('Failed to load ISO leads from Supabase', error); return []; }
+  if(error){ reportLoadFailure('ISO leads from Supabase', error); return []; }
   return data;
 }
 async function loadIsoLeadNotesFromSupabase(){
   const { data, error } = await supa.from('iso_lead_notes').select('*').order('created_at', { ascending: false });
-  if(error){ console.error('Failed to load ISO lead notes from Supabase', error); return []; }
+  if(error){ reportLoadFailure('ISO lead notes from Supabase', error); return []; }
   return data;
 }
 async function loadIsoLeadCallNotesFromSupabase(){
   const { data, error } = await supa.from('iso_lead_call_notes').select('*').order('created_at', { ascending: false });
-  if(error){ console.error('Failed to load ISO lead call notes from Supabase', error); return []; }
+  if(error){ reportLoadFailure('ISO lead call notes from Supabase', error); return []; }
   return data;
 }
 
@@ -3420,26 +3420,26 @@ async function loadLeadsFromSupabase(){
     linked_partner_id, assigned_to, general_follow_up_date, general_follow_up_note,
     welcome_email_sent, welcome_email_sent_at
   `).order('created_at', { ascending: false });
-  if(error){ console.error('Failed to load leads from Supabase', error); return []; }
+  if(error){ reportLoadFailure('leads from Supabase', error); return []; }
   return data;
 }
 
 function saveLeadNotes(list){ localStorage.setItem(LS_LEAD_NOTES_KEY, JSON.stringify(list)); }
 async function loadLeadNotesFromSupabase(){
   const { data, error } = await supa.from('lead_notes').select('*').order('created_at', { ascending: false });
-  if(error){ console.error('Failed to load lead notes from Supabase', error); return []; }
+  if(error){ reportLoadFailure('lead notes from Supabase', error); return []; }
   return data;
 }
 
 async function loadLeadCallNotesFromSupabase(){
   const { data, error } = await supa.from('lead_call_notes').select('*').order('created_at', { ascending: false });
-  if(error){ console.error('Failed to load lead call notes from Supabase', error); return []; }
+  if(error){ reportLoadFailure('lead call notes from Supabase', error); return []; }
   return data;
 }
 
 async function loadLeadDocumentsFromSupabase(){
   const { data, error } = await supa.from('lead_documents').select('*').order('uploaded_at', { ascending: false });
-  if(error){ console.error('Failed to load lead documents from Supabase', error); return []; }
+  if(error){ reportLoadFailure('lead documents from Supabase', error); return []; }
   return data;
 }
 
@@ -3452,7 +3452,7 @@ async function loadApplicationLinksFromSupabase(){
 
 async function loadPartnerDocumentsFromSupabase(){
   const { data, error } = await supa.from('partner_documents').select('*').order('uploaded_at', { ascending: false });
-  if(error){ console.error('Failed to load partner documents from Supabase', error); return []; }
+  if(error){ reportLoadFailure('partner documents from Supabase', error); return []; }
   return data;
 }
 
@@ -3498,7 +3498,7 @@ async function loadApplicationsFromSupabase(){
     business_type_services, highest_sale_amount, average_sale_amount,
     monthly_sales_average, terms_accepted, paper_application_file_path
   `).order('submitted_at', { ascending: false });
-  if(error){ console.error('Failed to load applications from Supabase', error); return []; }
+  if(error){ reportLoadFailure('applications from Supabase', error); return []; }
   return data;
 }
 
@@ -3579,7 +3579,7 @@ function emptyColdLeadEnrichment(){
 // names already match the schema exactly, no mismatches to work around.
 async function loadColdLeadsFromSupabase(){
   const { data, error } = await supa.from('cold_leads').select('*').order('created_at', { ascending: false });
-  if(error){ console.error('Failed to load cold leads from Supabase', error); return []; }
+  if(error){ reportLoadFailure('cold leads from Supabase', error); return []; }
   return data;
 }
 
@@ -3604,18 +3604,18 @@ const INSTANTLY_STATUSES = {
 
 async function loadInstantlyContactsFromSupabase(){
   const { data, error } = await supa.from('instantly_contacts').select('*').order('last_event_at', { ascending: false });
-  if(error){ console.error('Failed to load Instantly contacts from Supabase', error); return []; }
+  if(error){ reportLoadFailure('Instantly contacts from Supabase', error); return []; }
   return data;
 }
 
 async function loadNewslettersFromSupabase(){
   const { data, error } = await supa.from('newsletters').select('*').order('created_at', { ascending: false });
-  if(error){ console.error('Failed to load newsletters from Supabase', error); return []; }
+  if(error){ reportLoadFailure('newsletters from Supabase', error); return []; }
   return data;
 }
 async function loadNlTemplatesFromSupabase(){
   const { data, error } = await supa.from('nl_templates').select('*').order('created_at', { ascending: false });
-  if(error){ console.error('Failed to load newsletter templates from Supabase', error); return []; }
+  if(error){ reportLoadFailure('newsletter templates from Supabase', error); return []; }
   return data;
 }
 
@@ -3867,12 +3867,12 @@ function todayISO(){ return new Date().toISOString().slice(0,10); }
 
 async function loadConnectedCalendarsFromSupabase(){
   const { data, error } = await supa.from('connected_calendars').select('*').order('name', { ascending: true });
-  if(error){ console.error('Failed to load connected calendars from Supabase', error); return []; }
+  if(error){ reportLoadFailure('connected calendars from Supabase', error); return []; }
   return data;
 }
 async function loadCalendarEventsFromSupabase(){
   const { data, error } = await supa.from('calendar_events').select('*').order('date', { ascending: true });
-  if(error){ console.error('Failed to load calendar events from Supabase', error); return []; }
+  if(error){ reportLoadFailure('calendar events from Supabase', error); return []; }
   return data;
 }
 
@@ -3885,7 +3885,7 @@ async function loadCalendarEventsFromSupabase(){
 function savePartners(list){ localStorage.setItem(LS_KEY, JSON.stringify(list)); }
 async function loadPartnersFromSupabase(){
   const { data, error } = await supa.from('partners').select('*').order('name');
-  if(error){ console.error('Failed to load partners from Supabase', error); return []; }
+  if(error){ reportLoadFailure('partners from Supabase', error); return []; }
   return data;
 }
 
@@ -3893,7 +3893,7 @@ async function loadPartnersFromSupabase(){
 function saveNotes(list){ localStorage.setItem(LS_NOTES_KEY, JSON.stringify(list)); }
 async function loadNotesFromSupabase(){
   const { data, error } = await supa.from('partner_notes').select('*').order('created_at', { ascending: false });
-  if(error){ console.error('Failed to load partner notes from Supabase', error); return []; }
+  if(error){ reportLoadFailure('partner notes from Supabase', error); return []; }
   return data;
 }
 
@@ -5026,7 +5026,7 @@ let APPLICATION_LINK_TOKENS = [];
 async function loadApplicationLinkTokensFromSupabase(){
   const { data, error } = await supa.from('application_link_tokens')
     .select('*').order('created_at', { ascending: false });
-  if(error){ console.error('Failed to load application links', error); return []; }
+  if(error){ reportLoadFailure('application links', error); return []; }
   return data;
 }
 
@@ -5087,7 +5087,7 @@ let LEAD_FORM_TOKENS = [];
 async function loadLeadFormTokens(){
   const { data, error } = await supa.from('application_link_tokens')
     .select('*').eq('kind', 'lead').order('created_at', { ascending: false });
-  if(error){ console.error('Failed to load lead forms', error); return []; }
+  if(error){ reportLoadFailure('lead forms', error); return []; }
   return data;
 }
 
@@ -6002,7 +6002,7 @@ let residualStatusFilter = 'all';
 async function loadResidualsFromSupabase(){
   const { data, error } = await supa.from('residual_payouts')
     .select('*').order('period_month', { ascending: false });
-  if(error){ console.error('Failed to load residual payouts', error); return []; }
+  if(error){ reportLoadFailure('residual payouts', error); return []; }
   return data || [];
 }
 
@@ -6749,7 +6749,7 @@ let loaderSearch = '';
 
 async function loadLoadersFromSupabase(){
   const { data, error } = await supa.from('atm_loaders').select('*').order('business_name');
-  if(error){ console.error('Failed to load ATM loaders', error); return []; }
+  if(error){ reportLoadFailure('ATM loaders', error); return []; }
   return data || [];
 }
 
@@ -6944,7 +6944,7 @@ let contactSearch = '';
 
 async function loadContactsFromSupabase(){
   const { data, error } = await supa.from('contacts').select('*').order('name');
-  if(error){ console.error('Failed to load contacts from Supabase', error); return []; }
+  if(error){ reportLoadFailure('contacts from Supabase', error); return []; }
   return data || [];
 }
 
@@ -7295,6 +7295,41 @@ function assignableUsers(){
   return USERS.filter(u =>
     u.id === currentUser.id ||
     (u.linked_partner_id && downline.has(u.linked_partner_id)));
+}
+
+/* -------------------------------------------------------------------------
+   A failed table read used to log to the console and return [], which the
+   rest of the app cannot tell apart from "there are none". That is how a
+   single unknown column in the applications select emptied the Applications
+   tab for weeks while three real applications sat in the database — the tab
+   looked the same as it would have on a quiet week.
+
+   An empty list is still returned, because the alternative is a half-loaded
+   app. But it is announced now instead of only being written to a console
+   nobody has open.
+   ------------------------------------------------------------------------- */
+const __loadFailuresReported = {};
+
+function reportLoadFailure(what, error){
+  console.error('Failed to load ' + what, error);
+
+  // Once per table per session. A dropped connection fails every loader at
+  // once, and twenty stacked toasts say less than one.
+  if(__loadFailuresReported[what]) return;
+  __loadFailuresReported[what] = true;
+
+  const msg = (error && error.message) || 'unknown error';
+  // 42703 is "column does not exist" — a schema mismatch between this file
+  // and the database, which means a migration has not been run. Worth
+  // naming, because it looks like empty data and is not.
+  const isSchema = error && (error.code === '42703' || /does not exist/i.test(msg));
+
+  setTimeout(() => {
+    if(typeof showToast !== 'function') return;
+    showToast(isSchema
+      ? `Could not load ${what}: ${msg}. A database migration is probably missing — the list will look empty until it is run.`
+      : `Could not load ${what}: ${msg}`, 'error');
+  }, 800);
 }
 
 function scopedLeads(){
@@ -9504,7 +9539,7 @@ document.getElementById('resellersSearch').addEventListener('input', e => render
 let OFFICES = [];
 async function loadOfficesFromSupabase(){
   const { data, error } = await supa.from('offices').select('*').order('sort_order', { ascending: true, nullsFirst: false });
-  if(error){ console.error('Failed to load offices from Supabase', error); return []; }
+  if(error){ reportLoadFailure('offices from Supabase', error); return []; }
   return data;
 }
 
