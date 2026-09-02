@@ -3943,7 +3943,12 @@ let calFilter = 'all';
 // this with the actual logged-in user's row from Supabase.
 let currentUser = { id:null, name:'', email:'', brands:['epay'], role:'in_house_sales' };
 const ADMIN_ONLY_VIEWS = ['aiscraper', 'coldemail', 'newsletter', 'calendar'];
-const EPAY_ONLY_VIEWS = ['applications', 'aiscraper', 'coldemail', 'reportsubs', 'calendar', 'authresellers', 'lendingleads', 'agents'];
+// 'applications' is deliberately NOT in here. Application links can be
+// created for either brand — most of the ones in use are Envision ATM — and
+// the submissions all land in the same table. Hiding the tab on ATM meant an
+// ATM application arrived correctly and then had nowhere to be seen, which
+// looked for all the world like the form was broken.
+const EPAY_ONLY_VIEWS = ['aiscraper', 'coldemail', 'reportsubs', 'calendar', 'authresellers', 'lendingleads', 'agents'];
 // Loaders are an Envision ATM concept — nobody loads cash into a card
 // terminal. Same hard gate as EPAY_ONLY_VIEWS, mirrored.
 const ATM_ONLY_VIEWS = ['loaders', 'isoleads'];
@@ -4030,7 +4035,8 @@ function setBrand(brand){
   const isoItems = document.getElementById('isoSectionItems');
   const reportsToggle = document.getElementById('reportsSectionToggle');
   const reportsItems = document.getElementById('reportsSectionItems');
-  navApplications.style.display = (brand === 'epay') ? 'flex' : 'none';
+  // Both brands: see EPAY_ONLY_VIEWS above.
+  navApplications.style.display = 'flex';
   // Brand is only half the condition; applyReportsNavVisibility() below
   // applies the admin half. Left here so the EPAY-only rule stays visible
   // alongside its siblings.
@@ -12888,6 +12894,22 @@ function purgeCollection(kind){
 /* =========================================================================
    APPLICATIONS — table, detail drawer, new-application form, and linking
    ========================================================================= */
+// applications has no brand column of its own — it is derived from the link
+// the submission came through. Applications entered by hand, or from before
+// links existed, have no token and report nothing rather than guessing.
+function applicationBrand(a){
+  if(!a.link_token_id) return null;
+  const t = APPLICATION_LINK_TOKENS.find(x => x.id === a.link_token_id);
+  return t ? (t.brand || null) : null;
+}
+
+function applicationBrandPill(a){
+  const b = applicationBrand(a);
+  if(!b) return '';
+  const label = b === 'atm' ? 'Envision ATM' : 'EPAY POS';
+  return ` <span class="pill ${b === 'atm' ? 'pill-agent-auth' : 'pill-referral'}" style="font-size:9.5px;">${label}</span>`;
+}
+
 function renderApplicationsTable(filterText){
   const q = (filterText || (document.getElementById('applicationsSearch') ? document.getElementById('applicationsSearch').value : '') || '').toLowerCase();
   const rows = scopedApplications().filter(a => {
@@ -12915,7 +12937,7 @@ function renderApplicationsTable(filterText){
     }
     return `
     <tr onclick="openApplicationDetail('${a.id}')">
-      <td class="name-cell">${a.legal_business_name || (a.first_name+' '+a.last_name)}<div class="sub">${a.dba_name || ''}</div></td>
+      <td class="name-cell">${a.legal_business_name || (a.first_name+' '+a.last_name)}${applicationBrandPill(a)}<div class="sub">${a.dba_name || ''}</div></td>
       <td>${a.first_name} ${a.last_name}<div class="sub">${a.email}</div></td>
       <td>${formatDate(a.submitted_at)}</td>
       <td>${a.source === 'wix' ? '<span class="pill pill-referral">Wix</span>' : a.source === 'paper' ? '<span class="pill pill-agent-auth">Paper</span>' : a.source === 'link' ? '<span class="pill pill-status-active">Portal link</span>' : '<span class="pill pill-agent-basic">Manual</span>'}</td>
