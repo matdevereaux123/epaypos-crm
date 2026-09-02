@@ -124,9 +124,25 @@ the Email field's inline edit on an existing partner. No SQL — app-code only.
 Fixed: the Calendar tab was visible to every portal-scoped login (Agent,
 EPAY Reseller, ISO, Referral Partner) — nav visibility only checked brand,
 never role, even though Calendar's RLS has required `fullDashboard` since
-`database/38_calendar_ownership.sql`. Now hidden from the nav and hard-gated
-in `showView()` for anyone without it, matching the access the database
-already enforced. No SQL — app-code only.
+`database/38_calendar_ownership.sql`. Narrowed further on request to
+admin-only, nobody else — including other `fullDashboard` internal staff.
+`'calendar'` now sits in the existing `ADMIN_ONLY_VIEWS` array (same
+hard-gate + post-render bounce already used for AI Lead Scraper/Cold
+Email), and `connected_calendars`/`calendar_events` RLS itself was
+narrowed from `fullDashboard` to `manageUsers` so the database enforces
+the same bar the UI does — see `database/47_calendar_admin_only.sql`.
+
+Fixed: application links were silently going nowhere. Every new lead
+defaulted `application_link_choice` to `'free_processing'` — a Wix
+marketing page with no backend wired into this CRM at all — instead of
+`'portal'`, the one choice that generates a real tracked `/apply/<slug>`
+link and actually lands a submission in the Applications tab. A prospect
+could fill the Wix form out completely and it would just vanish, since it
+never reached Supabase in the first place. `emptyAccountFields()` now
+defaults to `'portal'`, and `database/48_fix_application_link_default.sql`
+corrects existing leads still sitting on the broken default. Also labeled
+`source === 'link'` applications as "Portal application link" instead of
+the generic "Manual" pill, so these are recognizable at a glance.
 
 **Known gaps inside already-converted collections** (each flagged in code
 where it applies):

@@ -3338,7 +3338,13 @@ function emptyAccountFields(){
     equipment_pricing_confirmed:false, equipment_pricing_confirmed_at:null,
 
     // Application
-    application_link_choice:'free_processing', application_link_custom:'',
+    // 'portal' is the only choice that actually lands in this CRM — the
+    // Wix marketing links (e.g. 'free_processing') have no backend wired
+    // up (see the Wix integration card in Settings), so a submission there
+    // vanishes with nothing to show for it. Defaulting to a link that
+    // doesn't work meant every "send an application link" was broken
+    // unless staff remembered to flip this dropdown first.
+    application_link_choice:'portal', application_link_custom:'',
     application_email_sent:false, application_email_sent_at:null,
 
     // App ID
@@ -3936,7 +3942,7 @@ let calFilter = 'all';
 // Safe placeholder until real login resolves — enterAppAsAuthUser() replaces
 // this with the actual logged-in user's row from Supabase.
 let currentUser = { id:null, name:'', email:'', brands:['epay'], role:'in_house_sales' };
-const ADMIN_ONLY_VIEWS = ['aiscraper', 'coldemail', 'newsletter'];
+const ADMIN_ONLY_VIEWS = ['aiscraper', 'coldemail', 'newsletter', 'calendar'];
 const EPAY_ONLY_VIEWS = ['applications', 'aiscraper', 'coldemail', 'reportsubs', 'calendar', 'authresellers', 'lendingleads', 'agents'];
 // Loaders are an Envision ATM concept — nobody loads cash into a card
 // terminal. Same hard gate as EPAY_ONLY_VIEWS, mirrored.
@@ -4158,14 +4164,6 @@ function applyRolePermissions(){
   const addIsoBtn = document.getElementById('addIsoBtn');
   if(addIsoBtn) addIsoBtn.style.display = (perms.editPartners && currentBrand === 'atm') ? 'inline-block' : 'none';
 
-  // Calendar's own RLS (database/38_calendar_ownership.sql) requires
-  // fullDashboard on every policy — a portal-scoped login (Agent, EPAY
-  // Reseller, ISO, Referral Partner) was never meant to see this at all,
-  // it just wasn't hidden from the nav. Only ever tightens past the
-  // brand-only check in setBrand() above, never loosens past it.
-  const navCalendar = document.getElementById('navCalendarItem');
-  if(navCalendar && !perms.fullDashboard) navCalendar.style.display = 'none';
-
   const addUserBtn = document.getElementById('addUserBtn');
   if(addUserBtn) addUserBtn.style.display = perms.manageUsers ? 'inline-block' : 'none';
 
@@ -4183,14 +4181,13 @@ function applyRolePermissions(){
     showView('dashboard');
   }
 
-  // Calendar and Reports are internal tools. The data behind them was already
-  // out of a portal login's reach — connected_calendars, calendar_events and
-  // the report tables are all fullDashboard-only in database/04_rls.sql — but
-  // the nav items still showed, so an agent saw tabs that opened onto nothing.
-  const isInternal = roleOf(currentUser).portal_scope === 'internal';
-
+  // Calendar is admin-only for now (database/47_calendar_admin_only.sql
+  // narrowed connected_calendars/calendar_events RLS from fullDashboard to
+  // manageUsers specifically) — nobody else, not even other fullDashboard
+  // internal staff, has a reason to see it at the moment. Was gated to
+  // "any internal login" before; tightened to admin-only on request.
   const calendarNav = document.getElementById('navCalendarItem');
-  if(calendarNav) calendarNav.style.display = isInternal ? 'flex' : 'none';
+  if(calendarNav) calendarNav.style.display = isAdmin ? 'flex' : 'none';
 
   // Reports are admin-only, a tighter bar than Calendar: in-house sales keep
   // the calendar but not the subscription and collections reports.
@@ -4206,7 +4203,7 @@ function applyRolePermissions(){
   // on one when their role says they shouldn't be. The two lists differ
   // because the two bars differ.
   const calendarEl = document.getElementById('view-calendar');
-  if(!isInternal && calendarEl && calendarEl.style.display !== 'none'){
+  if(!isAdmin && calendarEl && calendarEl.style.display !== 'none'){
     showView('dashboard');
   }
   // view-residuals is deliberately absent — a partner belongs on it.
@@ -7082,6 +7079,60 @@ async function deleteContact(id){
   showToast('Contact deleted.', 'success');
 }
 
+/* -------------------------------------------------------------------------
+   PULLING IN PUBLIC SUBMISSIONS
+
+   Applications, leads and cold leads can all be created by people who are
+   not logged in — the application link, the lead form, the referral page.
+   Those rows go straight into the database. This app read its copy once, at
+   login, and never looked again.
+
+   So an application submitted five minutes ago was simply not in the portal
+   of anyone whose session pre-dated it. The form worked, the row existed,
+   and the tab was empty — which reads as the form being broken, and is the
+   single most confusing way for this to fail.
+
+   Refreshed on entering the tab. The cached copy renders first so the tab
+   opens instantly, then this replaces it if anything new arrived.
+   ------------------------------------------------------------------------- */
+async function refreshPublicSubmissions(view){
+  try {
+    if(view === 'applications'){
+      const { data, error } = await supa.from('applications').select('id').limit(1);
+      // A failed read must not blank the table. The loaders return [] on
+      // error, which is indistinguishable from "there are none" — assigning
+      // that would wipe the list on a dropped connection.
+      if(error) return;
+      const fresh = await loadApplicationsFromSupabase();
+      if(!Array.isArray(fresh)) return;
+      const before = APPLICATIONS.length;
+      APPLICATIONS = fresh;
+      renderApplicationsTable();
+      const added = fresh.length - before;
+      if(added > 0) showToast(`${added} new application${added === 1 ? '' : 's'} since you last looked.`, 'success');
+
+    } else if(view === 'leads' || view === 'accounts'){
+      const { error } = await supa.from('leads').select('id').limit(1);
+      if(error) return;
+      const fresh = await loadLeadsFromSupabase();
+      if(!Array.isArray(fresh)) return;
+      LEADS = fresh;
+      if(view === 'leads') renderLeadsBoard(); else renderAccountsTable();
+
+    } else if(view === 'coldleads'){
+      const { error } = await supa.from('cold_leads').select('id').limit(1);
+      if(error) return;
+      const fresh = await loadColdLeadsFromSupabase();
+      if(!Array.isArray(fresh)) return;
+      COLD_LEADS = fresh;
+      renderColdLeadsTable();
+    }
+  } catch(e){
+    // Never let a background refresh break the tab the user just opened.
+    console.error('Could not refresh ' + view, e);
+  }
+}
+
 function showView(view, fromHistory){
   // Hard gate, checked on every navigation (not just at login/role-switch) —
   // this is what actually stops a non-admin from landing on these views if
@@ -7098,12 +7149,6 @@ function showView(view, fromHistory){
   }
   if(ATM_ONLY_VIEWS.includes(view) && currentBrand !== 'atm'){
     view = 'referrals';
-  }
-  // Calendar's RLS is fullDashboard-only (database/38_calendar_ownership.sql)
-  // — a portal-scoped login was never meant to land here even by a direct
-  // showView() call, same reasoning as the two gates above.
-  if(view === 'calendar' && !roleOf(currentUser).perms.fullDashboard){
-    view = 'dashboard';
   }
   // Live Recall's inline detail mode should never leak into other tabs —
   // clicking any lead/cold lead elsewhere in the app must always open the
@@ -7127,6 +7172,8 @@ function showView(view, fromHistory){
   if(view === 'leads') renderLeadsBoard();
   if(view === 'accounts') renderAccountsTable();
   if(view === 'applications') renderApplicationsTable();
+  // Renders from the cached copy above, then pulls anything submitted since.
+  if(['applications','leads','accounts','coldleads'].includes(view)) refreshPublicSubmissions(view);
   if(view === 'coldemail') renderColdEmailTable();
   if(view === 'newsletter') renderNewsletterView();
   if(view === 'residuals') renderResidualsReport();
@@ -11199,7 +11246,7 @@ function buildDocsSectionHTML(l){
     <label style="display:block;font-size:11.5px;text-transform:uppercase;color:var(--slate-500);margin:16px 0 8px;">Linked applications</label>
     ${linkedApps.map(a => `
       <div class="note-item" style="cursor:pointer;" onclick="closeLeadDrawer(); openApplicationDetail('${a.id}');">
-        <div class="meta">Submitted ${formatDate(a.submitted_at)} · ${a.source === 'wix' ? 'From Wix' : a.source === 'paper' ? 'Paper application' : 'Manual entry'}</div>
+        <div class="meta">Submitted ${formatDate(a.submitted_at)} · ${a.source === 'wix' ? 'From Wix' : a.source === 'paper' ? 'Paper application' : a.source === 'link' ? 'Portal application link' : 'Manual entry'}</div>
         <div class="txt">${a.legal_business_name || (a.first_name+' '+a.last_name)}</div>
       </div>
     `).join('')}` : ''}
@@ -12871,7 +12918,7 @@ function renderApplicationsTable(filterText){
       <td class="name-cell">${a.legal_business_name || (a.first_name+' '+a.last_name)}<div class="sub">${a.dba_name || ''}</div></td>
       <td>${a.first_name} ${a.last_name}<div class="sub">${a.email}</div></td>
       <td>${formatDate(a.submitted_at)}</td>
-      <td>${a.source === 'wix' ? '<span class="pill pill-referral">Wix</span>' : a.source === 'paper' ? '<span class="pill pill-agent-auth">Paper</span>' : '<span class="pill pill-agent-basic">Manual</span>'}</td>
+      <td>${a.source === 'wix' ? '<span class="pill pill-referral">Wix</span>' : a.source === 'paper' ? '<span class="pill pill-agent-auth">Paper</span>' : a.source === 'link' ? '<span class="pill pill-status-active">Portal link</span>' : '<span class="pill pill-agent-basic">Manual</span>'}</td>
       <td>${linkCell}</td>
     </tr>`;
   }).join('');
@@ -13085,7 +13132,7 @@ async function openApplicationDetail(id){
     <div class="drawer-head">
       <div>
         <h2>${a.legal_business_name || (a.first_name+' '+a.last_name)}</h2>
-        <span class="pill ${a.source==='wix' ? 'pill-referral': a.source==='paper' ? 'pill-agent-auth' : 'pill-agent-basic'}" style="margin-top:4px;display:inline-block;">${a.source==='wix' ? 'From Wix': a.source==='paper' ? 'Paper application' : 'Manual entry'}</span>
+        <span class="pill ${a.source==='wix' ? 'pill-referral': a.source==='paper' ? 'pill-agent-auth' : a.source==='link' ? 'pill-status-active' : 'pill-agent-basic'}" style="margin-top:4px;display:inline-block;">${a.source==='wix' ? 'From Wix': a.source==='paper' ? 'Paper application' : a.source==='link' ? 'Portal application link' : 'Manual entry'}</span>
       </div>
       <button class="btn btn-xs" onclick="window.print()" style="margin-right:8px;">Print / Save as PDF</button>
       <button class="drawer-close" onclick="closeApplicationDrawer()">&times;</button>
