@@ -1958,7 +1958,7 @@
             </div>
           </div>
           <table>
-            <thead><tr><th>Name</th><th>Reseller tier</th><th>Activity</th><th>Custom link</th><th>Leads</th><th>Last deal</th></tr></thead>
+            <thead><tr><th>Name</th><th>Reseller tier</th><th>Activity</th><th>Custom link</th><th>Leads</th><th>Last deal</th><th style="width:34px;"></th></tr></thead>
             <tbody id="agentsTableBody"></tbody>
           </table>
           <div id="agentsEmptyState" class="empty-state" style="display:none;">Nobody matches your search.</div>
@@ -1994,7 +1994,7 @@
             </div>
           </div>
           <table>
-            <thead><tr><th>Agent</th><th>Activity</th><th>Custom link</th><th>Leads</th><th>Last deal</th></tr></thead>
+            <thead><tr><th>Agent</th><th>Activity</th><th>Custom link</th><th>Leads</th><th>Last deal</th><th style="width:34px;"></th></tr></thead>
             <tbody id="resellersTableBody"></tbody>
           </table>
           <div id="resellersEmptyState" class="empty-state" style="display:none;">No authorized resellers match your search.</div>
@@ -2111,7 +2111,7 @@
             </div>
           </div>
           <table>
-            <thead><tr><th style="width:34px;"><input type="checkbox" id="accountsSelectAll"></th><th>Account</th><th>Contact</th><th>Current stage</th><th>Est. volume</th><th>Converted</th></tr></thead>
+            <thead><tr><th style="width:34px;"><input type="checkbox" id="accountsSelectAll"></th><th>Account</th><th>Contact</th><th>Current stage</th><th>Est. volume</th><th>Converted</th><th style="width:34px;"></th></tr></thead>
             <tbody id="accountsTableBody"></tbody>
           </table>
           <div id="accountsEmptyState" class="empty-state" style="display:none;">No accounts yet — accounts appear here once a lead moves out of Inbound.</div>
@@ -6800,7 +6800,7 @@ function renderLoaders(){
       <td>${[l.address, l.city].filter(Boolean).join(', ') || '—'}${l.zip ? ` <span style="color:var(--slate-400);">${l.zip}</span>` : ''}</td>
       <td>${l.state || '—'}</td>
       <td>${l.phone || '—'}</td>
-      <td style="text-align:right;"><button class="btn btn-sm" onclick="event.stopPropagation(); openLoaderDrawer('${l.id}')">Edit</button></td>
+      <td style="text-align:right;white-space:nowrap;"><button class="btn btn-sm" onclick="event.stopPropagation(); openLoaderDrawer('${l.id}')">Edit</button>${recordMenuBtn('loader', l.id, l.business_name)}</td>
     </tr>`).join('');
 }
 
@@ -6985,7 +6985,7 @@ function renderContacts(){
       <td><span class="pill ${c.category==='customer_facing' ? 'pill-status-active' : 'pill-agent-basic'}">${CONTACT_CATEGORIES[c.category] || c.category}</span></td>
       <td>${c.phone || '—'}</td>
       <td>${c.email || '—'}</td>
-      <td style="text-align:right;"><button class="btn btn-sm" onclick="event.stopPropagation(); openContactDrawer('${c.id}')">Edit</button></td>
+      <td style="text-align:right;white-space:nowrap;"><button class="btn btn-sm" onclick="event.stopPropagation(); openContactDrawer('${c.id}')">Edit</button>${recordMenuBtn('contact', c.id, c.name)}</td>
     </tr>`).join('');
 }
 
@@ -7662,7 +7662,7 @@ function renderReferralTable(filterText){
       <td>${p.link_clicks ? `${p.link_clicks} clicks → ${p.leads_submitted} leads<div class="sub">${rate}% conversion</div>` : `${p.leads_submitted} leads<div class="sub">${p.deals_closed} closed</div>`}</td>
       <td>${p.last_deal_date ? formatDate(p.last_deal_date) : '—'}</td>
       <td>${followupCell}</td>
-      <td style="text-align:right;">${currentBrand === 'atm' ? `<button class="btn btn-xs" onclick="event.stopPropagation(); createEpayLeadFromPartner('${p.id}');">Create as EPAY Lead</button>` : ''}</td>
+      <td style="text-align:right;white-space:nowrap;">${currentBrand === 'atm' ? `<button class="btn btn-xs" onclick="event.stopPropagation(); createEpayLeadFromPartner('${p.id}');">Create as EPAY Lead</button>` : ''}${recordMenuBtn('partner', p.id, p.name)}</td>
     </tr>`;
   }).join('');
 }
@@ -9484,6 +9484,7 @@ function renderAgentsTable(filterText){
       <td><span class="link-chip mono">${baseUrl}${p.link_slug}<button onclick="event.stopPropagation(); copyLink('${baseUrl}${p.link_slug}')">Copy</button></span></td>
       <td>${p.leads_submitted} leads<div class="sub">${p.deals_closed} closed</div></td>
       <td>${p.last_deal_date ? formatDate(p.last_deal_date) : '—'}</td>
+      <td style="text-align:right;">${recordMenuBtn('partner', p.id, p.name)}</td>
     </tr>`;
   }).join('');
 }
@@ -9524,6 +9525,7 @@ function renderResellersTable(filterText){
       <td><span class="link-chip mono">${baseUrl}${p.link_slug}<button onclick="event.stopPropagation(); copyLink('${baseUrl}${p.link_slug}')">Copy</button></span></td>
       <td>${p.leads_submitted} leads<div class="sub">${p.deals_closed} closed</div></td>
       <td>${p.last_deal_date ? formatDate(p.last_deal_date) : '—'}</td>
+      <td style="text-align:right;">${recordMenuBtn('partner', p.id, p.name)}</td>
     </tr>`;
   }).join('');
 }
@@ -12706,6 +12708,58 @@ function openMiniMenu(ev, ownerId, itemsHtml){
 const MENU_DOTS_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>';
 const MENU_TRASH_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
 
+/* =========================================================================
+   RECORD ACTIONS
+   One menu, one registry, every kind of record — so a delete cannot exist on
+   six lists and quietly not on the seventh, which is how cold leads ended up
+   with only a bulk-select delete while everything else had a per-record one.
+
+   The delete functions stay where they are rather than being generated. Each
+   carries its own warning, and what a delete takes with it differs enough per
+   type that one generic message would have to be vague to stay true.
+   ========================================================================= */
+const RECORD_TYPES = {
+  lead:        { find: id => LEADS.find(r => r.id === id),        name: r => r.business_name, del: 'deleteLead', dup: 'duplicateLead' },
+  account:     { find: id => LEADS.find(r => r.id === id),        name: r => r.business_name, del: 'deleteLead' },
+  coldLead:    { find: id => COLD_LEADS.find(r => r.id === id),   name: r => r.business_name, del: 'deleteColdLead' },
+  application: { find: id => APPLICATIONS.find(r => r.id === id),
+                 name: r => r.legal_business_name || `${r.first_name || ''} ${r.last_name || ''}`.trim(),
+                 del: 'deleteApplication' },
+  partner:     { find: id => PARTNERS.find(r => r.id === id),     name: r => r.name,          del: 'deletePartner' },
+  contact:     { find: id => CONTACTS.find(r => r.id === id),     name: r => r.name || r.business_name, del: 'deleteContact' },
+  loader:      { find: id => LOADERS.find(r => r.id === id),      name: r => r.business_name, del: 'deleteLoader' },
+  isoLead:     { find: id => ISO_LEADS.find(r => r.id === id),    name: r => r.business_name, del: 'deleteIsoLead' },
+  lendingLead: { find: id => LENDING_LEADS.find(r => r.id === id),name: r => r.business_name, del: 'deleteLendingLead' }
+};
+
+function recordMenuBtn(kind, id, label){
+  const safe = String(label == null ? '' : label).replace(/"/g, '&quot;');
+  return `<button class="lc-menu-btn" draggable="false" title="More" aria-label="More actions for ${safe}"`
+       + ` onclick="openRecordMenu(event, '${kind}', '${id}')" onmousedown="event.stopPropagation();">${MENU_DOTS_SVG}</button>`;
+}
+
+function openRecordMenu(ev, kind, id){
+  const def = RECORD_TYPES[kind];
+  if(!def) return;
+  // The record went between render and click — a refresh, or someone else
+  // deleting it. Say so rather than opening a menu whose buttons do nothing.
+  if(!def.find(id)){
+    ev.stopPropagation();
+    showToast('That record is no longer there. Refresh to see the current list.', 'info');
+    return;
+  }
+  const dup = def.dup ? `
+    <button onclick="${def.dup}('${id}')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+      Duplicate
+    </button><hr>` : '';
+  openMiniMenu(ev, id, `${dup}
+    <button class="danger" onclick="closeLeadCardMenu(); ${def.del}('${id}')">
+      ${MENU_TRASH_SVG}
+      Delete
+    </button>`);
+}
+
 function openApplicationMenu(ev, id){
   const a = APPLICATIONS.find(x => x.id === id);
   if(!a) return;
@@ -12714,6 +12768,32 @@ function openApplicationMenu(ev, id){
       ${MENU_TRASH_SVG}
       Delete application
     </button>`);
+}
+
+async function deleteColdLead(id){
+  const c = COLD_LEADS.find(x => x.id === id);
+  if(!c) return;
+
+  // Nothing cascades: every foreign key pointing at cold_leads is
+  // `on delete set null`, so a meeting or a lead that referenced this one
+  // loses the reference and survives. Worth saying, because the warning on
+  // a lead is the opposite.
+  const meetings = CALENDAR_EVENTS.filter(e => e.linked_cold_lead_id === id).length;
+  const notes = [
+    'This cannot be undone.',
+    meetings ? `${meetings} scheduled ${meetings === 1 ? 'meeting keeps' : 'meetings keep'} its place on the calendar, without the link.` : null,
+    c.promoted ? 'It was already promoted to the pipeline; that lead is not deleted.' : null
+  ].filter(Boolean);
+
+  if(!confirm(`Delete the cold lead “${c.business_name}”?\n\n${notes.join('\n')}`)) return;
+
+  const { error } = await supa.from('cold_leads').delete().eq('id', id);
+  if(error){ showToast('Could not delete: ' + error.message, 'error'); return; }
+
+  COLD_LEADS = COLD_LEADS.filter(x => x.id !== id);
+  if(document.getElementById('coldLeadOverlay').classList.contains('open')) closeColdLeadDrawer();
+  renderColdLeadsTable();
+  showToast(`“${c.business_name}” deleted.`, 'success');
 }
 
 async function deleteApplication(id){
@@ -12908,6 +12988,7 @@ function renderAccountsTable(filterText){
       <td><span class="pill" style="background:${color}22;color:${color};">${stage.label}</span></td>
       <td>${a.est_volume || '—'}</td>
       <td>${a.converted_at ? formatDate(a.converted_at) : '—'}</td>
+      <td style="text-align:right;">${recordMenuBtn('account', a.id, a.business_name)}</td>
     </tr>`;
   }).join('');
 }
@@ -13528,6 +13609,7 @@ function renderColdLeadsTable(filterText){
       <td><span class="pill pill-agent-basic">${sourceCategoryLabel(c.source_category)}</span><div class="sub">${c.source||''}</div></td>
       <td style="text-align:right;">
         <button class="btn btn-xs btn-accent" onclick="event.stopPropagation(); promoteColdLead('${c.id}');">Convert →</button>
+        ${recordMenuBtn('coldLead', c.id, c.business_name)}
       </td>
     </tr>`;
   }).join('');
@@ -13546,7 +13628,10 @@ document.getElementById('deleteSelectedColdLeadsBtn').addEventListener('click', 
   if(!confirm(`Delete ${ids.length} cold lead${ids.length===1?'':'s'}? This can't be undone.`)) return;
   const { error } = await supa.from('cold_leads').delete().in('id', ids);
   if(error){ alert('Could not delete: ' + error.message); return; }
-  COLD_LEADS = scopedColdLeads().filter(c => !ids.includes(c.id));
+  // COLD_LEADS, not scopedColdLeads(): the scoped list is a filtered view, so
+  // assigning it back discards every record it filtered out. Same bug
+  // deleteLead() had.
+  COLD_LEADS = COLD_LEADS.filter(c => !ids.includes(c.id));
   renderColdLeadsTable();
 });
 
@@ -16177,6 +16262,7 @@ function lendingLeadCardHtml(l, stageColor){
           <div class="lc-name">${l.business_name}</div>
           <div class="lc-sub">${l.contact_name}</div>
         </div>
+        ${recordMenuBtn('lendingLead', l.id, l.business_name)}
       </div>
       <div class="lc-badges">
         <span class="lc-badge age ${age>=10?'stale':''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>${age}d</span>
@@ -16482,6 +16568,7 @@ function isoLeadCardHtml(l, stageColor){
           <div class="lc-name">${l.business_name}</div>
           <div class="lc-sub">${l.contact_name || (iso ? 'via ' + iso.name : '')}</div>
         </div>
+        ${recordMenuBtn('isoLead', l.id, l.business_name)}
       </div>
       <div class="lc-badges">
         <span class="lc-badge age ${age>=10?'stale':''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>${age}d</span>
