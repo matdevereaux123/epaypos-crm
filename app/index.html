@@ -2779,6 +2779,7 @@ const STAGES = [
   { key:'app_id_entered', label:'App ID Entered', phase:'inbound_boarding' },
   { key:'equipment_shipment', label:'Equipment Shipment & Confirmation', phase:'post_boarding' },
   { key:'install_training', label:'Install & Training Call', phase:'post_boarding' },
+  { key:'one_month_followup', label:'1 Month Follow-Up', phase:'post_boarding' },
   { key:'converted_active', label:'Converted / Active Account', phase:'post_boarding' },
 ];
 
@@ -10666,6 +10667,14 @@ function getStageRequirementError(lead, stageKey){
     case 'install_training':
       if(!CALENDAR_EVENTS.some(e => e.linked_lead_id === lead.id)) return "Schedule the installation/training call before converting this account.";
       return null;
+    case 'one_month_followup':
+      // Must be a call note logged since the lead actually landed in this
+      // stage — an old note from earlier in the pipeline doesn't count as
+      // the 1 month follow-up call itself.
+      if(!LEAD_CALL_NOTES.some(n => n.lead_id === lead.id && n.created_at >= lead.stage_entered_at)){
+        return "Add a 1 month follow-up call note before converting this account.";
+      }
+      return null;
     default:
       return null;
   }
@@ -10882,9 +10891,13 @@ async function moveLeadToStage(leadId, stageKey, opts){
   if(!lead) return false;
   const movingForward = stageIndex(stageKey) > stageIndex(leadStage(lead));
   if(movingForward && !opts.skipValidation){
-    const err = stageRequirementErrorFor(lead, lead.stage);
-    if(err){
-      showErrorToast(err);
+    // Checks every stage between here and the target, not just the one
+    // being left — otherwise jumping several stages at once (e.g. picking a
+    // far-ahead stage straight from the "Move stage" dropdown) skipped every
+    // gate in between rather than just the one it started on.
+    const outstanding = requirementsBetween(lead, stageKey).find(i => i.error);
+    if(outstanding){
+      showErrorToast(outstanding.error);
       renderLeadsBoard();
       if(document.getElementById('leadOverlay').classList.contains('open')) openLeadDetail(leadId);
       return false;

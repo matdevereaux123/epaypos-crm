@@ -144,6 +144,18 @@ corrects existing leads still sitting on the broken default. Also labeled
 `source === 'link'` applications as "Portal application link" instead of
 the generic "Manual" pill, so these are recognizable at a glance.
 
+Added: a **1 Month Follow-Up** stage on the EPAY POS pipeline, between
+Install & Training Call and Converted/Active Account. Moving a lead past
+it requires a call note logged on or after the date it entered that stage
+— an old note from earlier in the pipeline doesn't satisfy it. This also
+closed a real gap in stage-requirement enforcement generally: the "Move
+stage" dropdown only ever validated the stage being left, so jumping
+straight to a far-ahead stage skipped every gate in between (e.g.
+Install & Training's own calendar-event requirement). `moveLeadToStage()`
+now checks every stage crossed, not just the first one, using the same
+`requirementsBetween()` helper the drag-and-drop checklist already used.
+No SQL — `leads.stage` is a plain text column, no schema change needed.
+
 **Known gaps inside already-converted collections** (each flagged in code
 where it applies):
 - The "purge demo data" utility is deliberately NOT wired to real deletes —
