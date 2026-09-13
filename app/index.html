@@ -1178,8 +1178,14 @@
     /* Sidebar becomes an off-canvas overlay instead of a grid column —
        the existing collapse toggle/class already does the show/hide
        logic in JS, this just changes what "collapsed" means visually
-       at this width. */
-    .shell{ grid-template-columns:1fr; }
+       at this width. Both rules needed: the base (desktop) .shell.sidebar-
+       collapsed rule is two classes deep (0 1fr, still a 2-column grid)
+       and beats a plain .shell selector on specificity alone regardless of
+       which media query it's in — without overriding it here too, the
+       sidebar (position:fixed, out of flow) and its backdrop still get
+       counted as grid items, .main ends up pushed into a leftover implicit
+       third column, and the entire page renders at near-zero width. */
+    .shell, .shell.sidebar-collapsed{ grid-template-columns:1fr; }
     .sidebar{
       position:fixed; top:0; left:0; z-index:300; width:264px;
       transform:translateX(0); transition:transform .2s ease; opacity:1;
@@ -1207,10 +1213,42 @@
 
     .ai-search-grid{ grid-template-columns:1fr; }
     .comparison-table, .products-row{ overflow-x:auto; }
+
+    /* Segmented phase filters (Leads pipeline etc.) size to fit their
+       buttons and don't wrap — on a narrow screen that's wider than the
+       viewport itself. Scroll it sideways rather than clip or squeeze the
+       labels illegible. */
+    .phase-toggle{ max-width:100%; overflow-x:auto; }
+
+    /* Report period navigation (Subscription/Collections reports): the
+       period label has an inline min-width:230px (so a longer date range
+       doesn't reflow the prev/next buttons on desktop). That alone is over
+       half the viewport here, and .cal-nav never wraps, so prev-button +
+       label + next-button + "Current period" all fighting for one line
+       overflowed the page. Letting the row wrap is enough — the inline
+       min-width still centers the label nicely on its own line, no need
+       to fight its specificity. */
+    .cal-nav{ flex-wrap:wrap; justify-content:center; }
+
+    /* Inline-edit pencils are a 12x12 icon with zero padding — fine with a
+       mouse, not reliably tappable with a finger. Padding grows the actual
+       hit target; the matching negative margin keeps it from pushing the
+       row's other content around, so the icon looks exactly the same size
+       it always did. Same idea for the tick/cross buttons that replace it
+       mid-edit, and the drawer's own close button. */
+    .row-edit{ padding:10px; margin:-10px; }
+    .row-edit-btn{ padding:9px 11px; }
+    .drawer-close{ padding:10px; margin:-10px; font-size:22px; }
   }
 
   @media (max-width:420px){
     .main{ padding:0 12px 32px; }
+    /* .topnav's negative-margin/padding bleed (set at the 768px breakpoint
+       above) is sized to cancel out .main's padding exactly — 16px each
+       side there. .main drops to 12px here, and without a matching update
+       .topnav keeps compensating for 16px, overhanging the real edge by
+       4px on both sides (8px of horizontal scroll on the whole page). */
+    .topnav{ margin:0 -12px 18px; padding:0 12px; }
     .cards-row{ grid-template-columns:1fr 1fr; }
     h1{ font-size:18px; }
   }
