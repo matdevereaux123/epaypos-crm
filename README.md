@@ -156,6 +156,18 @@ now checks every stage crossed, not just the first one, using the same
 `requirementsBetween()` helper the drag-and-drop checklist already used.
 No SQL — `leads.stage` is a plain text column, no schema change needed.
 
+Fixed: the entire app was effectively unusable on a phone. Root cause was
+a CSS specificity bug — `.shell.sidebar-collapsed` (defined once, outside
+any media query) beat the phone breakpoint's plain `.shell` selector on
+specificity alone, so below 768px the layout kept its desktop two-column
+grid instead of collapsing to one, and `.main` rendered at near-zero
+width. Also fixed while testing every nav view at 375px: phase-filter
+toggles overflowing instead of scrolling, `.topnav`'s edge-to-edge
+padding math not matching `.main`'s padding at the sub-420px breakpoint,
+the report period-navigation label overflowing instead of wrapping, and
+inline-edit pencil icons/drawer-close buttons having touch targets far
+smaller than the icon itself suggested. No SQL — CSS/layout only.
+
 **Known gaps inside already-converted collections** (each flagged in code
 where it applies):
 - The "purge demo data" utility is deliberately NOT wired to real deletes —
