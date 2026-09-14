@@ -173,9 +173,9 @@ where it applies):
 - The "purge demo data" utility is deliberately NOT wired to real deletes —
   too destructive to enable without a separate explicit decision.
 
-### Phase 5 — Go live
-15. Deploy to real hosting
-16. Stand up the real referral link routes (`epaypos.net/r/[slug]`, `envisionatm.com/r/[slug]`) — currently simulated via a `?ref=` query param on the same file
+### Phase 5 — Go live ✅ done
+15. ~~Deploy to real hosting~~ **Done** — GitHub → Netlify, auto-deploys on push to `master`
+16. ~~Stand up the real referral link routes~~ **Done** — `go.epaypos.net/r/<slug>` and `go.epaypos.net/apply/<slug>` are live, real domain, real routing (`netlify.toml`), not the old `?ref=` query-param simulation
 
 ### Phase 6 — Wire up the rest
 17. ~~Connect the same Resend account as the CRM's own Outbound Email integration~~ **Done** — `supabase/functions/send-email`, every send logged to `email_log`
@@ -183,6 +183,37 @@ where it applies):
 19. Wix form capture
 20. Instantly
 21. AI Lead Scraper — needs a server-side Claude API key; never call it directly from `app/index.html`, since that would expose the key in the browser
+
+### Phase 6.5 — Booking links
+
+Each internal salesperson (and Matthew) gets a personal link they can hand
+a client to self-book a time, instead of the back-and-forth of finding
+one by phone/email. Not started — scoping notes below since this builds
+directly on infrastructure that already exists rather than starting cold:
+
+- **A public booking page per user**, at a real routed URL (same pattern
+  as `go.epaypos.net/r/<slug>` and `/apply/<slug>` — add `/book/<slug>` to
+  `netlify.toml`), showing that person's open slots
+- **Real availability, not a fake calendar** — reads busy/free straight
+  from that person's already-connected Google Calendar
+  (`database/35_google_calendar_oauth.sql` onward), so it has to run
+  anon-safe (same shape as `public_lookup_application_link`/
+  `public_submit_application` — a SECURITY DEFINER RPC, not a direct
+  table read, since a stranger with the link is never authenticated)
+- **Booking a slot creates a real `calendar_events` row** and pushes it
+  through the same two-way Google sync already built, so it actually
+  shows up on the salesperson's calendar, not just inside the CRM
+- **Capture who booked** — name, email, business — and decide whether
+  that should auto-create a Cold Lead/Lead (probably yes, same shape as
+  the public referral landing page turning a submission into a real
+  record) or just attach to an existing one if the link was shared from
+  a specific record's detail page
+- **Confirmation email to both sides** once Outbound Email
+  (`supabase/functions/send-email`) has something to hand this — sending
+  a booking confirmation with no confirmation is worse than the
+  back-and-forth it replaces
+- **Decide the personal link's slug** — email-derived, chosen by the
+  user, or generated — before building the routing around it
 
 ### Phase 7 — Prove it before real data goes in
 22. Multi-user test — two people logged in simultaneously, confirm data actually syncs
