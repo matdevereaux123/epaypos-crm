@@ -310,7 +310,12 @@
   .brand-switch{display:flex;background:var(--hover);border-radius:8px;padding:3px;font-size:11px;}
   .brand-switch button{flex:1;padding:6px 4px;border:none;background:transparent;color:var(--navy-500);border-radius:6px;font-weight:600;letter-spacing:.2px;}
   .brand-switch button.active{background:var(--brand-accent-2);color:#fff;}
-  nav.nav-main{flex:1;padding:14px 12px;overflow-y:auto;}
+  /* overflow-y:auto alone leaves overflow-x at its default, which per spec
+     computes to auto too (not visible) once the other axis isn't visible —
+     so any nav label a few pixels too wide for the sidebar (long section
+     titles, mainly) made the whole menu scroll sideways as well as up and
+     down. This is a vertical list; it should never scroll the other way. */
+  nav.nav-main{flex:1;padding:14px 12px;overflow-y:auto;overflow-x:hidden;}
   .nav-section-label{font-size:10.5px;text-transform:uppercase;letter-spacing:1.4px;color:var(--slate-300);margin:16px 10px 8px;}
   .nav-section-toggle{
     display:flex;align-items:center;justify-content:space-between;width:100%;
