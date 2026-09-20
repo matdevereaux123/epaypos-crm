@@ -223,16 +223,18 @@ Deno.serve(async (req) => {
   const { data: { user } } = await caller.auth.getUser();
   if (!user) return json({ error: 'Not authenticated' }, 401);
 
-  // The calendar is internal-only, same as the tab it lives on. Checked here
-  // rather than trusting the UI to have hidden it.
+  // Calendar access opened up from fullDashboard-only (internal staff) to
+  // any logged-in user — Agents, Referral Partners, and ISOs included —
+  // once calendar_events/connected_calendars RLS became strictly per-owner
+  // (database/52_calendar_per_user.sql). This just confirms a real CRM user
+  // record exists behind the login; the "own calendar only" boundary is
+  // enforced by RLS on every table read/write below, not by a permission
+  // check here.
   const { data: callerRow } = await caller
     .from('users')
-    .select('id, name, email, roles!inner(perms)')
+    .select('id, name, email')
     .eq('auth_id', user.id)
     .single();
-
-  const perms = (callerRow as { roles?: { perms?: Record<string, unknown> } })?.roles?.perms ?? {};
-  if (perms.fullDashboard !== true) return json({ error: 'Not authorized to use the calendar' }, 403);
 
   const userId = (callerRow as { id?: string })?.id;
   if (!userId) return json({ error: 'No CRM user record for this login' }, 403);

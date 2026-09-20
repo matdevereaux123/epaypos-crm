@@ -1,8 +1,8 @@
 # EPAY POS / Envision ATM Control Center
 
 Internal CRM covering both EPAY POS and Envision ATM — Leads, Accounts,
-Cold Leads, a separate Lending pipeline, Referral Partners/Agents/EPAY
-Resellers, a subscription add-on report, and a Newsletter tool.
+Cold Leads, a separate Lending pipeline, Referral Partners/Agents/ISOs,
+a subscription add-on report, and a Newsletter tool.
 
 ## Current state — read this first
 
@@ -168,6 +168,75 @@ the report period-navigation label overflowing instead of wrapping, and
 inline-edit pencil icons/drawer-close buttons having touch targets far
 smaller than the icon itself suggested. No SQL — CSS/layout only.
 
+Added: **Cold Leads assignment** — assignable to any staff user or to a
+downline agent/partner, same `assignableUsers()` scoping already used
+elsewhere, via a new `saveColdLeadAssignment()` and an "Assigned to"
+dropdown in the Cold Lead detail drawer. Leads and Accounts already had
+this from earlier work.
+
+Added: an **Account Boarding** stage on the EPAY POS pipeline, between
+App ID Entered and Equipment & Shipment Confirmation. A lead cannot move
+past it until a MID (merchant ID) is entered — enforced in
+`getStageRequirementError()` and by a MID input in the stage panel.
+`convertToPostBoarding()` now targets this stage instead of Equipment &
+Shipment directly, so the multi-stage-skip fix above still holds. See
+`database/50_account_boarding_mid.sql` (`leads.mid`).
+
+Added: the **Partners section of the left nav is now collapsible**, same
+`.nav-section-toggle`/`.nav-collapsible` pattern already used elsewhere,
+state persisted in `localStorage`.
+
+Extended: the **Contacts tab is now a unified directory**, not just
+manually-added contacts — it merges in every Account, Lead, Agent, and
+(former) EPAY Reseller's contact info alongside native Contacts rows, with
+a type filter (Accounts/Leads/Agents/Contacts — customer-facing/internal)
+and search across name, business, email, phone, and notes. Referral
+Partners are deliberately excluded (they're not a contact-info source in
+the same sense). Clicking a merged row routes to that record's real
+detail view instead of opening a Contacts-native edit form.
+
+Renamed/reclassified: **Partners / Sales Team → Referral Partners**,
+**Sales Team & INT Agents → Agents/ISOs**, and the standalone **EPAY
+Resellers** nav tab was removed. That tab was always just a filtered
+view of the same Agents/ISOs data (`reseller_type === 'authorized_reseller'`
+within `type === 'agent'`) — those records already appear in Agents/ISOs
+with an "Authorized Reseller" badge, so no data migration was needed, only
+removing the redundant nav entry and its now-dead `navAuthResellersItem`
+DOM reference. `renderResellersTable()` and the `view-authresellers`
+section are left in place but unreachable rather than deleted. The
+`reseller_type` field itself is unchanged — it's a legitimate sub-badge
+within Agents/ISOs (Authorized Reseller vs Basic Payments), not the thing
+being renamed.
+
+Added: the **POS station** picker (Initial Outreach / Equipment & Pricing
+Confirm stages) now covers NRS, NCR, and third-party integrations/gateways
+alongside the existing EPAY/Clover options — not just a rename, Clover
+devices now carry real prices too (Station Duo $1,699.99, Mini $899.99,
+Flex $499.99; Station Solo/Compact/Go/Kiosk show "Price TBD" since no
+price was given for those). NRS is a single device for now (NRS Full
+Station, $999.99). NCR has no fixed catalog — just a blank price field,
+since that price is still being worked out. Third-party integration/
+gateway is a free-text name plus an optional price, for the case-by-case
+ones that don't fit a fixed list. See `database/51_pos_station_options.sql`
+(`leads.nrs_device/ncr_price/third_party_name/third_party_price`).
+
+Reopened: **Calendar**, previously locked to admins only
+(`database/47_calendar_admin_only.sql`), is back for Agents, Referral
+Partners, ISOs, and In-House Sales — but strictly per-user this time, not
+the pre-47 shared-team-calendar model. `database/52_calendar_per_user.sql`
+scopes `calendar_events`/`connected_calendars` RLS to `owner_id`/`user_id`
+= you, full stop (Admin keeps oversight access to every row; nobody else
+sees anyone else's, Admin included from their point of view). The
+`google-calendar` edge function's own gate was hard-coded to
+`perms.fullDashboard`, which would have 403'd every Agent/Referral Partner
+regardless of the RLS change — that check is now just "is there a real CRM
+user behind this login," since ownership scoping is what actually protects
+each person's calendar. "Connect my Google Calendar" used to live only in
+the admin-gated Settings page; rather than open all of Settings for one
+control, the Calendar page itself now has its own connect/disconnect
+status in the topbar (`renderCalGoogleConnect()`), available to everyone
+who can see the tab.
+
 **Known gaps inside already-converted collections** (each flagged in code
 where it applies):
 - The "purge demo data" utility is deliberately NOT wired to real deletes —
@@ -214,6 +283,29 @@ directly on infrastructure that already exists rather than starting cold:
   back-and-forth it replaces
 - **Decide the personal link's slug** — email-derived, chosen by the
   user, or generated — before building the routing around it
+
+### Phase 6.6 — Onboarding tour & account-completion nudges
+
+Not started — scoping notes only:
+
+- **A short step-by-step walkthrough on first login**, shown only until
+  the user skips it or finishes it (persisted per-user so it never shows
+  again after that — same shape as `partner_documents`'/admit-packet
+  completion tracking, a stamped row per user rather than a client-only flag)
+- **A completion popup once the mini training ends**: "Check out
+  Resources to get started" — pointing the user at the **Resources**
+  nav section (already exists — `resourcesSectionItems`, currently just a
+  placeholder saying "No resources added yet") so they know marketing
+  materials and training live there. This needs actual resources added to
+  that section before the popup is genuinely useful, not just a pointer at
+  an empty list
+- **A separate "finish your account" nudge** for internal sales,
+  agents, and referral partners whose profile isn't complete — distinct
+  from the onboarding tour (one is "learn the tool," the other is "we're
+  missing your info"), shown to all three portal scopes, not just agents
+- Decide what "complete" means per role before building the nudge —
+  likely different required fields for an internal salesperson vs. an
+  agent vs. a referral partner
 
 ### Phase 7 — Prove it before real data goes in
 22. Multi-user test — two people logged in simultaneously, confirm data actually syncs
@@ -267,8 +359,6 @@ handing someone a login is not the same as handing them a working tool.
 - **The "preview as" banner reads the viewer's own onboarding status**
   rather than the previewed user's. Cosmetic, but misleading in the one
   place built for checking what someone else sees
-- **Two tabs both read "Sales Team"** in the sidebar — Partners / Sales
-  Team and Sales Team & INT Agents. Deliberate or not, worth settling
 - **Sensitive fields on an application are not yet inline-editable.** DOB,
   SSN, licence, tax ID and banking write through encrypting RPCs and have
   the pencil; the equivalent fields on a *lead* still go through the older

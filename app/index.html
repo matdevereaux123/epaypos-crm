@@ -1426,23 +1426,24 @@
           Follow-Ups
         </button>
 
-        <div class="nav-section-label">Partners</div>
-        <button class="nav-item active" data-view="referrals">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          Partners / Sales Team
+        <button class="nav-section-toggle" id="partnersSectionToggle" type="button">
+          <span>Partners</span>
+          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
-        <button class="nav-item" data-view="loaders" id="navLoadersItem" style="display:none;">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
-          Loaders
-        </button>
-        <button class="nav-item" data-view="agents" id="navAgentsItem">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
-          Sales Team &amp; INT Agents
-        </button>
-        <button class="nav-item" data-view="authresellers" id="navAuthResellersItem">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 3 7v6c0 5 3.8 8.4 9 9 5.2-.6 9-4 9-9V7l-9-5z"/><path d="m9 12 2 2 4-4"/></svg>
-          EPAY Resellers
-        </button>
+        <div class="nav-collapsible" id="partnersSectionItems">
+          <button class="nav-item active" data-view="referrals">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            Referral Partners
+          </button>
+          <button class="nav-item" data-view="loaders" id="navLoadersItem" style="display:none;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+            Loaders
+          </button>
+          <button class="nav-item" data-view="agents" id="navAgentsItem">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
+            Agents/ISOs
+          </button>
+        </div>
 
         <button class="nav-section-toggle" id="lendingSectionToggle" type="button">
           <span>Lending</span>
@@ -1614,6 +1615,7 @@
             <p class="subtext">Schedule phone calls, Zoom meetings, and Zoom demos. Connected to Google Calendar per team member.</p>
           </div>
           <div class="topbar-actions">
+            <div id="calGoogleConnect" style="display:flex;align-items:center;gap:8px;"></div>
             <button class="btn btn-accent btn-sm" id="newMeetingBtn">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               New Meeting
@@ -1671,7 +1673,7 @@
         <div class="topbar">
           <div>
             <h1>Team Structure</h1>
-            <p class="subtext">Agents and EPAY Resellers, organized by office. Drag a card into the office it belongs to.</p>
+            <p class="subtext">Agents/ISOs, organized by office. Drag a card into the office it belongs to.</p>
           </div>
           <div class="topbar-actions">
             <div class="view-toggle" id="teamStructureModeToggle">
@@ -1859,7 +1861,7 @@
       <section id="view-referrals" class="view" style="display:none;">
         <div class="topbar">
           <div>
-            <h1>Partners / Sales Team</h1>
+            <h1>Referral Partners</h1>
             <p class="subtext">Every partner gets a unique link — deals submitted through it are auto-tagged to their account.</p>
           </div>
           <div class="topbar-actions">
@@ -1948,7 +1950,7 @@
         <div class="topbar">
           <div>
             <h1>Contacts</h1>
-            <p class="subtext">A general business-contacts directory — manufacturers, internal team, anyone else worth keeping track of. Both brands.</p>
+            <p class="subtext">Every account, lead, agent, and reseller's contact info in one place, plus your own manually-added contacts — manufacturers, internal team, anyone else worth tracking. Both brands.</p>
           </div>
           <button class="btn btn-accent" id="addContactBtn">+ Add Contact</button>
         </div>
@@ -1957,16 +1959,19 @@
           <div class="panel-head">
             <h2 id="contactsCount">All contacts</h2>
             <div style="display:flex;align-items:center;gap:10px;">
-              <select id="contactsCategoryFilter" style="width:auto;min-width:180px;">
-                <option value="all">All categories</option>
-                <option value="customer_facing">Customer-facing</option>
-                <option value="internal_manufacturer">Internal / Manufacturer</option>
+              <select id="contactsTypeFilter" style="width:auto;min-width:200px;">
+                <option value="all">All types</option>
+                <option value="account">Accounts</option>
+                <option value="lead">Leads</option>
+                <option value="agent">Agents</option>
+                <option value="contact:customer_facing">Contacts — Customer-facing</option>
+                <option value="contact:internal_manufacturer">Contacts — Internal/Manufacturer</option>
               </select>
               <input class="search-input" placeholder="Search name, business, notes..." id="contactsSearch">
             </div>
           </div>
           <table>
-            <thead><tr><th>Name</th><th>Business</th><th>Category</th><th>Phone</th><th>Email</th><th></th></tr></thead>
+            <thead><tr><th>Name</th><th>Business</th><th>Type</th><th>Phone</th><th>Email</th><th></th></tr></thead>
             <tbody id="contactsTableBody"></tbody>
           </table>
           <div id="contactsEmptyState" class="empty-state" style="display:none;"></div>
@@ -1976,8 +1981,8 @@
       <section id="view-agents" class="view" style="display:none;">
         <div class="topbar">
           <div>
-            <h1>Sales Team &amp; INT Agents</h1>
-            <p class="subtext">The people selling for us — in-house sales team and INT agents.</p>
+            <h1>Agents/ISOs</h1>
+            <p class="subtext">The people selling for us — in-house sales team, agents, and ISOs.</p>
           </div>
           <button class="btn btn-accent" id="addAgentBtn">+ Add</button>
         </div>
@@ -2545,7 +2550,7 @@
               <button class="btn btn-sm" style="color:var(--red);" onclick="purgeCollection('accounts')">Purge all Accounts</button>
             </div>
             <div class="integration-row" style="padding:0;border:none;">
-              <div class="integration-info"><div class="ii-name">Partners / Sales Team</div><div class="ii-desc">Deletes every partner and agent record, for both brands.</div></div>
+              <div class="integration-info"><div class="ii-name">Referral Partners &amp; Agents/ISOs</div><div class="ii-desc">Deletes every partner and agent record, for both brands.</div></div>
               <button class="btn btn-sm" style="color:var(--red);" onclick="purgeCollection('referrals')">Purge all partner records</button>
             </div>
           </div>
@@ -2820,6 +2825,7 @@ const STAGES = [
   { key:'equipment_pricing_confirm', label:'Equipment & Pricing Confirm', phase:'inbound_boarding' },
   { key:'application', label:'Application', phase:'inbound_boarding' },
   { key:'app_id_entered', label:'App ID Entered', phase:'inbound_boarding' },
+  { key:'account_boarding', label:'Account Boarding', phase:'post_boarding' },
   { key:'equipment_shipment', label:'Equipment Shipment & Confirmation', phase:'post_boarding' },
   { key:'install_training', label:'Install & Training Call', phase:'post_boarding' },
   { key:'one_month_followup', label:'1 Month Follow-Up', phase:'post_boarding' },
@@ -3263,7 +3269,18 @@ const EPAY_EQUIPMENT_LIST = [
   { name:'System Leasing', price:39.99, recurring:true },
   { name:'System Insurance', price:14.99, recurring:true },
 ];
-const CLOVER_DEVICES = ['Clover Station Duo', 'Clover Station Solo', 'Clover Mini', 'Clover Flex', 'Clover Compact', 'Clover Go', 'Clover Kiosk'];
+const CLOVER_DEVICES = [
+  { name:'Clover Station Duo', price:1699.99 },
+  { name:'Clover Station Solo', price:null },
+  { name:'Clover Mini', price:899.99 },
+  { name:'Clover Flex', price:499.99 },
+  { name:'Clover Compact', price:null },
+  { name:'Clover Go', price:null },
+  { name:'Clover Kiosk', price:null },
+];
+const NRS_DEVICES = [
+  { name:'NRS Full Station', price:999.99 },
+];
 // Third-party integration add-ons, all monthly recurring. Chowly is priced
 // by how many delivery apps it's aggregating; AndroBar by location count —
 // AndroBar's exact breakpoint wasn't specified beyond "$30-50 depending on
@@ -3363,8 +3380,9 @@ function emptyAccountFields(){
     lead_source:'',
 
     // Initial Outreach stage
-    system_choice:'epay',            // 'epay' | 'clover'
+    system_choice:'epay',            // 'epay' | 'clover' | 'nrs' | 'ncr' | 'third_party'
     pos_plan:'', processing_pricing:'', clover_device:'',
+    nrs_device:'', ncr_price:null, third_party_name:'', third_party_price:null,
     equipment_selected: [],          // [{ name, qty }] — qty lets a deal include more than one of an item
     equipment_free: false,           // true = comp the equipment cost, deal total shows as covered/$0
     integrations_selected: [],       // [{ key, name, price }] — priced add-ons picked from EPAY_INTEGRATIONS_LIST
@@ -3455,6 +3473,7 @@ async function loadLeadsFromSupabase(){
     business_start_date, business_type_services, highest_sale_amount, average_sale_amount,
     monthly_sales_average, personal_address, documents,
     lead_source, system_choice, pos_plan, processing_pricing, clover_device,
+    nrs_device, ncr_price, third_party_name, third_party_price,
     equipment_selected, equipment_free, integrations_selected, integrations_note, epay_apps_selected,
     followup1_date, followup1_idea, followup1_done, followup2_date, followup2_idea, followup2_done,
     pending_cadence_days, pending_next_reminder,
@@ -3987,7 +4006,7 @@ let calFilter = 'all';
 // Safe placeholder until real login resolves — enterAppAsAuthUser() replaces
 // this with the actual logged-in user's row from Supabase.
 let currentUser = { id:null, name:'', email:'', brands:['epay'], role:'in_house_sales' };
-const ADMIN_ONLY_VIEWS = ['aiscraper', 'coldemail', 'newsletter', 'calendar'];
+const ADMIN_ONLY_VIEWS = ['aiscraper', 'coldemail', 'newsletter'];
 // 'applications' is deliberately NOT in here. Application links can be
 // created for either brand — most of the ones in use are Envision ATM — and
 // the submissions all land in the same table. Hiding the tab on ATM meant an
@@ -4073,7 +4092,6 @@ function setBrand(brand){
   const navColdEmail = document.getElementById('navColdEmailItem');
   const navReportSubs = document.getElementById('navReportSubsItem');
   const navCalendar = document.getElementById('navCalendarItem');
-  const navAuthResellers = document.getElementById('navAuthResellersItem');
   const lendingToggle = document.getElementById('lendingSectionToggle');
   const lendingItems = document.getElementById('lendingSectionItems');
   const isoToggle = document.getElementById('isoSectionToggle');
@@ -4087,7 +4105,6 @@ function setBrand(brand){
   // alongside its siblings.
   navReportSubs.style.display = (brand === 'epay') ? 'flex' : 'none';
   navCalendar.style.display = (brand === 'epay') ? 'flex' : 'none';
-  navAuthResellers.style.display = (brand === 'epay') ? 'flex' : 'none';
   // Agents and Loaders share the slot: 1099 sales agents on EPAY POS, the
   // people who load cash into the machines on Envision ATM.
   const navAgents = document.getElementById('navAgentsItem');
@@ -4232,13 +4249,13 @@ function applyRolePermissions(){
     showView('dashboard');
   }
 
-  // Calendar is admin-only for now (database/47_calendar_admin_only.sql
-  // narrowed connected_calendars/calendar_events RLS from fullDashboard to
-  // manageUsers specifically) — nobody else, not even other fullDashboard
-  // internal staff, has a reason to see it at the moment. Was gated to
-  // "any internal login" before; tightened to admin-only on request.
-  const calendarNav = document.getElementById('navCalendarItem');
-  if(calendarNav) calendarNav.style.display = isAdmin ? 'flex' : 'none';
+  // Calendar was admin-only for a while (database/47_calendar_admin_only.sql),
+  // then reopened to everyone — Agents, Referral Partners, ISOs, and In-House
+  // Sales included — but strictly per-user: database/52_calendar_per_user.sql
+  // scopes calendar_events/connected_calendars RLS to owner_id/user_id = you,
+  // full stop. No role gate needed here any more, so nothing to do — brand
+  // is the only remaining condition, already applied above in setBrand()
+  // right alongside navReportSubs.
 
   // Reports are admin-only, a tighter bar than Calendar: in-house sales keep
   // the calendar but not the subscription and collections reports.
@@ -4251,12 +4268,8 @@ function applyRolePermissions(){
 
   // Same reasoning as the admin-only check above: hiding a nav item is not the
   // same as being unable to reach the view, so bounce anyone already sitting
-  // on one when their role says they shouldn't be. The two lists differ
-  // because the two bars differ.
-  const calendarEl = document.getElementById('view-calendar');
-  if(!isAdmin && calendarEl && calendarEl.style.display !== 'none'){
-    showView('dashboard');
-  }
+  // on a view their role shouldn't reach. Calendar itself no longer needs
+  // this — see the comment above where its nav item is handled.
   // view-residuals is deliberately absent — a partner belongs on it.
   const onReportView = ['view-reportsubs','view-collections']
     .some(id => { const el = document.getElementById(id); return el && el.style.display !== 'none'; });
@@ -6974,17 +6987,23 @@ async function deleteLoader(id){
 }
 
 /* =========================================================================
-   CONTACTS — a general business-contacts directory, not a sales pipeline.
-   Same simple table+drawer shape as Loaders above, filtered by category
-   (customer-facing vs internal/manufacturer) instead of state. Not brand-
-   restricted — shared across both EPAY POS and Envision ATM.
+   CONTACTS — a unified contact directory. Shows manually-added contacts
+   plus every Account, Lead, Agent, and EPAY Reseller's contact info in one
+   filterable, searchable list — those aren't copied into the `contacts`
+   table (that would just be a second, staleness-prone copy of data that
+   already lives somewhere), they're read live from LEADS/PARTNERS each
+   render and merged in. Clicking a real contacts-table row opens the edit
+   drawer; clicking a merged row jumps to that record's actual home (the
+   Contacts tab is for finding someone fast, not for managing Accounts or
+   Partners a second time). Not brand-restricted — shared across both
+   EPAY POS and Envision ATM.
    ========================================================================= */
 const CONTACT_CATEGORIES = {
   customer_facing: 'Customer-facing',
   internal_manufacturer: 'Internal / Manufacturer',
 };
 let CONTACTS = [];
-let contactCategoryFilter = 'all';
+let contactTypeFilter = 'all';
 let contactSearch = '';
 
 async function loadContactsFromSupabase(){
@@ -6993,21 +7012,73 @@ async function loadContactsFromSupabase(){
   return data || [];
 }
 
+function buildUnifiedContactRows(){
+  const rows = CONTACTS.map(c => ({
+    source: 'contact', id: c.id,
+    name: c.name, business_name: c.business_name, phone: c.phone, email: c.email, notes: c.notes,
+    typeKey: 'contact:' + (c.category || 'customer_facing'),
+    typeLabel: CONTACT_CATEGORIES[c.category] || c.category || 'Contact',
+  }));
+
+  LEADS.forEach(l => {
+    const isAccount = !!l.converted_to_account;
+    rows.push({
+      source: isAccount ? 'account' : 'lead', id: l.id,
+      name: (l.contact_name && l.contact_name !== '—') ? l.contact_name : l.business_name,
+      business_name: l.business_name, phone: l.phone, email: l.email, notes: '',
+      typeKey: isAccount ? 'account' : 'lead',
+      typeLabel: isAccount ? 'Account' : 'Lead',
+    });
+  });
+
+  // Only agents/resellers per this list — referral partners and ISOs are
+  // a different relationship (commission, not staff/reseller) and weren't
+  // asked for here.
+  PARTNERS.forEach(p => {
+    if(p.type !== 'agent') return;
+    const isReseller = p.reseller_type === 'authorized_reseller';
+    rows.push({
+      source: isReseller ? 'reseller' : 'agent', id: p.id,
+      name: (p.contact && p.contact !== '—') ? p.contact : p.name,
+      business_name: p.name, phone: p.phone, email: p.email, notes: '',
+      typeKey: isReseller ? 'reseller' : 'agent',
+      typeLabel: isReseller ? 'EPAY Reseller' : 'Agent',
+    });
+  });
+
+  return rows;
+}
+
 function scopedContacts(){
   const q = contactSearch.trim().toLowerCase();
-  return CONTACTS.filter(c => {
-    if(contactCategoryFilter !== 'all' && c.category !== contactCategoryFilter) return false;
+  return buildUnifiedContactRows().filter(r => {
+    if(contactTypeFilter !== 'all' && r.typeKey !== contactTypeFilter) return false;
     if(!q) return true;
-    return [c.name, c.business_name, c.email, c.phone, c.notes]
+    return [r.name, r.business_name, r.email, r.phone, r.notes]
       .some(v => (v || '').toLowerCase().includes(q));
   });
 }
 
+const CONTACT_ROW_PILL_CLASS = {
+  account: 'pill-status-active', lead: 'pill-referral',
+  agent: 'pill-agent-basic', reseller: 'pill-agent-auth',
+};
+
+// Where a merged (non-native-contact) row actually lives — the Contacts tab
+// is a finder, not a second place to manage these records.
+function openUnifiedContactRow(source, id){
+  if(source === 'contact'){ openContactDrawer(id); return; }
+  if(source === 'account'){ showView('accounts'); openLeadDetail(id); return; }
+  if(source === 'lead'){ showView('leads'); openLeadDetail(id); return; }
+  if(source === 'agent' || source === 'reseller'){ showView('referrals'); openReferralDetail(id); return; }
+}
+
 function renderContacts(){
+  const allRows = buildUnifiedContactRows();
   const rows = scopedContacts();
 
   document.getElementById('contactsCount').textContent =
-    rows.length === CONTACTS.length ? `All contacts (${rows.length})` : `${rows.length} of ${CONTACTS.length} contacts`;
+    rows.length === allRows.length ? `All contacts (${rows.length})` : `${rows.length} of ${allRows.length} contacts`;
 
   const body = document.getElementById('contactsTableBody');
   const empty = document.getElementById('contactsEmptyState');
@@ -7015,22 +7086,33 @@ function renderContacts(){
   if(rows.length === 0){
     body.innerHTML = '';
     empty.style.display = 'block';
-    empty.textContent = CONTACTS.length === 0
+    empty.textContent = allRows.length === 0
       ? 'No contacts yet. Add the first one to start building the list.'
-      : 'No contacts match that search.';
+      : 'Nothing matches that search/filter.';
     return;
   }
   empty.style.display = 'none';
 
-  body.innerHTML = rows.map(c => `
-    <tr style="cursor:pointer;" onclick="openContactDrawer('${c.id}')">
-      <td><b>${c.name}</b>${c.notes ? `<div style="font-size:11.5px;color:var(--slate-500);">${c.notes}</div>` : ''}</td>
-      <td>${c.business_name || '—'}</td>
-      <td><span class="pill ${c.category==='customer_facing' ? 'pill-status-active' : 'pill-agent-basic'}">${CONTACT_CATEGORIES[c.category] || c.category}</span></td>
-      <td>${c.phone || '—'}</td>
-      <td>${c.email || '—'}</td>
-      <td style="text-align:right;white-space:nowrap;"><button class="btn btn-sm" onclick="event.stopPropagation(); openContactDrawer('${c.id}')">Edit</button>${recordMenuBtn('contact', c.id, c.name)}</td>
-    </tr>`).join('');
+  const page = paginateRows('contacts', rows);
+  renderPager('contacts', page, renderContacts);
+
+  body.innerHTML = page.rows.map(r => {
+    const pillClass = r.source === 'contact'
+      ? (r.typeKey === 'contact:customer_facing' ? 'pill-status-active' : 'pill-agent-basic')
+      : (CONTACT_ROW_PILL_CLASS[r.source] || 'pill-agent-basic');
+    const actionBtn = r.source === 'contact'
+      ? `<button class="btn btn-sm" onclick="event.stopPropagation(); openContactDrawer('${r.id}')">Edit</button>${recordMenuBtn('contact', r.id, r.name)}`
+      : `<button class="btn btn-sm" onclick="event.stopPropagation(); openUnifiedContactRow('${r.source}','${r.id}')">View</button>`;
+    return `
+    <tr style="cursor:pointer;" onclick="openUnifiedContactRow('${r.source}','${r.id}')">
+      <td><b>${r.name || '—'}</b>${r.notes ? `<div style="font-size:11.5px;color:var(--slate-500);">${r.notes}</div>` : ''}</td>
+      <td>${r.business_name || '—'}</td>
+      <td><span class="pill ${pillClass}">${r.typeLabel}</span></td>
+      <td>${r.phone || '—'}</td>
+      <td>${r.email || '—'}</td>
+      <td style="text-align:right;white-space:nowrap;">${actionBtn}</td>
+    </tr>`;
+  }).join('');
 }
 
 function openContactDrawer(contactId){
@@ -7256,10 +7338,10 @@ document.querySelectorAll('.nav-item[data-view]').forEach(btn=>{
 /* =========================================================================
    COLLAPSIBLE NAV SECTIONS
    Reusable pattern: any button.nav-section-toggle with a matching
-   .nav-collapsible sibling can collapse/expand. Overview, Pipeline, and
-   Partners stay as plain always-open sections (nav-section-label); System
-   is the first collapsible one, and new sections can opt in the same way
-   by swapping their <div class="nav-section-label"> for this pair.
+   .nav-collapsible sibling can collapse/expand. Overview and Pipeline stay
+   as plain always-open sections (nav-section-label); every other section
+   opts in the same way, by swapping its <div class="nav-section-label">
+   for this pair.
    ========================================================================= */
 const LS_NAV_COLLAPSE_KEY = 'epay_crm_nav_collapse_v1';
 function loadCollapsedSections(){
@@ -9248,7 +9330,7 @@ async function quickCreateFuRecord(name){
       if(error) throw error;
       PARTNERS.unshift(data);
       selectFuRecord(data.id, data.name);
-      showToast('Created partner \u201c' + data.name + '\u201d \u2014 add their details from Partners / Sales Team', 'success');
+      showToast('Created partner \u201c' + data.name + '\u201d \u2014 add their details from Referral Partners or Agents/ISOs', 'success');
     } else {
       const fields = {
         business_name: name,
@@ -9423,10 +9505,14 @@ function renderFollowups(){
 }
 
 /* =========================================================================
-   AGENTS / EPAY RESELLERS
-   Both are filtered views of the same PARTNERS records used by Referral
-   Partners — Agents shows type==='agent' (either reseller tier); EPAY
-   Resellers narrows further to reseller_type==='authorized_reseller'.
+   AGENTS/ISOS
+   The Agents/ISOs tab shows every PARTNERS record with type==='agent'
+   (either reseller tier — the reseller_type field still distinguishes
+   Authorized Reseller vs Basic Payments as a badge within this one tab).
+   There used to be a separate "EPAY Resellers" tab filtered down to
+   reseller_type==='authorized_reseller'; it was folded into this tab since
+   those records already showed up here too. renderResellersTable() below
+   is now unreachable from the nav but left in place rather than deleted.
    Search matches name OR city, so you can find everyone in a given area.
    ========================================================================= */
 /* -----------------------------------------------------------------------
@@ -9576,7 +9662,7 @@ function renderResellersTable(filterText){
 document.getElementById('resellersSearch').addEventListener('input', e => renderResellersTable(e.target.value));
 
 /* =========================================================================
-   TEAM STRUCTURE — organizes Agents/EPAY Resellers (not Referral Partners)
+   TEAM STRUCTURE — organizes Agents/ISOs (not Referral Partners)
    into offices via drag-and-drop, plus a read-only hierarchy view built
    from the same parent_partner_id "who recruited whom" relationship the
    Partners tab's downline view already uses — residual/override splits are
@@ -10684,9 +10770,11 @@ function getStageRequirementError(lead, stageKey){
       if(!lead.lead_source) return "Enter the lead source before moving past Inbound Lead.";
       return null;
     case 'initial_outreach':
-      if(!lead.system_choice) return "Select a system (EPAY or Clover) before moving on.";
+      if(!lead.system_choice) return "Select a POS station before moving on.";
       if(lead.system_choice === 'epay' && !lead.pos_plan) return "Select an EPAY POS plan before moving on.";
       if(lead.system_choice === 'clover' && !lead.clover_device) return "Select a Clover device before moving on.";
+      if(lead.system_choice === 'nrs' && !lead.nrs_device) return "Select an NRS device before moving on.";
+      if(lead.system_choice === 'third_party' && !lead.third_party_name) return "Enter the third-party integration/gateway before moving on.";
       if(!lead.processing_pricing) return "Select a processing pricing plan before moving on.";
       return null;
     case 'equipment_pricing_confirm':
@@ -10704,6 +10792,9 @@ function getStageRequirementError(lead, stageKey){
       return null;
     case 'app_id_entered':
       if(!lead.app_id) return "Enter the Application ID before converting to Post Boarding.";
+      return null;
+    case 'account_boarding':
+      if(!lead.mid) return "Enter the MID before moving on from Account Boarding.";
       return null;
     case 'equipment_shipment':
       if(!lead.in_person_install && !lead.tracking_number) return "Enter a tracking number, or mark this as an in-person install, before moving on.";
@@ -11546,13 +11637,22 @@ async function removeAccountDocument(id, docId){
    ========================================================================= */
 function systemPricingFieldsHtml(l){
   return `
-    <div class="field"><label>System</label>
-      <select id="spSystemChoice" onchange="document.getElementById('spPosPlanField').style.display = this.value==='clover' ? 'none':'block'; document.getElementById('spCloverField').style.display = this.value==='clover' ? 'block':'none';">
+    <div class="field"><label>POS station</label>
+      <select id="spSystemChoice" onchange="
+        document.getElementById('spPosPlanField').style.display = this.value==='epay' ? 'block':'none';
+        document.getElementById('spCloverField').style.display = this.value==='clover' ? 'block':'none';
+        document.getElementById('spNrsField').style.display = this.value==='nrs' ? 'block':'none';
+        document.getElementById('spNcrField').style.display = this.value==='ncr' ? 'block':'none';
+        document.getElementById('spThirdPartyField').style.display = this.value==='third_party' ? 'block':'none';
+      ">
         <option value="epay" ${l.system_choice==='epay'?'selected':''}>EPAY System</option>
         <option value="clover" ${l.system_choice==='clover'?'selected':''}>Clover</option>
+        <option value="nrs" ${l.system_choice==='nrs'?'selected':''}>NRS</option>
+        <option value="ncr" ${l.system_choice==='ncr'?'selected':''}>NCR</option>
+        <option value="third_party" ${l.system_choice==='third_party'?'selected':''}>Third-party integration/gateway</option>
       </select>
     </div>
-    <div class="field" id="spPosPlanField" style="${l.system_choice==='clover'?'display:none;':''}">
+    <div class="field" id="spPosPlanField" style="${l.system_choice==='epay'?'':'display:none;'}">
       <label>EPAY POS plan</label>
       <select id="spPosPlan">
         <option value="">Select a plan...</option>
@@ -11563,8 +11663,25 @@ function systemPricingFieldsHtml(l){
       <label>Clover device</label>
       <select id="spCloverDevice">
         <option value="">Select a device...</option>
-        ${CLOVER_DEVICES.map(d=>`<option value="${d}" ${l.clover_device===d?'selected':''}>${d}</option>`).join('')}
+        ${CLOVER_DEVICES.map(d=>`<option value="${d.name}" ${l.clover_device===d.name?'selected':''}>${d.name} — ${d.price!=null ? '$'+d.price.toFixed(2) : 'Price TBD'}</option>`).join('')}
       </select>
+    </div>
+    <div class="field" id="spNrsField" style="${l.system_choice==='nrs'?'':'display:none;'}">
+      <label>NRS device</label>
+      <select id="spNrsDevice">
+        <option value="">Select a device...</option>
+        ${NRS_DEVICES.map(d=>`<option value="${d.name}" ${l.nrs_device===d.name?'selected':''}>${d.name} — ${d.price!=null ? '$'+d.price.toFixed(2) : 'Price TBD'}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field" id="spNcrField" style="${l.system_choice==='ncr'?'':'display:none;'}">
+      <label>NCR price</label>
+      <input id="spNcrPrice" type="number" step="0.01" min="0" value="${l.ncr_price!=null ? l.ncr_price : ''}" placeholder="Price to be determined">
+    </div>
+    <div class="field" id="spThirdPartyField" style="${l.system_choice==='third_party'?'':'display:none;'}">
+      <label>Third-party integration / gateway</label>
+      <input id="spThirdPartyName" value="${l.third_party_name||''}" placeholder="Which integration or gateway">
+      <label style="margin-top:8px;">Price (if any)</label>
+      <input id="spThirdPartyPrice" type="number" step="0.01" min="0" value="${l.third_party_price!=null ? l.third_party_price : ''}" placeholder="Leave blank if not applicable">
     </div>
     <div class="field"><label>Processing pricing</label>
       <select id="spProcessingPricing">
@@ -11691,6 +11808,12 @@ function readSystemPricingFields(l){
   l.system_choice = document.getElementById('spSystemChoice').value;
   l.pos_plan = l.system_choice === 'epay' ? document.getElementById('spPosPlan').value : '';
   l.clover_device = l.system_choice === 'clover' ? document.getElementById('spCloverDevice').value : '';
+  l.nrs_device = l.system_choice === 'nrs' ? document.getElementById('spNrsDevice').value : '';
+  const ncrPriceVal = document.getElementById('spNcrPrice').value;
+  l.ncr_price = l.system_choice === 'ncr' && ncrPriceVal !== '' ? parseFloat(ncrPriceVal) : null;
+  l.third_party_name = l.system_choice === 'third_party' ? document.getElementById('spThirdPartyName').value.trim() : '';
+  const thirdPartyPriceVal = document.getElementById('spThirdPartyPrice').value;
+  l.third_party_price = l.system_choice === 'third_party' && thirdPartyPriceVal !== '' ? parseFloat(thirdPartyPriceVal) : null;
   l.processing_pricing = document.getElementById('spProcessingPricing').value;
   l.equipment_selected = Array.from(document.querySelectorAll('.sp-equipment-qty'))
     .map(input => ({ name: input.dataset.name, qty: parseInt(input.value, 10) || 0 }))
@@ -11912,6 +12035,13 @@ function stagePanelHtml(l){
         <button class="btn" style="width:100%;margin-bottom:8px;" onclick="saveAppId('${l.id}')">Save App ID</button>
         <button class="btn btn-accent" style="width:100%;" onclick="convertToPostBoarding('${l.id}')">Convert to Post Boarding →</button>
       </div>`;
+    case 'account_boarding': return `
+      <div class="stage-panel">
+        <h3>Account Boarding</h3>
+        <p class="stage-panel-desc">Enter the MID once it's issued before moving this account on to shipment.</p>
+        <div class="field"><label>MID</label><input id="spMid" value="${l.mid||''}" placeholder="e.g. 123456789012"></div>
+        <button class="btn btn-accent" style="width:100%;" onclick="saveMid('${l.id}')">Save MID</button>
+      </div>`;
     case 'equipment_shipment': return `
       <div class="stage-panel">
         <h3>Equipment Shipment &amp; Confirmation</h3>
@@ -12021,6 +12151,15 @@ async function saveLeadAssignment(id, userId){
   if(document.getElementById('view-accounts').style.display !== 'none') renderAccountsTable();
 }
 
+async function saveColdLeadAssignment(id, userId){
+  const c = COLD_LEADS.find(x=>x.id===id); if(!c) return;
+  const assigned_to = userId || null;
+  const { error } = await supa.from('cold_leads').update({ assigned_to }).eq('id', id);
+  if(error){ alert('Could not save: ' + error.message); return; }
+  c.assigned_to = assigned_to;
+  renderColdLeadsTable();
+}
+
 async function saveInboundLeadFields(id){
   const l = LEADS.find(x=>x.id===id); if(!l) return;
   let lead_source = document.getElementById('spLeadSource').value.trim();
@@ -12044,6 +12183,8 @@ async function saveOutreachFields(id){
   readSystemPricingFields(l);
   const { error } = await supa.from('leads').update({
     system_choice: l.system_choice, pos_plan: l.pos_plan, clover_device: l.clover_device,
+    nrs_device: l.nrs_device, ncr_price: l.ncr_price,
+    third_party_name: l.third_party_name, third_party_price: l.third_party_price,
     processing_pricing: l.processing_pricing, equipment_selected: l.equipment_selected,
     equipment_free: l.equipment_free, integrations_selected: l.integrations_selected,
     integrations_note: l.integrations_note, epay_apps_selected: l.epay_apps_selected,
@@ -12066,7 +12207,8 @@ function generateFollowupIdea(id, n){
   const l = LEADS.find(x=>x.id===id); if(!l) return;
   const notes = LEAD_NOTES.filter(nt=>nt.lead_id===id).concat(LEAD_CALL_NOTES.filter(nt=>nt.lead_id===id))
     .sort((a,b)=> new Date(b.created_at)-new Date(a.created_at));
-  const planLabel = l.pos_plan ? (POS_SYSTEM_PLANS.find(p=>p.key===l.pos_plan)||{}).label : (l.clover_device || '');
+  const planLabel = l.pos_plan ? (POS_SYSTEM_PLANS.find(p=>p.key===l.pos_plan)||{}).label
+    : (l.clover_device || l.nrs_device || l.third_party_name || (l.system_choice==='ncr' ? 'NCR' : ''));
   let idea;
   if(notes.length){
     const snippet = notes[0].text.length > 70 ? notes[0].text.slice(0,70)+'...' : notes[0].text;
@@ -12094,6 +12236,8 @@ async function saveEquipmentConfirm(id){
   const equipment_pricing_confirmed_at = equipment_pricing_confirmed ? new Date().toISOString().slice(0,10) : null;
   const { error } = await supa.from('leads').update({
     system_choice: l.system_choice, pos_plan: l.pos_plan, clover_device: l.clover_device,
+    nrs_device: l.nrs_device, ncr_price: l.ncr_price,
+    third_party_name: l.third_party_name, third_party_price: l.third_party_price,
     processing_pricing: l.processing_pricing, equipment_selected: l.equipment_selected,
     equipment_free: l.equipment_free, integrations_selected: l.integrations_selected,
     integrations_note: l.integrations_note, epay_apps_selected: l.epay_apps_selected,
@@ -12123,7 +12267,15 @@ async function saveAppId(id){
   openLeadDetail(id);
 }
 async function convertToPostBoarding(id){
-  if(await moveLeadToStage(id, 'equipment_shipment')) openLeadDetail(id);
+  if(await moveLeadToStage(id, 'account_boarding')) openLeadDetail(id);
+}
+async function saveMid(id){
+  const l = LEADS.find(x=>x.id===id); if(!l) return;
+  const mid = document.getElementById('spMid').value.trim();
+  const { error } = await supa.from('leads').update({ mid }).eq('id', id);
+  if(error){ alert('Could not save: ' + error.message); return; }
+  l.mid = mid;
+  openLeadDetail(id);
 }
 
 async function saveEquipmentShipment(id){
@@ -13697,6 +13849,9 @@ function openColdLeadDetail(id){
   resetRowEdits();
   const temp = temperatureInfo(c.temperature);
   const fu = coldLeadFollowupStatus(c);
+  const assignable = assignableUsers();
+  const internalAssignees = assignable.filter(u => roleOf(u).portal_scope === 'internal').slice().sort((a,b)=> a.name.localeCompare(b.name));
+  const portalAssignees = assignable.filter(u => roleOf(u).portal_scope === 'own').slice().sort((a,b)=> a.name.localeCompare(b.name));
   const detailHtml = `
     <div class="drawer-head">
       <div>
@@ -13723,6 +13878,14 @@ function openColdLeadDetail(id){
         ${editableRow('Source detail', c.source, { table:'cold_leads', id:c.id, column:'source', record:c })}
         <div class="detail-row"><span class="k">Added</span><span class="v">${formatDate(c.created_at)}</span></div>
         ${createdByLabel(c) ? `<div class="detail-row"><span class="k">Added by</span><span class="v">${createdByLabel(c)}</span></div>` : ''}
+        <div class="field" style="margin-top:12px;">
+          <label>Assigned to</label>
+          <select id="coldLeadAssignedTo" onchange="saveColdLeadAssignment('${c.id}', this.value)">
+            <option value="">Unassigned</option>
+            ${internalAssignees.length ? `<optgroup label="Employees">${internalAssignees.map(u => assigneeOptionHtml(u, c.assigned_to)).join('')}</optgroup>` : ''}
+            ${portalAssignees.length ? `<optgroup label="Agents &amp; partners">${portalAssignees.map(u => assigneeOptionHtml(u, c.assigned_to)).join('')}</optgroup>` : ''}
+          </select>
+        </div>
 
         ${(c.linkedin_url || c.facebook_url || c.instagram_url) ? `
         <div style="margin-top:14px;">
@@ -14144,7 +14307,7 @@ const UPLOAD_TARGETS = {
     sfExample: ['Example Bakery','(313) 555-0100','examplebakery.com','123 Main St','Detroit','MI','48201','Food & Beverage'],
   },
   partners: {
-    label: 'Partners / Sales Team',
+    label: 'Referral Partners & Agents/ISOs',
     ourColumns: ['Business / Partner Name','Contact Name','Phone','Email','City','State','Type (referral_partner/agent)'],
     ourExample: ['Example Consulting','Jamie Rivera','(313) 555-0100','jamie@exampleconsulting.com','Detroit','MI','referral_partner'],
     sfColumns: ['Account Name','Contact Name','Phone','Email','Billing City','Billing State'],
@@ -15274,6 +15437,7 @@ window.addEventListener('message', async function(e){
 
   CONNECTED_CALENDARS = await loadConnectedCalendarsFromSupabase();
   if(document.getElementById('connectedCalendarsList')) renderConnectedCalendarsList();
+  renderCalGoogleConnect();
   showToast('Google Calendar connected' + (out.email ? ' as ' + out.email : '') + '.', 'success');
 });
 
@@ -15283,7 +15447,24 @@ async function disconnectMyGoogleCalendar(){
   if(out.error){ showToast(out.error, 'error'); return; }
   CONNECTED_CALENDARS = await loadConnectedCalendarsFromSupabase();
   renderConnectedCalendarsList();
+  renderCalGoogleConnect();
   showToast('Google Calendar disconnected.', 'success');
+}
+
+// Everyone with a login now reaches the Calendar tab (database/52_calendar_
+// per_user.sql), but "Connect my Google Calendar" used to live only in the
+// Settings page's Connected Calendars panel, which stays manageSettings-gated
+// (admin-only) for everything else in it — encryption tools, purge, user
+// management. Rather than open all of Settings just for this one control,
+// this renders the same connect/disconnect state directly on the Calendar
+// page itself, for whoever is looking at it.
+function renderCalGoogleConnect(){
+  const el = document.getElementById('calGoogleConnect');
+  if(!el) return;
+  const mine = myConnectedCalendar();
+  el.innerHTML = (mine && mine.google_email && mine.connected)
+    ? `<span style="font-size:12px;color:var(--slate-500);">Google: ${mine.google_email}</span><button class="btn btn-sm" onclick="disconnectMyGoogleCalendar()">Disconnect</button>`
+    : `<button class="btn btn-sm" onclick="connectMyGoogleCalendar()">Connect Google Calendar</button>`;
 }
 
 function renderConnectedCalendarsList(){
@@ -15541,6 +15722,7 @@ window.addEventListener('resize', function(){
 
 function renderCalendar(){
   renderCalendarFilter();
+  renderCalGoogleConnect();
   const year = calViewDate.getFullYear();
   const month = calViewDate.getMonth();
   document.getElementById('calMonthLabel').textContent = calViewDate.toLocaleDateString('en-US', { month:'long', year:'numeric' });
@@ -15625,8 +15807,8 @@ document.getElementById('loadersSearch').addEventListener('input', function(){
 });
 
 document.getElementById('addContactBtn').addEventListener('click', function(){ openContactDrawer(null); });
-document.getElementById('contactsCategoryFilter').addEventListener('change', function(){
-  contactCategoryFilter = this.value; renderContacts();
+document.getElementById('contactsTypeFilter').addEventListener('change', function(){
+  contactTypeFilter = this.value; renderContacts();
 });
 document.getElementById('contactsSearch').addEventListener('input', function(){
   contactSearch = this.value; renderContacts();
