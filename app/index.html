@@ -12958,10 +12958,34 @@ async function sendPartnerInviteEmail(userId){
 
   const btn = document.querySelector('#emailPreviewDrawer .btn-accent');
   if(btn){ btn.disabled = true; btn.textContent = 'Sending...'; }
-  const { data, error } = await supa.functions.invoke('invite-user', { body: { userId } });
+
+  // Raw fetch rather than supa.functions.invoke() on purpose — invoke()
+  // reports every non-2xx as "Edge Function returned a non-2xx status code"
+  // and the response body (the actual reason: bad SMTP config, not
+  // authorized, whatever) is unrecoverable by the time it surfaces. Same
+  // fix already applied to sendOutboundEmail() for the same reason.
+  let res, raw = '', parsed = null;
+  try {
+    const { data: { session } } = await supa.auth.getSession();
+    res = await fetch(SUPABASE_URL + '/functions/v1/invite-user', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + (session ? session.access_token : SUPABASE_ANON_KEY)
+      },
+      body: JSON.stringify({ userId })
+    });
+    raw = await res.text();
+    try { parsed = JSON.parse(raw); } catch(e){ /* not JSON, keep raw */ }
+  } catch(e){
+    if(btn){ btn.disabled = false; btn.textContent = 'Send invite'; }
+    alert('Could not send invite: could not reach the invite service. ' + (e.message || ''));
+    return;
+  }
   if(btn){ btn.disabled = false; btn.textContent = 'Send invite'; }
-  if(error || data?.error){
-    alert('Could not send invite: ' + (data?.error || error.message));
+  if(!res.ok){
+    alert('Could not send invite: ' + ((parsed && parsed.error) || raw || ('HTTP ' + res.status)));
     return;
   }
   u.invite_sent = true;
