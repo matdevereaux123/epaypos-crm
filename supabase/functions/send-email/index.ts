@@ -43,6 +43,10 @@ const ALLOWED_KINDS = [
   'welcome',
   'tracking',
   'general',
+  // Sharing your own booking link (database/53_booking_links.sql) is safe
+  // for anyone who can create one — it's just a URL, no lead or account
+  // data — so this one kind is exempt from the fullDashboard check below.
+  'booking_link_share',
 ] as const;
 
 Deno.serve(async (req) => {
@@ -85,8 +89,12 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'Not authenticated' }, 401);
   }
 
-  // Anyone who can work leads may send; portal logins may not. Checked here
-  // rather than trusting the UI to have hidden the button.
+  // Anyone who can work leads may send; portal logins may not — except
+  // booking_link_share, which any logged-in user may send regardless of
+  // role, since Agents/Referral Partners/ISOs all have their own booking
+  // links to share (database/53_booking_links.sql) and a link by itself
+  // carries no lead or account data. Checked here rather than trusting the
+  // UI to have hidden the button.
   const { data: callerRow } = await callerClient
     .from('users')
     .select('id, email, name, role, roles!inner(perms)')
@@ -94,8 +102,11 @@ Deno.serve(async (req) => {
     .single();
 
   const perms = (callerRow as { roles?: { perms?: Record<string, unknown> } })?.roles?.perms ?? {};
-  if (perms.fullDashboard !== true) {
+  if (perms.fullDashboard !== true && kind !== 'booking_link_share') {
     return jsonResponse({ error: 'Not authorized to send email' }, 403);
+  }
+  if (!callerRow) {
+    return jsonResponse({ error: 'No CRM user record for this login' }, 403);
   }
 
   // ---- config --------------------------------------------------------------

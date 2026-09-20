@@ -199,7 +199,6 @@ function fromGoogleEvent(ev: Record<string, any>, calendarId: string, ownerId: s
 
 const TYPE_LABELS: Record<string, string> = {
   phone: 'Phone Call',
-  email: 'Email',
   zoom_meeting: 'Zoom Meeting',
   zoom_demo: 'Zoom Demo',
   in_person: 'In-Person Install/Training',
@@ -278,7 +277,7 @@ async function pushEventToGoogle(
 // service-to-service exception to that function's auth is more risk than
 // duplicating one small template is worth.
 // ---------------------------------------------------------------------------
-function buildBrandedEmailHtml(heading: string, bodyText: string): string {
+function buildBrandedEmailHtml(heading: string, bodyText: string, extraHtml?: string): string {
   const esc = (v: string) =>
     v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   return `<!DOCTYPE html>
@@ -293,7 +292,8 @@ function buildBrandedEmailHtml(heading: string, bodyText: string): string {
         <tr><td style="padding:30px 26px;">
           <h1 style="margin:0 0 14px; font-size:19px; color:#142850;">${esc(heading)}</h1>
           <p style="margin:0 0 16px; font-size:14px; line-height:1.6; color:#22406F;">${esc(bodyText).replace(/\n/g, '<br>')}</p>
-          <p style="margin:0; font-size:14px; line-height:1.6; color:#22406F;">&mdash; The EPAY POS Team</p>
+          ${extraHtml || ''}
+          <p style="margin:16px 0 0; font-size:14px; line-height:1.6; color:#22406F;">&mdash; The EPAY POS Team</p>
         </td></tr>
         <tr><td align="center" style="background-color:#F4F7FB; padding:16px 24px; font-size:11px; color:#5B6B8C;">
           EPAY POS &middot; 185 E Big Beaver Rd, Troy, MI 48083 &middot; epaypos.net
@@ -304,12 +304,69 @@ function buildBrandedEmailHtml(heading: string, bodyText: string): string {
 </body></html>`;
 }
 
+// "Add to Calendar" — same floating-local-time simplification app/index.html's
+// own bookingCalendarLinks() makes (no per-user timezone field exists), just
+// duplicated here since this is a separate Deno runtime with no shared import
+// between the two. Google/Outlook as buttons in the email body; the ICS goes
+// on as a real attachment below, for Apple Calendar and everything else.
+function calendarAddLinksHtml(title: string, dateStr: string, timeStr: string, durationMinutes: number): string {
+  const [y, mo, d] = dateStr.split('-').map(Number);
+  const [h, mi] = timeStr.split(':').map(Number);
+  const start = new Date(y, mo - 1, d, h, mi);
+  const end = new Date(start.getTime() + durationMinutes * 60000);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const fmtLocal = (dt: Date) => `${dt.getFullYear()}${pad(dt.getMonth() + 1)}${pad(dt.getDate())}T${pad(dt.getHours())}${pad(dt.getMinutes())}00`;
+  const fmtIso = (dt: Date) => `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}:00`;
+
+  const google = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${fmtLocal(start)}/${fmtLocal(end)}`;
+  const outlook = `https://outlook.live.com/calendar/0/deeplink/compose?path=/calendar/action/compose&rru=addevent&subject=${encodeURIComponent(title)}&startdt=${encodeURIComponent(fmtIso(start))}&enddt=${encodeURIComponent(fmtIso(end))}`;
+
+  return `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:4px 0 2px;">
+    <tr>
+      <td style="padding-right:8px;padding-bottom:8px;"><a href="${google}" target="_blank" style="display:inline-block;padding:9px 16px;border-radius:7px;background:#0558D6;color:#ffffff;text-decoration:none;font-size:12.5px;font-weight:bold;">Add to Google Calendar</a></td>
+      <td style="padding-bottom:8px;"><a href="${outlook}" target="_blank" style="display:inline-block;padding:9px 16px;border-radius:7px;border:1px solid #0558D6;color:#0558D6;text-decoration:none;font-size:12.5px;font-weight:bold;">Add to Outlook</a></td>
+    </tr>
+  </table>
+  <p style="margin:0 0 4px;font-size:11.5px;color:#5B6B8C;">Using Apple Calendar or something else? The attached .ics file works with any calendar app.</p>`;
+}
+
+function buildIcs(title: string, dateStr: string, timeStr: string, durationMinutes: number, description: string): string {
+  const [y, mo, d] = dateStr.split('-').map(Number);
+  const [h, mi] = timeStr.split(':').map(Number);
+  const start = new Date(y, mo - 1, d, h, mi);
+  const end = new Date(start.getTime() + durationMinutes * 60000);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const fmtLocal = (dt: Date) => `${dt.getFullYear()}${pad(dt.getMonth() + 1)}${pad(dt.getDate())}T${pad(dt.getHours())}${pad(dt.getMinutes())}00`;
+  const escText = (s: string) => s.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
+  return [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//EPAY POS//Booking//EN', 'CALSCALE:GREGORIAN',
+    'BEGIN:VEVENT',
+    `UID:${crypto.randomUUID()}@epaypos.net`,
+    `DTSTAMP:${fmtLocal(new Date())}Z`,
+    `DTSTART:${fmtLocal(start)}`,
+    `DTEND:${fmtLocal(end)}`,
+    `SUMMARY:${escText(title)}`,
+    `DESCRIPTION:${escText(description)}`,
+    'END:VEVENT', 'END:VCALENDAR',
+  ].join('\r\n');
+}
+
+// Plain btoa() throws on anything outside Latin1 — a real risk here since
+// ICS content embeds a business/contact name the visitor typed themselves.
+function toBase64Utf8(str: string): string {
+  const bytes = new TextEncoder().encode(str);
+  let binary = '';
+  bytes.forEach(b => { binary += String.fromCharCode(b); });
+  return btoa(binary);
+}
+
 async function sendBookingEmail(
   admin: ReturnType<typeof createClient>,
   to: string,
   subject: string,
   heading: string,
   bodyText: string,
+  extra?: { html?: string; icsContent?: string },
 ) {
   const apiKey = Deno.env.get('RESEND_API_KEY');
   const from = Deno.env.get('EMAIL_FROM');
@@ -321,7 +378,13 @@ async function sendBookingEmail(
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from, to: [to], subject, html: buildBrandedEmailHtml(heading, bodyText) }),
+      body: JSON.stringify({
+        from, to: [to], subject,
+        html: buildBrandedEmailHtml(heading, bodyText, extra?.html),
+        ...(extra?.icsContent
+          ? { attachments: [{ filename: 'meeting.ics', content: toBase64Utf8(extra.icsContent) }] }
+          : {}),
+      }),
     });
     const out = await res.json().catch(() => ({}));
     if (!res.ok) sendErr = out?.message || `Resend returned ${res.status}`;
@@ -350,17 +413,24 @@ async function sendBookingConfirmationEmails(admin: ReturnType<typeof createClie
 
   const when = `${ev.date} at ${ev.time}`;
   const meetingLabel = TYPE_LABELS[ev.type as string] || 'meeting';
+  const addToCalHtml = calendarAddLinksHtml(ev.title as string, ev.date as string, ev.time as string, Number(ev.duration) || 30);
+  const ics = buildIcs(
+    ev.title as string, ev.date as string, ev.time as string, Number(ev.duration) || 30,
+    `${meetingLabel} scheduled via EPAY POS.`,
+  );
 
   if (coldLead?.email) {
     await sendBookingEmail(
       admin, coldLead.email as string, `Confirmed: ${ev.title}`, "You're booked",
       `Your ${meetingLabel.toLowerCase()} with ${owner?.name ?? 'our team'} is confirmed for ${when}.`,
+      { html: addToCalHtml, icsContent: ics },
     );
   }
   if (owner?.email) {
     await sendBookingEmail(
       admin, owner.email as string, `New booking: ${ev.title}`, 'New booking',
       `${ev.title} is on your calendar for ${when} (${meetingLabel}).`,
+      { icsContent: ics },
     );
   }
 }

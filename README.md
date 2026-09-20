@@ -259,7 +259,7 @@ where it applies):
 Any logged-in user (Admin, In-House Sales, Agent, Referral Partner, ISO)
 can create one or more personal, EPAY-branded booking links from
 Calendar → Booking Links. A visitor opens `go.epaypos.net/book/<slug>`
-with no login, picks an open slot for a Phone Call or an Email meeting,
+with no login, picks an open slot for a Phone Call or a Zoom meeting,
 and books directly onto that person's calendar — real availability, not
 a fake one, computed from a weekly-hours schedule (seeded Mon–Fri 9–5,
 editable) minus that person's actual busy `calendar_events` (including
@@ -268,6 +268,28 @@ anything synced in from their real Google Calendar). See
 `public_*` SECURITY DEFINER functions (`public_lookup_booking_link`,
 `public_get_booking_context`, `public_book_slot`) that back the public
 page — same anon-access pattern as `12_public_referral.sql`.
+
+A booking link can carry its own Zoom link (`booking_links.zoom_link`,
+`database/54_booking_zoom_not_email.sql`), stamped onto every meeting it
+books. Meeting type was originally Phone Call/Email; changed to Phone
+Call/Zoom on request — Zoom reuses the Calendar's existing
+`zoom_meeting` type rather than a separate one, so a booked Zoom meeting
+renders identically to a hand-entered one. 54 also migrates any link or
+meeting already sitting on the old `'email'` value.
+
+Once booked, the visitor gets "Add to Google Calendar"/"Add to Outlook"
+buttons and a downloadable `.ics` file — both on the confirmation page
+and attached to/linked from their confirmation email — so it lands on
+whatever calendar app they actually use, not just the owner's. An
+internal user can also email or text their own booking link straight
+from the Booking Links drawer (`emailBookingLink()`/`textBookingLink()`
+in `app/index.html`) — email reuses `sendOutboundEmail()`/`send-email`
+with a new `booking_link_share` kind that's exempt from the usual
+`fullDashboard` gate (a link by itself carries no lead/account data, and
+Agents/Referral Partners/ISOs all have their own links to share now);
+texting hands off to the phone's own Messages app via an `sms:` link
+rather than sending through a paid SMS provider, since none is
+configured for this project.
 
 A booking auto-creates a Cold Lead (`source = 'Booking link — <name>'`,
 `assigned_to` the link's owner so it actually shows up in their own
@@ -281,13 +303,10 @@ caller at all, authorized instead by the meeting carrying a
 connected on the owner's end just means the booking stays CRM-only,
 not a failure.
 
-Meeting type is exactly two options — Phone Call and Email — added as a
-third/fourth `MEETING_TYPES` entry, so a booked meeting renders
-identically to a hand-entered one everywhere the Calendar already shows
-one. Availability is one shared weekly schedule per user, reused by
-every link they create, not a separate schedule per link — a user who
-wants a link only offered certain hours simply toggles it inactive when
-not offered, rather than trying to give it its own hours.
+Availability is one shared weekly schedule per user, reused by every
+link they create, not a separate schedule per link — a user who wants a
+link only offered certain hours simply toggles it inactive when not
+offered, rather than trying to give it its own hours.
 
 **Not built, deliberately**: payment/deposit collection, per-link
 custom availability, and per-user timezones (this reuses the single

@@ -1164,6 +1164,12 @@
     font-size:13px;font-weight:600;color:var(--navy-700);cursor:pointer;
   }
   .booking-slot-btn:hover{border-color:var(--brand-accent-2);background:var(--card);}
+  .booking-addcal-row{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:18px;}
+  .booking-addcal-btn{
+    padding:9px 14px;border-radius:8px;border:1px solid var(--line);background:var(--surface-3);
+    font-size:12.5px;font-weight:600;color:var(--navy-700);text-decoration:none;cursor:pointer;
+  }
+  .booking-addcal-btn:hover{border-color:var(--brand-accent-2);background:var(--card);}
 
   ::-webkit-scrollbar{width:9px;}
   ::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:20px;}
@@ -3937,7 +3943,6 @@ async function saveIntegrationToSupabase(key){
    ========================================================================= */
 const MEETING_TYPES = {
   phone: { label:'Phone Call', color:'var(--info-text)' },
-  email: { label:'Email', color:'#0891B2' },
   zoom_meeting: { label:'Zoom Meeting', color:'var(--ok-text)' },
   zoom_demo: { label:'Zoom Demo', color:'var(--warn-text)' },
   in_person: { label:'In-Person Install/Training', color:'#7C3AED' },
@@ -6048,6 +6053,38 @@ function formatSlotTime(hhmm){
   return new Date(2000, 0, 1, h, m).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
 }
 
+// "Add to Calendar" links for the visitor once a booking is confirmed —
+// floating local time (no UTC/zone math), same simplifying assumption the
+// rest of this app already makes (a single CALENDAR_TIMEZONE, no per-user
+// timezone field) — reasonable for a local business whose clients are
+// mostly in the same timezone as the office.
+function bookingCalendarLinks(title, dateStr, timeStr, durationMinutes, description){
+  const [y, mo, d] = dateStr.split('-').map(Number);
+  const [h, mi] = timeStr.split(':').map(Number);
+  const start = new Date(y, mo - 1, d, h, mi);
+  const end = new Date(start.getTime() + durationMinutes * 60000);
+  const pad = n => String(n).padStart(2, '0');
+  const fmtLocal = dt => `${dt.getFullYear()}${pad(dt.getMonth() + 1)}${pad(dt.getDate())}T${pad(dt.getHours())}${pad(dt.getMinutes())}00`;
+  const fmtIso = dt => `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}:00`;
+
+  const google = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${fmtLocal(start)}/${fmtLocal(end)}&details=${encodeURIComponent(description)}`;
+  const outlook = `https://outlook.live.com/calendar/0/deeplink/compose?path=/calendar/action/compose&rru=addevent&subject=${encodeURIComponent(title)}&startdt=${encodeURIComponent(fmtIso(start))}&enddt=${encodeURIComponent(fmtIso(end))}&body=${encodeURIComponent(description)}`;
+
+  const ics = [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//EPAY POS//Booking//EN', 'CALSCALE:GREGORIAN',
+    'BEGIN:VEVENT',
+    'UID:' + (crypto.randomUUID ? crypto.randomUUID() : (Date.now() + '')) + '@epaypos.net',
+    'DTSTAMP:' + fmtLocal(new Date()) + 'Z',
+    'DTSTART:' + fmtLocal(start),
+    'DTEND:' + fmtLocal(end),
+    'SUMMARY:' + title.replace(/\n/g, ' '),
+    'DESCRIPTION:' + description.replace(/\n/g, '\\n'),
+    'END:VEVENT', 'END:VCALENDAR',
+  ].join('\r\n');
+
+  return { google, outlook, icsUrl: 'data:text/calendar;charset=utf8,' + encodeURIComponent(ics) };
+}
+
 function selectBookingDate(dateStr){
   BOOKING.selectedDate = dateStr;
   BOOKING.selectedTime = null;
@@ -6070,7 +6107,7 @@ function renderBookingPicker(){
   document.getElementById('landingContent').innerHTML = `
     <h1 class="landing-h1">${b.link.name}</h1>
     <p class="landing-sub">
-      With ${b.link.owner_name} &middot; ${b.durationMinutes} min &middot; ${b.link.meeting_type === 'phone' ? 'Phone Call' : 'Email'}
+      With ${b.link.owner_name} &middot; ${b.durationMinutes} min &middot; ${(MEETING_TYPES[b.link.meeting_type] || {}).label || 'Meeting'}
       ${b.link.description ? '<br>' + b.link.description : ''}
     </p>
 
@@ -6165,11 +6202,22 @@ async function submitBookingRequest(){
     body: JSON.stringify({ action: 'public_push_event', eventId: row.event_id }),
   }).catch(() => {});
 
+  const calLinks = bookingCalendarLinks(
+    `${b.link.name} with ${b.link.owner_name}`,
+    b.selectedDate, b.selectedTime, b.durationMinutes,
+    `${(MEETING_TYPES[b.link.meeting_type] || {}).label || 'Meeting'} scheduled via EPAY POS.`,
+  );
+
   document.getElementById('landingContent').innerHTML = `
     <div class="landing-success">
       <div class="check-circle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
       <h1 class="landing-h1">You're all set</h1>
       <p class="landing-sub">Thanks, ${name.split(' ')[0]} — your ${b.link.meeting_type === 'phone' ? 'call' : 'meeting'} with ${b.link.owner_name} is confirmed for ${formatDate(b.selectedDate)} at ${formatSlotTime(b.selectedTime)}. A confirmation has been sent to ${email}.</p>
+      <div class="booking-addcal-row">
+        <a class="booking-addcal-btn" href="${calLinks.google}" target="_blank" rel="noopener">Add to Google Calendar</a>
+        <a class="booking-addcal-btn" href="${calLinks.outlook}" target="_blank" rel="noopener">Add to Outlook</a>
+        <a class="booking-addcal-btn" href="${calLinks.icsUrl}" download="meeting.ics">Apple &amp; other calendars (.ics)</a>
+      </div>
     </div>`;
 }
 
@@ -15766,6 +15814,41 @@ function copyBookingLink(slug){
   showToast('Booking link copied.', 'success');
 }
 
+// Reuses sendOutboundEmail() (the same function every other "email this"
+// button in the app already calls) with a new kind — 'booking_link_share' —
+// that send-email/index.ts exempts from the fullDashboard check, since any
+// logged-in user may now have a booking link of their own to share.
+async function emailBookingLink(slug, name){
+  const to = (prompt('Send this booking link to which email address?') || '').trim();
+  if(!to) return;
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)){
+    showToast('That does not look like a valid email address.', 'error');
+    return;
+  }
+  const url = bookingShareUrl(slug);
+  await sendOutboundEmail({
+    kind: 'booking_link_share',
+    to,
+    subject: `Book a time — ${name}`,
+    heading: 'Pick a time that works for you',
+    body: `Use the link below to book "${name}" directly on our calendar:\n\n${url}`,
+    buttonLabel: 'Choose a time',
+    buttonUrl: url,
+  });
+}
+
+// Hands off to the phone's own Messages app rather than sending an SMS from
+// a server — this project has no SMS provider configured, and a text
+// arriving from the sender's own number reads better to the recipient
+// anyway. Best-effort: the sms: URI scheme's exact query syntax is not
+// perfectly consistent across iOS/Android/desktop.
+function textBookingLink(slug, name){
+  const phone = (prompt('Text this booking link to which phone number? (Leave blank to fill it in yourself.)') || '').trim();
+  const digits = phone.replace(/[^\d+]/g, '');
+  const body = `Book a time with us: ${bookingShareUrl(slug)}`;
+  window.location.href = `sms:${digits}?body=${encodeURIComponent(body)}`;
+}
+
 const WEEKDAY_LABELS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
 // One window per weekday in this editor, even though the table allows more —
@@ -15820,14 +15903,18 @@ function renderBookingLinksList(){
   const mine = BOOKING_LINKS.filter(l => l.user_id === currentUser.id);
   if(!mine.length) return '<p style="font-size:12.5px;color:var(--slate-500);">No booking links yet — create one below.</p>';
   return mine.map(l => `
-    <div class="integration-row">
+    <div class="integration-row" style="flex-wrap:wrap;">
       <div class="integration-info">
         <div class="ii-name">${l.name}${l.active === false ? ' <span class="integration-status not-connected">Inactive</span>' : ''}</div>
-        <div class="ii-desc">${l.duration_minutes} min &middot; ${l.meeting_type === 'phone' ? 'Phone Call' : 'Email'} &middot; ${bookingShareUrl(l.slug).replace(/^https?:\/\//,'')}</div>
+        <div class="ii-desc">${l.duration_minutes} min &middot; ${(MEETING_TYPES[l.meeting_type] || {}).label || 'Meeting'}${l.zoom_link ? ' (has a Zoom link)' : ''} &middot; ${bookingShareUrl(l.slug).replace(/^https?:\/\//,'')}</div>
       </div>
-      <button class="btn btn-sm" onclick="copyBookingLink('${l.slug}')">Copy</button>
-      <button class="btn btn-sm" onclick="toggleBookingLinkActive('${l.id}')">${l.active === false ? 'Activate' : 'Deactivate'}</button>
-      <button class="btn btn-sm" style="color:var(--red);" onclick="deleteBookingLink('${l.id}')">Delete</button>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="btn btn-sm" onclick="copyBookingLink('${l.slug}')">Copy</button>
+        <button class="btn btn-sm" onclick="emailBookingLink('${l.slug}', '${(l.name||'').replace(/'/g,"\\'")}')">Email</button>
+        <button class="btn btn-sm" onclick="textBookingLink('${l.slug}', '${(l.name||'').replace(/'/g,"\\'")}')">Text</button>
+        <button class="btn btn-sm" onclick="toggleBookingLinkActive('${l.id}')">${l.active === false ? 'Activate' : 'Deactivate'}</button>
+        <button class="btn btn-sm" style="color:var(--red);" onclick="deleteBookingLink('${l.id}')">Delete</button>
+      </div>
     </div>`).join('');
 }
 
@@ -15861,10 +15948,14 @@ function openBookingLinksDrawer(){
         </select>
       </div>
       <div class="field"><label>Meeting type</label>
-        <select id="blMeetingType">
+        <select id="blMeetingType" onchange="document.getElementById('blZoomLinkField').style.display = this.value==='zoom_meeting' ? 'block' : 'none';">
           <option value="phone">Phone Call</option>
-          <option value="email">Email</option>
+          <option value="zoom_meeting">Zoom</option>
         </select>
+      </div>
+      <div class="field" id="blZoomLinkField" style="display:none;">
+        <label>Zoom link <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
+        <input id="blZoomLink" placeholder="https://zoom.us/j/...">
       </div>
       <div class="field"><label>Description <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
         <textarea id="blDescription" rows="2" placeholder="Shown to whoever is booking"></textarea></div>
@@ -15879,6 +15970,7 @@ async function saveNewBookingLink(){
   if(!name){ showToast('Give this link a name first.', 'error'); return; }
   const duration_minutes = parseInt(document.getElementById('blDuration').value, 10);
   const meeting_type = document.getElementById('blMeetingType').value;
+  const zoom_link = meeting_type === 'zoom_meeting' ? document.getElementById('blZoomLink').value.trim() : '';
   const description = document.getElementById('blDescription').value.trim();
   const brand = currentBrand === 'atm' ? 'atm' : 'epay';
 
@@ -15889,7 +15981,7 @@ async function saveNewBookingLink(){
     const slug = slugify(name) + '-' + Math.floor(Math.random() * 900 + 100);
     const res = await supa.from('booking_links').insert({
       user_id: currentUser.id, name, slug, meeting_type, duration_minutes,
-      description: description || null, brand,
+      description: description || null, brand, zoom_link: zoom_link || null,
     }).select().single();
     if(res.error && res.error.code === '23505' && attempt < 2) return insertLink(attempt + 1);
     return res;
