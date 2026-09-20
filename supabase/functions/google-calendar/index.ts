@@ -5,7 +5,10 @@
 //
 // Everything the browser is allowed to ask about a Google Calendar link.
 // Actions: connect_url | complete_oauth | status | disconnect | push_event |
-//          delete_event | import_events
+//          delete_event | import_events | public_push_event
+//
+// public_push_event is the one exception to "every action here is on behalf
+// of a signed-in user" — see the comment where it is dispatched, below.
 //
 // Google redirects to a small page on the CRM's own domain (/oauth/google),
 // which hands the code back to the already-signed-in CRM window; that window
@@ -196,10 +199,212 @@ function fromGoogleEvent(ev: Record<string, any>, calendarId: string, ownerId: s
 
 const TYPE_LABELS: Record<string, string> = {
   phone: 'Phone Call',
+  email: 'Email',
   zoom_meeting: 'Zoom Meeting',
   zoom_demo: 'Zoom Demo',
   in_person: 'In-Person Install/Training',
 };
+
+// ---------------------------------------------------------------------------
+// Pushes one calendar_events row to Google (create or update) and writes the
+// sync bookkeeping back. Shared by the authenticated push_event action and
+// the anon public_push_event action below — the two differ only in whose
+// token they push with and how that token is obtained, never in what
+// actually gets sent to Google or written back afterward.
+// ---------------------------------------------------------------------------
+async function pushEventToGoogle(
+  admin: ReturnType<typeof createClient>,
+  ev: Record<string, any>,
+  ownerUserId: string,
+  token: string,
+  tz: string,
+): Promise<{ error: string; status: number } | { success: true; googleEventId: string; htmlLink: string | null; status: 200 }> {
+  const times = toGoogleTimes(ev.date as string, ev.time as string, Number(ev.duration) || 30, tz);
+  const descriptionParts = [
+    TYPE_LABELS[ev.type as string] ? `Type: ${TYPE_LABELS[ev.type as string]}` : null,
+    ev.notes ? String(ev.notes) : null,
+    'Scheduled from the EPAY POS Control Center.',
+  ].filter(Boolean);
+
+  const body: Record<string, unknown> = {
+    summary: ev.title,
+    description: descriptionParts.join('\n\n'),
+    ...times,
+  };
+  if (ev.zoom_link) body.location = ev.zoom_link;
+
+  const existing = ev.google_event_id as string | null;
+  const endpoint = existing
+    ? `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(existing)}`
+    : 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
+
+  const res = await fetch(endpoint, {
+    method: existing ? 'PATCH' : 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const out = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    // A 404 on an event we thought we owned means it was deleted in
+    // Google. Clearing the id lets the next push create a fresh one
+    // instead of failing forever against a ghost.
+    const msg = out?.error?.message || `Google returned ${res.status}`;
+    await admin.from('calendar_events').update({
+      google_sync_error: msg,
+      ...(res.status === 404 && existing ? { google_event_id: null } : {}),
+    }).eq('id', ev.id);
+    return { error: msg, status: 502 };
+  }
+
+  await admin.from('calendar_events').update({
+    google_event_id: out.id,
+    google_synced_at: new Date().toISOString(),
+    google_sync_error: null,
+    // Backfills anything created before ownership existed, so a meeting
+    // stops being editable by the whole team the first time it syncs.
+    owner_id: (ev.owner_id as string | null) ?? ownerUserId,
+  }).eq('id', ev.id);
+
+  return { success: true, googleEventId: out.id, htmlLink: out.htmlLink ?? null, status: 200 };
+}
+
+// ---------------------------------------------------------------------------
+// Booking confirmation emails — same visual template as send-email/index.ts
+// (same colors, same 480px layout) so mail from this function looks like it
+// comes from the same product, but built inline here rather than calling
+// that function: send-email requires an authenticated fullDashboard caller,
+// and a visitor booking a public link is never signed in at all. Adding a
+// service-to-service exception to that function's auth is more risk than
+// duplicating one small template is worth.
+// ---------------------------------------------------------------------------
+function buildBrandedEmailHtml(heading: string, bodyText: string): string {
+  const esc = (v: string) =>
+    v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${esc(heading)}</title></head>
+<body style="margin:0; padding:0; background-color:#F4F7FB; font-family:Arial, Helvetica, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F4F7FB; padding:32px 16px;">
+    <tr><td align="center">
+      <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="width:480px; max-width:100%; background-color:#ffffff; border-radius:10px; overflow:hidden; border:1px solid #E4E9F2;">
+        <tr><td align="center" style="background-color:#ffffff; padding:24px; border-bottom:1px solid #E4E9F2;">
+          <img src="https://epaycrm.epaypos.net/email-logo.png" alt="EPAY POS" width="90" style="display:block;">
+        </td></tr>
+        <tr><td style="padding:30px 26px;">
+          <h1 style="margin:0 0 14px; font-size:19px; color:#142850;">${esc(heading)}</h1>
+          <p style="margin:0 0 16px; font-size:14px; line-height:1.6; color:#22406F;">${esc(bodyText).replace(/\n/g, '<br>')}</p>
+          <p style="margin:0; font-size:14px; line-height:1.6; color:#22406F;">&mdash; The EPAY POS Team</p>
+        </td></tr>
+        <tr><td align="center" style="background-color:#F4F7FB; padding:16px 24px; font-size:11px; color:#5B6B8C;">
+          EPAY POS &middot; 185 E Big Beaver Rd, Troy, MI 48083 &middot; epaypos.net
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+}
+
+async function sendBookingEmail(
+  admin: ReturnType<typeof createClient>,
+  to: string,
+  subject: string,
+  heading: string,
+  bodyText: string,
+) {
+  const apiKey = Deno.env.get('RESEND_API_KEY');
+  const from = Deno.env.get('EMAIL_FROM');
+  if (!apiKey || !from || !to) return;
+
+  let sendErr: string | null = null;
+  let providerId: string | null = null;
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from, to: [to], subject, html: buildBrandedEmailHtml(heading, bodyText) }),
+    });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok) sendErr = out?.message || `Resend returned ${res.status}`;
+    else providerId = out?.id ?? null;
+  } catch (e) {
+    sendErr = e instanceof Error ? e.message : 'Could not reach Resend';
+  }
+
+  await admin.from('email_log').insert({
+    kind: 'booking_confirmation',
+    to_email: to,
+    subject,
+    provider_id: providerId,
+    status: sendErr ? 'failed' : 'sent',
+    error: sendErr,
+  });
+}
+
+async function sendBookingConfirmationEmails(admin: ReturnType<typeof createClient>, ev: Record<string, any>) {
+  const [{ data: owner }, { data: coldLead }] = await Promise.all([
+    admin.from('users').select('name, email').eq('id', ev.owner_id as string).maybeSingle(),
+    ev.linked_cold_lead_id
+      ? admin.from('cold_leads').select('contact_name, email').eq('id', ev.linked_cold_lead_id as string).maybeSingle()
+      : Promise.resolve({ data: null as { contact_name?: string; email?: string } | null }),
+  ]);
+
+  const when = `${ev.date} at ${ev.time}`;
+  const meetingLabel = TYPE_LABELS[ev.type as string] || 'meeting';
+
+  if (coldLead?.email) {
+    await sendBookingEmail(
+      admin, coldLead.email as string, `Confirmed: ${ev.title}`, "You're booked",
+      `Your ${meetingLabel.toLowerCase()} with ${owner?.name ?? 'our team'} is confirmed for ${when}.`,
+    );
+  }
+  if (owner?.email) {
+    await sendBookingEmail(
+      admin, owner.email as string, `New booking: ${ev.title}`, 'New booking',
+      `${ev.title} is on your calendar for ${when} (${meetingLabel}).`,
+    );
+  }
+}
+
+// Handles public_push_event — see the dispatch comment in Deno.serve for why
+// this runs with no caller identity. Sends the confirmation emails either
+// way (the booking is real regardless of Google), then pushes to Google only
+// if the owner actually has a calendar connected; no connection is not an
+// error, just nothing further to do.
+async function handlePublicPushEvent(
+  admin: ReturnType<typeof createClient>,
+  payload: Record<string, unknown>,
+  tz: string,
+) {
+  const eventId = String(payload.eventId ?? '');
+  if (!eventId) return json({ error: 'eventId is required' }, 400);
+
+  const { data: ev, error: evErr } = await admin
+    .from('calendar_events')
+    .select('*')
+    .eq('id', eventId)
+    .single();
+  if (evErr || !ev) return json({ error: 'That meeting no longer exists' }, 404);
+
+  // The hard boundary: only a row public_book_slot() itself created carries
+  // this column, so this path can never be pointed at a hand-entered meeting.
+  if (!ev.booking_link_id) return json({ error: 'Not a public booking' }, 403);
+  if (!ev.owner_id) return json({ error: 'This booking has no owner' }, 400);
+
+  await sendBookingConfirmationEmails(admin, ev);
+
+  const got = await accessTokenFor(admin, ev.owner_id as string);
+  if (got.error) {
+    // No Google connected (or a genuine token error) is not a booking
+    // failure — the meeting already exists in the CRM either way.
+    return json({ success: true, googleSynced: false }, 200);
+  }
+
+  const result = await pushEventToGoogle(admin, ev, ev.owner_id as string, got.token!, tz);
+  if ('error' in result) {
+    return json({ success: true, googleSynced: false, googleError: result.error }, 200);
+  }
+  return json({ success: true, googleSynced: true, googleEventId: result.googleEventId }, 200);
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
@@ -211,6 +416,24 @@ Deno.serve(async (req) => {
     return json({ error: 'Expected a JSON body' }, 400);
   }
   const action = String(payload.action ?? '');
+
+  const admin = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+  );
+  const tz = Deno.env.get('CALENDAR_TIMEZONE') ?? 'America/Detroit';
+
+  // ---- public_push_event: the one action with no caller identity at all.
+  // A visitor who just booked a slot through a public booking link
+  // (database/53_booking_links.sql's public_book_slot()) was never signed
+  // in, so there is no JWT to check here. The authorization boundary is
+  // instead that this can only ever touch a calendar_events row that
+  // already carries a booking_link_id — nothing except public_book_slot()
+  // itself ever sets that column, so an arbitrary eventId gets nowhere.
+  // Handled before the auth gate below on purpose.
+  if (action === 'public_push_event') {
+    return await handlePublicPushEvent(admin, payload, tz);
+  }
 
   // ---- who is asking -------------------------------------------------------
   const authHeader = req.headers.get('Authorization') ?? '';
@@ -238,12 +461,6 @@ Deno.serve(async (req) => {
 
   const userId = (callerRow as { id?: string })?.id;
   if (!userId) return json({ error: 'No CRM user record for this login' }, 403);
-
-  const admin = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-  );
-  const tz = Deno.env.get('CALENDAR_TIMEZONE') ?? 'America/Detroit';
 
   // -------------------------------------------------------------------------
   switch (action) {
@@ -390,54 +607,9 @@ Deno.serve(async (req) => {
         return json({ error: got.error }, 400);
       }
 
-      const times = toGoogleTimes(ev.date as string, ev.time as string, Number(ev.duration) || 30, tz);
-      const descriptionParts = [
-        TYPE_LABELS[ev.type as string] ? `Type: ${TYPE_LABELS[ev.type as string]}` : null,
-        ev.notes ? String(ev.notes) : null,
-        'Scheduled from the EPAY POS Control Center.',
-      ].filter(Boolean);
-
-      const body: Record<string, unknown> = {
-        summary: ev.title,
-        description: descriptionParts.join('\n\n'),
-        ...times,
-      };
-      if (ev.zoom_link) body.location = ev.zoom_link;
-
-      const existing = ev.google_event_id as string | null;
-      const endpoint = existing
-        ? `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(existing)}`
-        : 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
-
-      const res = await fetch(endpoint, {
-        method: existing ? 'PATCH' : 'POST',
-        headers: { Authorization: `Bearer ${got.token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const out = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        // A 404 on an event we thought we owned means it was deleted in
-        // Google. Clearing the id lets the next push create a fresh one
-        // instead of failing forever against a ghost.
-        const msg = out?.error?.message || `Google returned ${res.status}`;
-        await admin.from('calendar_events').update({
-          google_sync_error: msg,
-          ...(res.status === 404 && existing ? { google_event_id: null } : {}),
-        }).eq('id', eventId);
-        return json({ error: msg }, 502);
-      }
-
-      await admin.from('calendar_events').update({
-        google_event_id: out.id,
-        google_synced_at: new Date().toISOString(),
-        google_sync_error: null,
-        // Backfills anything created before ownership existed, so a meeting
-        // stops being editable by the whole team the first time it syncs.
-        owner_id: (ev.owner_id as string | null) ?? userId,
-      }).eq('id', eventId);
-
-      return json({ success: true, googleEventId: out.id, htmlLink: out.htmlLink ?? null }, 200);
+      const result = await pushEventToGoogle(admin, ev, userId, got.token!, tz);
+      const { status, ...body } = result;
+      return json(body, status);
     }
 
     case 'import_events': {

@@ -17,7 +17,7 @@
     // so a dark-mode visitor never sees a flash of it.
     var params = new URLSearchParams(window.location.search);
     var path = window.location.pathname || '';
-    if(params.get('ref') || params.get('app') || /^\/(r|apply)\//.test(path)){
+    if(params.get('ref') || params.get('app') || /^\/(r|apply|book)\//.test(path)){
       document.documentElement.setAttribute('data-theme', 'light');
       document.documentElement.setAttribute('data-public-page', 'true');
       return;
@@ -1145,6 +1145,26 @@
   .landing-success .check-circle svg{width:28px;height:28px;}
   .landing-404{text-align:center;padding:20px 0;color:var(--slate-500);font-size:13.5px;}
 
+  /* ---------- PUBLIC BOOKING PAGE (/book/<slug>) ---------- */
+  .booking-back-link{background:none;border:none;padding:0;margin:0 0 14px;font-size:12.5px;color:var(--brand-accent-2);font-weight:600;cursor:pointer;}
+  .booking-back-link:hover{text-decoration:underline;}
+  .booking-date-row{display:flex;gap:7px;overflow-x:auto;padding-bottom:4px;margin-bottom:18px;}
+  .booking-date-btn{
+    flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:2px;
+    min-width:48px;padding:9px 6px;border-radius:10px;border:1px solid var(--line);
+    background:var(--surface-3);cursor:pointer;
+  }
+  .booking-date-btn.active{background:linear-gradient(90deg,var(--brand-accent-2),var(--brand-accent));border-color:transparent;}
+  .booking-date-btn.active .booking-date-dow,.booking-date-btn.active .booking-date-num{color:#fff;}
+  .booking-date-dow{font-size:10.5px;font-weight:600;text-transform:uppercase;color:var(--slate-500);}
+  .booking-date-num{font-size:15px;font-weight:700;color:var(--navy-700);}
+  .booking-slot-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px;}
+  .booking-slot-btn{
+    padding:11px 6px;border-radius:9px;border:1px solid var(--line);background:var(--surface-3);
+    font-size:13px;font-weight:600;color:var(--navy-700);cursor:pointer;
+  }
+  .booking-slot-btn:hover{border-color:var(--brand-accent-2);background:var(--card);}
+
   ::-webkit-scrollbar{width:9px;}
   ::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:20px;}
 
@@ -1611,6 +1631,10 @@
           </div>
           <div class="topbar-actions">
             <div id="calGoogleConnect" style="display:flex;align-items:center;gap:8px;"></div>
+            <button class="btn btn-sm" id="bookingLinksBtn" onclick="openBookingLinksDrawer()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+              Booking Links
+            </button>
             <button class="btn btn-accent btn-sm" id="newMeetingBtn">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               New Meeting
@@ -2655,6 +2679,11 @@
 <!-- ================= DRAWER: UPLOAD COLD LEADS ================= -->
 <div class="overlay" id="uploadLeadsOverlay">
   <div class="drawer" id="uploadLeadsDrawer"></div>
+</div>
+
+<!-- ================= DRAWER: BOOKING LINKS ================= -->
+<div class="overlay" id="bookingLinksOverlay">
+  <div class="drawer" id="bookingLinksDrawer"></div>
 </div>
 
 <!-- ================= DRAWER: ADD / VIEW APPLICATION ================= -->
@@ -3908,6 +3937,7 @@ async function saveIntegrationToSupabase(key){
    ========================================================================= */
 const MEETING_TYPES = {
   phone: { label:'Phone Call', color:'var(--info-text)' },
+  email: { label:'Email', color:'#0891B2' },
   zoom_meeting: { label:'Zoom Meeting', color:'var(--ok-text)' },
   zoom_demo: { label:'Zoom Demo', color:'var(--warn-text)' },
   in_person: { label:'In-Person Install/Training', color:'#7C3AED' },
@@ -3932,6 +3962,16 @@ async function loadConnectedCalendarsFromSupabase(){
 async function loadCalendarEventsFromSupabase(){
   const { data, error } = await supa.from('calendar_events').select('*').order('date', { ascending: true });
   if(error){ reportLoadFailure('calendar events from Supabase', error); return []; }
+  return data;
+}
+async function loadBookingLinksFromSupabase(){
+  const { data, error } = await supa.from('booking_links').select('*').order('created_at', { ascending: false });
+  if(error){ reportLoadFailure('booking links from Supabase', error); return []; }
+  return data;
+}
+async function loadBookingAvailabilityFromSupabase(){
+  const { data, error } = await supa.from('booking_availability').select('*').order('weekday', { ascending: true });
+  if(error){ reportLoadFailure('booking availability from Supabase', error); return []; }
   return data;
 }
 
@@ -3996,6 +4036,8 @@ let INTEGRATIONS = loadIntegrations();
 // Populated for real from Supabase in enterAppAsAuthUser().
 let CONNECTED_CALENDARS = [];
 let CALENDAR_EVENTS = [];
+let BOOKING_LINKS = [];
+let BOOKING_AVAILABILITY = [];
 let calViewDate = new Date();
 let calFilter = 'all';
 // Safe placeholder until real login resolves — enterAppAsAuthUser() replaces
@@ -4553,6 +4595,8 @@ async function enterAppAsAuthUser(authUser){
     loadNlTemplatesFromSupabase(),
     loadConnectedCalendarsFromSupabase(),
     loadCalendarEventsFromSupabase(),
+    loadBookingLinksFromSupabase(),
+    loadBookingAvailabilityFromSupabase(),
     loadResidualsFromSupabase(),
     loadLoadersFromSupabase(),
     loadInstantlyContactsFromSupabase(),
@@ -4587,7 +4631,7 @@ async function enterAppAsAuthUser(authUser){
     leadCallNotes, leadDocuments, offices, lendingLeads, lendingLeadNotes,
     lendingLeadCallNotes, isoLeads, isoLeadNotes, isoLeadCallNotes,
     newsletters, nlTemplates, connectedCalendars,
-    calendarEvents, residualPayouts, atmLoaders, instantlyContacts, partnerDocuments, applicationLinks,
+    calendarEvents, bookingLinks, bookingAvailability, residualPayouts, atmLoaders, instantlyContacts, partnerDocuments, applicationLinks,
     integrationsFromDb, contacts
   ] = await tablesPromise;
 
@@ -4611,6 +4655,8 @@ async function enterAppAsAuthUser(authUser){
   NL_TEMPLATES = nlTemplates;
   CONNECTED_CALENDARS = connectedCalendars;
   CALENDAR_EVENTS = calendarEvents;
+  BOOKING_LINKS = bookingLinks;
+  BOOKING_AVAILABILITY = bookingAvailability;
   calFilter = defaultCalendarFilter();
   RESIDUALS = residualPayouts;
   LOADERS = atmLoaders;
@@ -4971,6 +5017,17 @@ async function initAuth(){
     : new URLSearchParams(window.location.search).get('app');
   if(appSlug){
     renderApplicationLandingPage(appSlug);
+    return;
+  }
+
+  // A booking link (/book/<slug>) — same public-page pattern as the two
+  // above, backed by the SECURITY DEFINER functions in
+  // database/53_booking_links.sql. No `?book=` fallback: this one shipped
+  // with the pretty route from day one, so there is no older link format
+  // to keep working.
+  const bookSlug = pathSlug && pathKind === 'book' ? pathSlug : null;
+  if(bookSlug){
+    renderBookingLandingPage(bookSlug);
     return;
   }
 
@@ -5888,6 +5945,231 @@ async function submitReferralLead(partnerId){
       <div class="check-circle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
       <h1 class="landing-h1">You're all set</h1>
       <p class="landing-sub">Thanks, ${contact_name.split(' ')[0]} — someone from our team will reach out shortly to talk through your options.</p>
+    </div>`;
+}
+
+/* =========================================================================
+   PUBLIC BOOKING PAGE (/book/<slug>) — same public/anon pattern as the
+   referral and application landing pages above, backed by the three
+   SECURITY DEFINER functions in database/53_booking_links.sql. A visitor
+   never logs in; everything here talks only to those three functions and,
+   after a successful booking, the google-calendar function's anon-safe
+   public_push_event action.
+   ========================================================================= */
+let BOOKING = null; // { slug, link, availability, busy, durationMinutes, selectedDate, selectedTime }
+
+async function renderBookingLandingPage(slug){
+  document.getElementById('app-screen').style.display = 'none';
+  document.getElementById('landing-screen').style.display = 'flex';
+
+  const { data, error } = await supa.rpc('public_lookup_booking_link', { p_slug: slug });
+  const link = (!error && data && data.length) ? data[0] : null;
+  const logoB64 = (!link || link.brand !== 'atm') ? EPAY_LOGO_B64 : ATM_LOGO_B64;
+  document.getElementById('landingLogo').innerHTML = `<img src="data:image/png;base64,${logoB64}" alt="Logo">`;
+
+  if(!link){
+    document.getElementById('landingContent').innerHTML = `
+      <div class="landing-404">
+        <h1 class="landing-h1">Link not found</h1>
+        <p>This booking link doesn't match an active meeting type. Double-check the link and try again.</p>
+      </div>`;
+    return;
+  }
+
+  const startDate = todayISO();
+  const endDate = addDays(startDate, 13);
+  const { data: ctx, error: ctxError } = await supa.rpc('public_get_booking_context', {
+    p_slug: slug, p_start_date: startDate, p_end_date: endDate,
+  });
+  if(ctxError || !ctx){
+    document.getElementById('landingContent').innerHTML = `
+      <div class="landing-404">
+        <h1 class="landing-h1">Something went wrong</h1>
+        <p>Could not load open times for this link — please try again shortly.</p>
+      </div>`;
+    return;
+  }
+
+  BOOKING = {
+    slug, link,
+    availability: ctx.availability || [],
+    busy: ctx.busy || [],
+    durationMinutes: ctx.duration_minutes || link.duration_minutes,
+    selectedDate: startDate,
+    selectedTime: null,
+  };
+  renderBookingPicker();
+}
+
+function bookingCandidateDates(){
+  const dates = [];
+  for(let i = 0; i < 14; i++) dates.push(addDays(todayISO(), i));
+  return dates;
+}
+
+// weekday follows JS's Date.getDay() (0=Sun..6=Sat) in both directions — same
+// convention booking_availability.weekday is stored in, so no translation
+// either way. Slots are generated at fixed durationMinutes steps across each
+// availability window and dropped if they overlap an existing calendar_events
+// row (the owner's busy time) or fall before the current moment on today's
+// date — a visitor should never be offered a slot that already started.
+function bookingSlotsFor(dateStr){
+  const b = BOOKING;
+  const weekday = new Date(dateStr + 'T00:00:00').getDay();
+  const windows = b.availability.filter(a => a.weekday === weekday);
+  if(!windows.length) return [];
+
+  const busyRanges = b.busy.filter(e => e.date === dateStr).map(e => {
+    const [h, m] = (e.time || '00:00').split(':').map(Number);
+    const start = h * 60 + m;
+    return { start, end: start + (parseInt(e.duration, 10) || 30) };
+  });
+
+  const isToday = dateStr === todayISO();
+  const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
+
+  const slots = [];
+  windows.forEach(w => {
+    const [sh, sm] = w.start_time.split(':').map(Number);
+    const [eh, em] = w.end_time.split(':').map(Number);
+    const end = eh * 60 + em;
+    for(let t = sh * 60 + sm; t + b.durationMinutes <= end; t += b.durationMinutes){
+      const overlapsBusy = busyRanges.some(r => t < r.end && (t + b.durationMinutes) > r.start);
+      const alreadyPast = isToday && t <= nowMinutes;
+      if(!overlapsBusy && !alreadyPast) slots.push(t);
+    }
+  });
+  return slots.sort((a, b) => a - b)
+    .map(mins => `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`);
+}
+
+function formatSlotTime(hhmm){
+  const [h, m] = hhmm.split(':').map(Number);
+  return new Date(2000, 0, 1, h, m).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+}
+
+function selectBookingDate(dateStr){
+  BOOKING.selectedDate = dateStr;
+  BOOKING.selectedTime = null;
+  renderBookingPicker();
+}
+function selectBookingSlot(time){
+  BOOKING.selectedTime = time;
+  renderBookingContactForm();
+}
+function backToBookingPicker(){
+  BOOKING.selectedTime = null;
+  renderBookingPicker();
+}
+
+function renderBookingPicker(){
+  const b = BOOKING;
+  const dates = bookingCandidateDates();
+  const slots = bookingSlotsFor(b.selectedDate);
+
+  document.getElementById('landingContent').innerHTML = `
+    <h1 class="landing-h1">${b.link.name}</h1>
+    <p class="landing-sub">
+      With ${b.link.owner_name} &middot; ${b.durationMinutes} min &middot; ${b.link.meeting_type === 'phone' ? 'Phone Call' : 'Email'}
+      ${b.link.description ? '<br>' + b.link.description : ''}
+    </p>
+
+    <div class="booking-date-row">
+      ${dates.map(d => {
+        const dt = new Date(d + 'T00:00:00');
+        return `
+        <button class="booking-date-btn ${d === b.selectedDate ? 'active' : ''}" onclick="selectBookingDate('${d}')">
+          <span class="booking-date-dow">${dt.toLocaleDateString('en-US', { weekday:'short' })}</span>
+          <span class="booking-date-num">${dt.getDate()}</span>
+        </button>`;
+      }).join('')}
+    </div>
+
+    <div class="booking-slot-grid">
+      ${slots.length
+        ? slots.map(t => `<button class="booking-slot-btn" onclick="selectBookingSlot('${t}')">${formatSlotTime(t)}</button>`).join('')
+        : `<p class="landing-sub" style="grid-column:1/-1;">No open times on ${formatDate(b.selectedDate)} — try another day.</p>`}
+    </div>
+  `;
+}
+
+function renderBookingContactForm(){
+  const b = BOOKING;
+  document.getElementById('landingContent').innerHTML = `
+    <button type="button" class="booking-back-link" onclick="backToBookingPicker()">&larr; Choose a different time</button>
+    <h1 class="landing-h1">${b.link.name}</h1>
+    <p class="landing-sub">${formatDate(b.selectedDate)} at ${formatSlotTime(b.selectedTime)} with ${b.link.owner_name}</p>
+
+    <div class="landing-field"><label>Your name</label><input id="bkName" placeholder="e.g. Tony Russo"></div>
+    <div class="landing-field"><label>Email</label><input id="bkEmail" type="email" placeholder="you@business.com"></div>
+    <div class="landing-field"><label>Phone</label><input id="bkPhone" placeholder="(555) 555-5555"></div>
+    <div class="landing-field"><label>Business (optional)</label><input id="bkBusiness" placeholder="e.g. Riverside Pizza Co"></div>
+    <div class="landing-field"><label>Anything we should know? (optional)</label><textarea id="bkNotes" placeholder="What would you like to cover"></textarea></div>
+    <button class="landing-submit" id="bkSubmitBtn" onclick="submitBookingRequest()">Confirm booking</button>
+  `;
+}
+
+async function submitBookingRequest(){
+  const b = BOOKING;
+  const name = document.getElementById('bkName').value.trim();
+  const email = document.getElementById('bkEmail').value.trim();
+  const phone = document.getElementById('bkPhone').value.trim();
+  const business = document.getElementById('bkBusiness').value.trim();
+  const notes = document.getElementById('bkNotes').value.trim();
+
+  if(!name || !email){
+    alert('Please fill in your name and email.');
+    return;
+  }
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+    alert('That does not look like a valid email address.');
+    return;
+  }
+
+  const btn = document.getElementById('bkSubmitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Booking...';
+
+  const { data, error } = await supa.rpc('public_book_slot', {
+    p_slug: b.slug,
+    p_date: b.selectedDate,
+    p_time: b.selectedTime,
+    p_name: name,
+    p_email: email,
+    p_phone: phone,
+    p_business: business,
+    p_notes: notes,
+  });
+
+  if(error){
+    alert('Something went wrong booking this — please try again: ' + error.message);
+    // The slot may have just been taken by someone else — reload the whole
+    // page's context rather than retrying blind against the same conflict.
+    renderBookingLandingPage(b.slug);
+    return;
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+
+  // Pushing to Google and sending the confirmation emails happen after the
+  // booking is already confirmed to the visitor — a second, failable step
+  // that must never make a successful booking look like it failed. No
+  // Authorization from a real session exists here (the visitor was never
+  // logged in), so this uses the anon key the same way supa.rpc() already
+  // does under the hood — see the public_push_event dispatch comment in
+  // supabase/functions/google-calendar/index.ts for why that action alone
+  // accepts a call with no signed-in caller.
+  fetch(SUPABASE_URL + '/functions/v1/google-calendar', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY },
+    body: JSON.stringify({ action: 'public_push_event', eventId: row.event_id }),
+  }).catch(() => {});
+
+  document.getElementById('landingContent').innerHTML = `
+    <div class="landing-success">
+      <div class="check-circle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+      <h1 class="landing-h1">You're all set</h1>
+      <p class="landing-sub">Thanks, ${name.split(' ')[0]} — your ${b.link.meeting_type === 'phone' ? 'call' : 'meeting'} with ${b.link.owner_name} is confirmed for ${formatDate(b.selectedDate)} at ${formatSlotTime(b.selectedTime)}. A confirmation has been sent to ${email}.</p>
     </div>`;
 }
 
@@ -7693,6 +7975,11 @@ function createdByLabel(record){
   if(!roleOf(currentUser).perms.fullDashboard) return '';
   if(!record.created_by){
     if((record.lead_source || '').startsWith('Referral link — ')) return 'Public referral link (self-submitted)';
+    // Cold Leads use `source`, not `lead_source` — this is the one written by
+    // public_book_slot() (database/53_booking_links.sql) for a self-booked
+    // meeting, same "no logged-in user behind this row" case as the referral
+    // link above.
+    if((record.source || '').startsWith('Booking link — ')) return 'Public booking link (self-booked)';
     return '—';
   }
   const u = USERS.find(x => x.id === record.created_by);
@@ -15460,6 +15747,176 @@ function renderCalGoogleConnect(){
   el.innerHTML = (mine && mine.google_email && mine.connected)
     ? `<span style="font-size:12px;color:var(--slate-500);">Google: ${mine.google_email}</span><button class="btn btn-sm" onclick="disconnectMyGoogleCalendar()">Disconnect</button>`
     : `<button class="btn btn-sm" onclick="connectMyGoogleCalendar()">Connect Google Calendar</button>`;
+}
+
+/* =========================================================================
+   BOOKING LINKS — self-serve management, reachable by anyone who can see
+   the Calendar tab (i.e. everyone, since database/52_calendar_per_user.sql).
+   Backed by booking_links/booking_availability (database/53_booking_links.sql),
+   owner-scoped RLS same as calendar_events/connected_calendars — every
+   supa.from(...) call below only ever touches the signed-in user's own rows.
+   The public /book/<slug> page these links point to lives further up this
+   file, alongside renderReferralLandingPage/renderApplicationLandingPage.
+   ========================================================================= */
+function bookingShareUrl(slug){
+  return (PREFERRED_LINK_HOST || window.location.origin) + '/book/' + encodeURIComponent(slug);
+}
+function copyBookingLink(slug){
+  navigator.clipboard && navigator.clipboard.writeText(bookingShareUrl(slug));
+  showToast('Booking link copied.', 'success');
+}
+
+const WEEKDAY_LABELS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+// One window per weekday in this editor, even though the table allows more —
+// split shifts can be added directly in Supabase later if anyone actually
+// needs them; nobody asked for that yet and the UI is simpler without it.
+function renderBookingAvailabilityEditor(){
+  const mine = BOOKING_AVAILABILITY.filter(a => a.user_id === currentUser.id);
+  return WEEKDAY_LABELS.map((label, wd) => {
+    const row = mine.find(a => a.weekday === wd);
+    return `
+    <div style="display:flex;align-items:center;gap:8px;padding:5px 0;">
+      <label style="display:flex;align-items:center;gap:6px;width:76px;flex-shrink:0;font-size:12.5px;">
+        <input type="checkbox" class="bl-avail-enabled" data-weekday="${wd}" ${row ? 'checked' : ''} style="width:auto;" onchange="toggleBookingAvailRow(${wd})">
+        ${label}
+      </label>
+      <input type="time" class="bl-avail-start" data-weekday="${wd}" value="${row ? row.start_time.slice(0,5) : '09:00'}" ${row ? '' : 'disabled'} style="width:auto;padding:5px 7px;">
+      <span style="color:var(--slate-400);font-size:12px;">to</span>
+      <input type="time" class="bl-avail-end" data-weekday="${wd}" value="${row ? row.end_time.slice(0,5) : '17:00'}" ${row ? '' : 'disabled'} style="width:auto;padding:5px 7px;">
+    </div>`;
+  }).join('');
+}
+function toggleBookingAvailRow(wd){
+  const enabled = document.querySelector(`.bl-avail-enabled[data-weekday="${wd}"]`).checked;
+  document.querySelector(`.bl-avail-start[data-weekday="${wd}"]`).disabled = !enabled;
+  document.querySelector(`.bl-avail-end[data-weekday="${wd}"]`).disabled = !enabled;
+}
+async function saveBookingAvailability(){
+  const rows = [];
+  for(let wd = 0; wd < 7; wd++){
+    if(document.querySelector(`.bl-avail-enabled[data-weekday="${wd}"]`).checked){
+      rows.push({
+        user_id: currentUser.id, weekday: wd,
+        start_time: document.querySelector(`.bl-avail-start[data-weekday="${wd}"]`).value,
+        end_time: document.querySelector(`.bl-avail-end[data-weekday="${wd}"]`).value,
+      });
+    }
+  }
+  // Replacing the whole set is simpler and just as correct as reconciling a
+  // partial update against rows that may have moved weekday or time.
+  const { error: delError } = await supa.from('booking_availability').delete().eq('user_id', currentUser.id);
+  if(delError){ showToast('Could not save your hours: ' + delError.message, 'error'); return; }
+  BOOKING_AVAILABILITY = BOOKING_AVAILABILITY.filter(a => a.user_id !== currentUser.id);
+  if(rows.length){
+    const { data, error } = await supa.from('booking_availability').insert(rows).select();
+    if(error){ showToast('Could not save your hours: ' + error.message, 'error'); return; }
+    BOOKING_AVAILABILITY = BOOKING_AVAILABILITY.concat(data);
+  }
+  showToast('Weekly hours saved.', 'success');
+}
+
+function renderBookingLinksList(){
+  const mine = BOOKING_LINKS.filter(l => l.user_id === currentUser.id);
+  if(!mine.length) return '<p style="font-size:12.5px;color:var(--slate-500);">No booking links yet — create one below.</p>';
+  return mine.map(l => `
+    <div class="integration-row">
+      <div class="integration-info">
+        <div class="ii-name">${l.name}${l.active === false ? ' <span class="integration-status not-connected">Inactive</span>' : ''}</div>
+        <div class="ii-desc">${l.duration_minutes} min &middot; ${l.meeting_type === 'phone' ? 'Phone Call' : 'Email'} &middot; ${bookingShareUrl(l.slug).replace(/^https?:\/\//,'')}</div>
+      </div>
+      <button class="btn btn-sm" onclick="copyBookingLink('${l.slug}')">Copy</button>
+      <button class="btn btn-sm" onclick="toggleBookingLinkActive('${l.id}')">${l.active === false ? 'Activate' : 'Deactivate'}</button>
+      <button class="btn btn-sm" style="color:var(--red);" onclick="deleteBookingLink('${l.id}')">Delete</button>
+    </div>`).join('');
+}
+
+function openBookingLinksDrawer(){
+  document.getElementById('bookingLinksDrawer').innerHTML = `
+    <div class="drawer-head">
+      <div><h2>Booking Links</h2></div>
+      <button class="drawer-close" onclick="closeBookingLinksDrawer()">&times;</button>
+    </div>
+    <div class="drawer-body">
+      <h3 style="margin:0 0 4px;font-size:13.5px;">Your weekly hours</h3>
+      <p style="font-size:12px;color:var(--slate-500);margin:0 0 12px;">Every booking link you create pulls its open times from these hours.</p>
+      <div id="blAvailabilityRows">${renderBookingAvailabilityEditor()}</div>
+      <button class="btn btn-sm" style="margin-top:10px;" onclick="saveBookingAvailability()">Save hours</button>
+
+      <hr style="margin:22px 0;border:none;border-top:1px solid var(--line);">
+
+      <h3 style="margin:0 0 12px;font-size:13.5px;">Your booking links</h3>
+      <div id="blLinksList">${renderBookingLinksList()}</div>
+
+      <hr style="margin:22px 0;border:none;border-top:1px solid var(--line);">
+
+      <h3 style="margin:0 0 12px;font-size:13.5px;">+ New booking link</h3>
+      <div class="field"><label>Name</label><input id="blName" placeholder="e.g. 30-Minute Intro Call"></div>
+      <div class="field"><label>Duration</label>
+        <select id="blDuration">
+          <option value="15">15 minutes</option>
+          <option value="30" selected>30 minutes</option>
+          <option value="45">45 minutes</option>
+          <option value="60">60 minutes</option>
+        </select>
+      </div>
+      <div class="field"><label>Meeting type</label>
+        <select id="blMeetingType">
+          <option value="phone">Phone Call</option>
+          <option value="email">Email</option>
+        </select>
+      </div>
+      <div class="field"><label>Description <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
+        <textarea id="blDescription" rows="2" placeholder="Shown to whoever is booking"></textarea></div>
+      <button class="btn btn-accent" style="width:100%;" onclick="saveNewBookingLink()">Create link</button>
+    </div>`;
+  document.getElementById('bookingLinksOverlay').classList.add('open');
+}
+function closeBookingLinksDrawer(){ document.getElementById('bookingLinksOverlay').classList.remove('open'); }
+
+async function saveNewBookingLink(){
+  const name = document.getElementById('blName').value.trim();
+  if(!name){ showToast('Give this link a name first.', 'error'); return; }
+  const duration_minutes = parseInt(document.getElementById('blDuration').value, 10);
+  const meeting_type = document.getElementById('blMeetingType').value;
+  const description = document.getElementById('blDescription').value.trim();
+  const brand = currentBrand === 'atm' ? 'atm' : 'epay';
+
+  // Same optimistic-insert-then-retry-on-collision pattern as partner link
+  // slugs (insertPartner()) — cheaper than pre-checking uniqueness, and the
+  // unique constraint on booking_links.slug is the actual guarantee either way.
+  async function insertLink(attempt){
+    const slug = slugify(name) + '-' + Math.floor(Math.random() * 900 + 100);
+    const res = await supa.from('booking_links').insert({
+      user_id: currentUser.id, name, slug, meeting_type, duration_minutes,
+      description: description || null, brand,
+    }).select().single();
+    if(res.error && res.error.code === '23505' && attempt < 2) return insertLink(attempt + 1);
+    return res;
+  }
+  const { data, error } = await insertLink(1);
+  if(error){ showToast('Could not create the link: ' + error.message, 'error'); return; }
+  BOOKING_LINKS.unshift(data);
+  showToast('Booking link created.', 'success');
+  openBookingLinksDrawer();
+}
+
+async function toggleBookingLinkActive(id){
+  const link = BOOKING_LINKS.find(l => l.id === id);
+  if(!link) return;
+  const active = link.active === false;
+  const { error } = await supa.from('booking_links').update({ active }).eq('id', id);
+  if(error){ showToast('Could not update: ' + error.message, 'error'); return; }
+  link.active = active;
+  openBookingLinksDrawer();
+}
+
+async function deleteBookingLink(id){
+  if(!confirm('Delete this booking link? Meetings already booked through it are unaffected.')) return;
+  const { error } = await supa.from('booking_links').delete().eq('id', id);
+  if(error){ showToast('Could not delete: ' + error.message, 'error'); return; }
+  BOOKING_LINKS = BOOKING_LINKS.filter(l => l.id !== id);
+  openBookingLinksDrawer();
 }
 
 function renderConnectedCalendarsList(){

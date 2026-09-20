@@ -15,6 +15,7 @@
 #
 #   /r/<slug>      a partner's referral link
 #   /apply/<slug>  an application or lead form
+#   /book/<slug>   a personal booking link (database/53_booking_links.sql)
 #
 # status 200 is a rewrite, not a redirect: the browser keeps showing
 # /r/joe-smith while Netlify serves index.html underneath. A 301 would work
@@ -32,6 +33,11 @@
 
 [[redirects]]
   from = "/apply/*"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/book/*"
   to = "/index.html"
   status = 200
 

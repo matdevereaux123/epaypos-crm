@@ -254,36 +254,45 @@ where it applies):
 20. Instantly
 21. AI Lead Scraper — needs a server-side Claude API key; never call it directly from `app/index.html`, since that would expose the key in the browser
 
-### Phase 6.5 — Booking links
+### Phase 6.5 — Booking links ✅ done
 
-Each internal salesperson (and Matthew) gets a personal link they can hand
-a client to self-book a time, instead of the back-and-forth of finding
-one by phone/email. Not started — scoping notes below since this builds
-directly on infrastructure that already exists rather than starting cold:
+Any logged-in user (Admin, In-House Sales, Agent, Referral Partner, ISO)
+can create one or more personal, EPAY-branded booking links from
+Calendar → Booking Links. A visitor opens `go.epaypos.net/book/<slug>`
+with no login, picks an open slot for a Phone Call or an Email meeting,
+and books directly onto that person's calendar — real availability, not
+a fake one, computed from a weekly-hours schedule (seeded Mon–Fri 9–5,
+editable) minus that person's actual busy `calendar_events` (including
+anything synced in from their real Google Calendar). See
+`database/53_booking_links.sql` for the schema, RLS, and the three
+`public_*` SECURITY DEFINER functions (`public_lookup_booking_link`,
+`public_get_booking_context`, `public_book_slot`) that back the public
+page — same anon-access pattern as `12_public_referral.sql`.
 
-- **A public booking page per user**, at a real routed URL (same pattern
-  as `go.epaypos.net/r/<slug>` and `/apply/<slug>` — add `/book/<slug>` to
-  `netlify.toml`), showing that person's open slots
-- **Real availability, not a fake calendar** — reads busy/free straight
-  from that person's already-connected Google Calendar
-  (`database/35_google_calendar_oauth.sql` onward), so it has to run
-  anon-safe (same shape as `public_lookup_application_link`/
-  `public_submit_application` — a SECURITY DEFINER RPC, not a direct
-  table read, since a stranger with the link is never authenticated)
-- **Booking a slot creates a real `calendar_events` row** and pushes it
-  through the same two-way Google sync already built, so it actually
-  shows up on the salesperson's calendar, not just inside the CRM
-- **Capture who booked** — name, email, business — and decide whether
-  that should auto-create a Cold Lead/Lead (probably yes, same shape as
-  the public referral landing page turning a submission into a real
-  record) or just attach to an existing one if the link was shared from
-  a specific record's detail page
-- **Confirmation email to both sides** once Outbound Email
-  (`supabase/functions/send-email`) has something to hand this — sending
-  a booking confirmation with no confirmation is worse than the
-  back-and-forth it replaces
-- **Decide the personal link's slug** — email-derived, chosen by the
-  user, or generated — before building the routing around it
+A booking auto-creates a Cold Lead (`source = 'Booking link — <name>'`,
+`assigned_to` the link's owner so it actually shows up in their own
+pipeline), tagged the same way a self-submitted referral lead is
+(`createdByLabel()` now recognizes both). Pushing the new meeting to
+Google and sending both confirmation emails happen via a new
+`public_push_event` action on `supabase/functions/google-calendar`'s
+existing edge function — the one action in that file with no signed-in
+caller at all, authorized instead by the meeting carrying a
+`booking_link_id` (nothing else can ever set that column). No Google
+connected on the owner's end just means the booking stays CRM-only,
+not a failure.
+
+Meeting type is exactly two options — Phone Call and Email — added as a
+third/fourth `MEETING_TYPES` entry, so a booked meeting renders
+identically to a hand-entered one everywhere the Calendar already shows
+one. Availability is one shared weekly schedule per user, reused by
+every link they create, not a separate schedule per link — a user who
+wants a link only offered certain hours simply toggles it inactive when
+not offered, rather than trying to give it its own hours.
+
+**Not built, deliberately**: payment/deposit collection, per-link
+custom availability, and per-user timezones (this reuses the single
+existing `CALENDAR_TIMEZONE` env var, since nothing in the app tracks a
+per-user timezone today).
 
 ### Phase 6.6 — Onboarding tour & account-completion nudges
 
