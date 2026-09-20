@@ -313,6 +313,33 @@ custom availability, and per-user timezones (this reuses the single
 existing `CALENDAR_TIMEZONE` env var, since nothing in the app tracks a
 per-user timezone today).
 
+The public booking page is framed around who you're meeting, not the
+link's internal name — "Book with Matthew," not "30-Minute Intro Call"
+(the link name/duration/type moved to a subtitle) — since the same
+person can have several links and a stranger with the URL cares who
+they're booking with first.
+
+### Notification bell
+
+Added a general-purpose `notifications` table and a bell in the top nav
+(`database/55_notifications.sql`) — general-purpose on purpose:
+`type`/`title`/`body`/`link_view`/`link_id` are generic so a future
+notification (a lead assigned to you, a follow-up due) reuses this same
+table and bell rather than needing its own mechanism. A booked meeting
+is just the first thing that writes to it, via a redefined
+`public_book_slot`.
+
+This also fixes a real gap the bell's design surfaced: **no collection in
+this app ever refreshes after the one-time load at login** — confirmed
+zero `setInterval` and zero Supabase Realtime usage anywhere before this.
+An already-open Calendar tab had no way to learn about a booking someone
+else just made. Rather than introduce Realtime — a first for this
+codebase, with real reconnect/teardown complexity — this uses a ~45s
+poll (`startNotificationPolling()`) that refreshes both `notifications`
+and `calendar_events`, re-rendering Calendar only if it's the view
+actually on screen. A deliberate simplicity-over-instant tradeoff, worth
+revisiting if live updates turn out to matter more than expected.
+
 ### Phase 6.6 — Onboarding tour & account-completion nudges
 
 Not started — scoping notes only:

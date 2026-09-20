@@ -457,6 +457,33 @@
   .profile-dropdown-footer button{background:none;border:none;color:var(--brand-accent-2);font-size:11.5px;font-weight:600;text-decoration:underline;cursor:pointer;}
   #previewAsMenu{max-height:220px;overflow-y:auto;}
 
+  /* ---------- NOTIFICATION BELL ---------- */
+  .topnav-right{display:flex;align-items:center;gap:12px;}
+  .notif-bell-wrap{position:relative;}
+  .notif-bell-btn{
+    position:relative;display:flex;align-items:center;justify-content:center;
+    width:38px;height:38px;border:1px solid var(--line);border-radius:50%;
+    background:var(--card);color:var(--navy-500);cursor:pointer;
+  }
+  .notif-bell-btn:hover{border-color:var(--brand-accent-2);color:var(--brand-accent-2);}
+  .notif-bell-btn svg{width:18px;height:18px;}
+  .notif-bell-badge{
+    position:absolute;top:-3px;right:-3px;min-width:16px;height:16px;padding:0 4px;
+    border-radius:20px;background:var(--red);color:#fff;font-size:10px;font-weight:700;
+    display:flex;align-items:center;justify-content:center;line-height:1;
+  }
+  .notif-dropdown{width:320px;max-height:420px;overflow-y:auto;}
+  .notif-dropdown-header{display:flex;justify-content:space-between;align-items:center;padding:2px 6px 10px;}
+  .notif-dropdown-header h4{margin:0;font-size:13px;color:var(--navy-700);}
+  .notif-dropdown-header button{background:none;border:none;color:var(--brand-accent-2);font-size:11.5px;font-weight:600;cursor:pointer;}
+  .notif-item{display:block;width:100%;text-align:left;padding:10px 8px;border:none;background:none;cursor:pointer;border-radius:8px;}
+  .notif-item:hover{background:var(--hover);}
+  .notif-item.unread{background:var(--accent-soft);}
+  .notif-item-title{font-size:12.5px;font-weight:600;color:var(--navy-700);}
+  .notif-item-body{font-size:11.5px;color:var(--slate-500);margin-top:2px;}
+  .notif-item-time{font-size:10.5px;color:var(--slate-400);margin-top:3px;}
+  .notif-empty{padding:20px 8px;text-align:center;font-size:12.5px;color:var(--slate-500);}
+
   .topbar{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;flex-wrap:wrap;gap:14px;}
   .topbar h1{font-size:23px;margin:0 0 4px;}
   .topbar .subtext{color:var(--slate-500);font-size:13.5px;margin:0;}
@@ -1282,6 +1309,10 @@
     .topnav{ margin:0 -12px 18px; padding:0 12px; }
     .cards-row{ grid-template-columns:1fr 1fr; }
     h1{ font-size:18px; }
+    /* The notification bell is new real estate in an already-tight topnav —
+       drop the profile button's name/role text (avatar + chevron stay) so
+       the bell has room without the row wrapping or overflowing. */
+    .profile-btn-info{ display:none; }
   }
 
   /* Printing an application: hide everything except the open application
@@ -1553,40 +1584,55 @@
         <button class="sidebar-toggle-btn" id="sidebarToggleBtn" type="button" title="Collapse menu">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
         </button>
-        <div class="profile-menu-wrap" id="profileMenuWrap">
-          <button class="profile-btn" id="profileBtn" type="button">
-            <span class="preview-as-avatar" id="profileAvatar">A</span>
-            <span class="profile-btn-info">
-              <span class="profile-btn-name" id="profileBtnName">Admin</span>
-              <span class="profile-btn-role" id="profileBtnRole">Admin</span>
-            </span>
-            <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-          </button>
-          <div class="profile-dropdown" id="profileDropdown">
-            <button type="button" class="preview-as-toggle" id="previewAsToggle" aria-expanded="false">
-              <span class="pa-toggle-label">Preview as</span>
-              <span class="pa-toggle-right"><span class="pa-count" id="previewAsCount"></span>
-                <svg class="pa-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-              </span>
+        <div class="topnav-right">
+          <div class="notif-bell-wrap" id="notifBellWrap">
+            <button class="notif-bell-btn" id="notifBellBtn" type="button" title="Notifications">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+              <span class="notif-bell-badge" id="notifBellBadge" style="display:none;">0</span>
             </button>
-            <div class="preview-as-body" id="previewAsBody">
-              <input type="text" id="previewAsSearch" class="preview-as-search" placeholder="Search users..." autocomplete="off">
-              <div id="previewAsMenu" class="preview-as-list"></div>
+            <div class="profile-dropdown notif-dropdown" id="notifDropdown">
+              <div class="notif-dropdown-header">
+                <h4>Notifications</h4>
+                <button type="button" onclick="markAllNotificationsRead()">Mark all read</button>
+              </div>
+              <div id="notifList"></div>
             </div>
-            <div class="profile-dropdown-divider"></div>
-            <button type="button" class="theme-row" id="themeToggle" role="switch" aria-checked="false">
-              <span class="theme-row-label">
-                <svg class="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-                </svg>
-                Night mode
+          </div>
+          <div class="profile-menu-wrap" id="profileMenuWrap">
+            <button class="profile-btn" id="profileBtn" type="button">
+              <span class="preview-as-avatar" id="profileAvatar">A</span>
+              <span class="profile-btn-info">
+                <span class="profile-btn-name" id="profileBtnName">Admin</span>
+                <span class="profile-btn-role" id="profileBtnRole">Admin</span>
               </span>
-              <span class="theme-switch" aria-hidden="true"><span class="theme-knob"></span></span>
+              <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
-            <div class="profile-dropdown-divider"></div>
-            <div class="profile-dropdown-footer">
-              <span id="sessionUserLabel">admin@epaypos.net</span>
-              <button id="logoutBtn">Sign out</button>
+            <div class="profile-dropdown" id="profileDropdown">
+              <button type="button" class="preview-as-toggle" id="previewAsToggle" aria-expanded="false">
+                <span class="pa-toggle-label">Preview as</span>
+                <span class="pa-toggle-right"><span class="pa-count" id="previewAsCount"></span>
+                  <svg class="pa-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                </span>
+              </button>
+              <div class="preview-as-body" id="previewAsBody">
+                <input type="text" id="previewAsSearch" class="preview-as-search" placeholder="Search users..." autocomplete="off">
+                <div id="previewAsMenu" class="preview-as-list"></div>
+              </div>
+              <div class="profile-dropdown-divider"></div>
+              <button type="button" class="theme-row" id="themeToggle" role="switch" aria-checked="false">
+                <span class="theme-row-label">
+                  <svg class="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                  </svg>
+                  Night mode
+                </span>
+                <span class="theme-switch" aria-hidden="true"><span class="theme-knob"></span></span>
+              </button>
+              <div class="profile-dropdown-divider"></div>
+              <div class="profile-dropdown-footer">
+                <span id="sessionUserLabel">admin@epaypos.net</span>
+                <button id="logoutBtn">Sign out</button>
+              </div>
             </div>
           </div>
         </div>
@@ -3979,6 +4025,11 @@ async function loadBookingAvailabilityFromSupabase(){
   if(error){ reportLoadFailure('booking availability from Supabase', error); return []; }
   return data;
 }
+async function loadNotificationsFromSupabase(){
+  const { data, error } = await supa.from('notifications').select('*').order('created_at', { ascending: false }).limit(50);
+  if(error){ reportLoadFailure('notifications from Supabase', error); return []; }
+  return data;
+}
 
 // Real data layer — reads the Supabase `partners` table (RLS-scoped: an
 // internal viewAllPartners role gets everyone, a portal login gets only
@@ -4043,6 +4094,8 @@ let CONNECTED_CALENDARS = [];
 let CALENDAR_EVENTS = [];
 let BOOKING_LINKS = [];
 let BOOKING_AVAILABILITY = [];
+let NOTIFICATIONS = [];
+let notifPollTimer = null;
 let calViewDate = new Date();
 let calFilter = 'all';
 // Safe placeholder until real login resolves — enterAppAsAuthUser() replaces
@@ -4213,6 +4266,8 @@ function enterApp(){
   // Portal logins may still owe us their application; internal users never do.
   refreshMyOnboarding();
   populatePreviewAsSelect();
+  initNotificationBell();
+  startNotificationPolling();
   // Honour the hash so refreshing keeps you on the tab you were looking at;
   // anything unrecognised (including a leftover #access_token from a recovery
   // link) falls back to the dashboard.
@@ -4602,6 +4657,7 @@ async function enterAppAsAuthUser(authUser){
     loadCalendarEventsFromSupabase(),
     loadBookingLinksFromSupabase(),
     loadBookingAvailabilityFromSupabase(),
+    loadNotificationsFromSupabase(),
     loadResidualsFromSupabase(),
     loadLoadersFromSupabase(),
     loadInstantlyContactsFromSupabase(),
@@ -4636,7 +4692,7 @@ async function enterAppAsAuthUser(authUser){
     leadCallNotes, leadDocuments, offices, lendingLeads, lendingLeadNotes,
     lendingLeadCallNotes, isoLeads, isoLeadNotes, isoLeadCallNotes,
     newsletters, nlTemplates, connectedCalendars,
-    calendarEvents, bookingLinks, bookingAvailability, residualPayouts, atmLoaders, instantlyContacts, partnerDocuments, applicationLinks,
+    calendarEvents, bookingLinks, bookingAvailability, notifications, residualPayouts, atmLoaders, instantlyContacts, partnerDocuments, applicationLinks,
     integrationsFromDb, contacts
   ] = await tablesPromise;
 
@@ -4662,6 +4718,7 @@ async function enterAppAsAuthUser(authUser){
   CALENDAR_EVENTS = calendarEvents;
   BOOKING_LINKS = bookingLinks;
   BOOKING_AVAILABILITY = bookingAvailability;
+  NOTIFICATIONS = notifications;
   calFilter = defaultCalendarFilter();
   RESIDUALS = residualPayouts;
   LOADERS = atmLoaders;
@@ -4990,6 +5047,7 @@ document.getElementById('setPasswordFormEl').addEventListener('submit', async fu
 document.getElementById('logoutBtn').addEventListener('click', async function(){
   revealedSensitiveFields.clear();
   unlockedSensitiveFields.clear();
+  stopNotificationPolling();
   await supa.auth.signOut();
   showLoginScreen();
 });
@@ -6003,6 +6061,9 @@ async function renderBookingLandingPage(slug){
     selectedDate: startDate,
     selectedTime: null,
   };
+  // The page is framed around who you're meeting, not the internal name the
+  // owner gave the link — "Book with Matthew," not "30-Minute Intro Call."
+  document.title = 'Book with ' + link.owner_name;
   renderBookingPicker();
 }
 
@@ -6105,9 +6166,9 @@ function renderBookingPicker(){
   const slots = bookingSlotsFor(b.selectedDate);
 
   document.getElementById('landingContent').innerHTML = `
-    <h1 class="landing-h1">${b.link.name}</h1>
+    <h1 class="landing-h1">Book with ${b.link.owner_name}</h1>
     <p class="landing-sub">
-      With ${b.link.owner_name} &middot; ${b.durationMinutes} min &middot; ${(MEETING_TYPES[b.link.meeting_type] || {}).label || 'Meeting'}
+      ${b.link.name} &middot; ${b.durationMinutes} min &middot; ${(MEETING_TYPES[b.link.meeting_type] || {}).label || 'Meeting'}
       ${b.link.description ? '<br>' + b.link.description : ''}
     </p>
 
@@ -6134,8 +6195,8 @@ function renderBookingContactForm(){
   const b = BOOKING;
   document.getElementById('landingContent').innerHTML = `
     <button type="button" class="booking-back-link" onclick="backToBookingPicker()">&larr; Choose a different time</button>
-    <h1 class="landing-h1">${b.link.name}</h1>
-    <p class="landing-sub">${formatDate(b.selectedDate)} at ${formatSlotTime(b.selectedTime)} with ${b.link.owner_name}</p>
+    <h1 class="landing-h1">Book with ${b.link.owner_name}</h1>
+    <p class="landing-sub">${b.link.name} &middot; ${formatDate(b.selectedDate)} at ${formatSlotTime(b.selectedTime)}</p>
 
     <div class="landing-field"><label>Your name</label><input id="bkName" placeholder="e.g. Tony Russo"></div>
     <div class="landing-field"><label>Email</label><input id="bkEmail" type="email" placeholder="you@business.com"></div>
@@ -6196,11 +6257,17 @@ async function submitBookingRequest(){
   // does under the hood — see the public_push_event dispatch comment in
   // supabase/functions/google-calendar/index.ts for why that action alone
   // accepts a call with no signed-in caller.
+  // fetch() only rejects on a network failure, never on a non-2xx response —
+  // logging the body on failure is the only way a bad deploy or a missing
+  // secret on the function ever surfaces anywhere, since this call has
+  // nothing else watching it.
   fetch(SUPABASE_URL + '/functions/v1/google-calendar', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY },
     body: JSON.stringify({ action: 'public_push_event', eventId: row.event_id }),
-  }).catch(() => {});
+  }).then(async r => {
+    if(!r.ok) console.error('public_push_event failed', r.status, await r.text().catch(() => ''));
+  }).catch(err => console.error('public_push_event network error', err));
 
   const calLinks = bookingCalendarLinks(
     `${b.link.name} with ${b.link.owner_name}`,
@@ -16009,6 +16076,121 @@ async function deleteBookingLink(id){
   if(error){ showToast('Could not delete: ' + error.message, 'error'); return; }
   BOOKING_LINKS = BOOKING_LINKS.filter(l => l.id !== id);
   openBookingLinksDrawer();
+}
+
+/* =========================================================================
+   NOTIFICATION BELL — general-purpose (database/55_notifications.sql):
+   `type`/`title`/`body`/`link_view`/`link_id` are generic so a future
+   notification (a lead assigned to you, a follow-up due) reuses this same
+   table and this same bell, not a new mechanism. A booked meeting is just
+   the first thing that writes to it.
+
+   This app has never used Supabase Realtime, and introducing a websocket
+   channel — with its own reconnect/teardown lifecycle — would be a first
+   for this codebase, materially more to get right and to debug later. A
+   ~45s poll is a deliberate, much simpler stand-in: cheap, boring, and good
+   enough for "someone booked a meeting," not a chat app.
+   ========================================================================= */
+function timeAgo(iso){
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.round(diffMs / 60000);
+  if(mins < 1) return 'just now';
+  if(mins < 60) return mins + 'm ago';
+  const hours = Math.round(mins / 60);
+  if(hours < 24) return hours + 'h ago';
+  return Math.round(hours / 24) + 'd ago';
+}
+
+function renderNotificationBell(){
+  const badge = document.getElementById('notifBellBadge');
+  const list = document.getElementById('notifList');
+  if(!badge || !list) return;
+
+  const unread = NOTIFICATIONS.filter(n => !n.read).length;
+  badge.style.display = unread ? 'flex' : 'none';
+  badge.textContent = unread > 9 ? '9+' : String(unread);
+
+  list.innerHTML = NOTIFICATIONS.length
+    ? NOTIFICATIONS.slice(0, 20).map(n => `
+      <button type="button" class="notif-item ${n.read ? '' : 'unread'}" onclick="openNotification('${n.id}')">
+        <div class="notif-item-title">${n.title}</div>
+        ${n.body ? `<div class="notif-item-body">${n.body}</div>` : ''}
+        <div class="notif-item-time">${timeAgo(n.created_at)}</div>
+      </button>`).join('')
+    : '<div class="notif-empty">Nothing yet</div>';
+}
+
+// Binds the toggle/outside-click behavior exactly once per session — see
+// populatePreviewAsSelect() above for the same wrap/button/dropdown/.open
+// pattern this mirrors. renderNotificationBell() (called on load and every
+// poll tick) only ever touches the badge and the list's own innerHTML, so
+// nothing here needs re-binding on refresh.
+function initNotificationBell(){
+  const btn = document.getElementById('notifBellBtn');
+  const dropdown = document.getElementById('notifDropdown');
+  if(!btn || !dropdown || btn.dataset.bound) { renderNotificationBell(); return; }
+  btn.dataset.bound = '1';
+
+  btn.addEventListener('click', function(e){
+    e.stopPropagation();
+    btn.classList.toggle('open');
+    dropdown.classList.toggle('open');
+  });
+  document.addEventListener('click', function(e){
+    if(!document.getElementById('notifBellWrap').contains(e.target)){
+      btn.classList.remove('open');
+      dropdown.classList.remove('open');
+    }
+  });
+  renderNotificationBell();
+}
+
+async function openNotification(id){
+  const n = NOTIFICATIONS.find(x => x.id === id);
+  if(!n) return;
+  document.getElementById('notifBellBtn').classList.remove('open');
+  document.getElementById('notifDropdown').classList.remove('open');
+  if(!n.read){
+    n.read = true;
+    renderNotificationBell();
+    await supa.from('notifications').update({ read: true }).eq('id', id);
+  }
+  if(n.link_view){
+    // Calendar is EPAY-only regardless of which brand a booking link itself
+    // was for (EPAY_ONLY_VIEWS) — switch brand first so the click actually
+    // lands somewhere, instead of showView() silently redirecting to
+    // Referral Partners because the ATM brand tab happened to be active.
+    if(n.link_view === 'calendar' && currentBrand !== 'epay') setBrand('epay');
+    showView(n.link_view);
+  }
+}
+
+async function markAllNotificationsRead(){
+  const unreadIds = NOTIFICATIONS.filter(n => !n.read).map(n => n.id);
+  if(!unreadIds.length) return;
+  NOTIFICATIONS.forEach(n => { n.read = true; });
+  renderNotificationBell();
+  await supa.from('notifications').update({ read: true }).in('id', unreadIds);
+}
+
+// The actual fix for "a booking doesn't show up on my calendar" — nothing
+// in this app refreshes after the one-time load at login (confirmed: no
+// setInterval, no realtime, anywhere), so an already-open Calendar tab has
+// no way to learn about a row someone else's booking just inserted. This
+// re-fetches both notifications and calendar_events on a timer and
+// re-renders the Calendar only if it's the view actually on screen —
+// cheap enough to just always do rather than track more state to skip it.
+function startNotificationPolling(){
+  stopNotificationPolling();
+  notifPollTimer = setInterval(async () => {
+    NOTIFICATIONS = await loadNotificationsFromSupabase();
+    renderNotificationBell();
+    CALENDAR_EVENTS = await loadCalendarEventsFromSupabase();
+    if(document.getElementById('view-calendar').style.display !== 'none') renderCalendar();
+  }, 45000);
+}
+function stopNotificationPolling(){
+  if(notifPollTimer){ clearInterval(notifPollTimer); notifPollTimer = null; }
 }
 
 function renderConnectedCalendarsList(){
