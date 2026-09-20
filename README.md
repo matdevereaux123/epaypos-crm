@@ -182,9 +182,10 @@ past it until a MID (merchant ID) is entered — enforced in
 Shipment directly, so the multi-stage-skip fix above still holds. See
 `database/50_account_boarding_mid.sql` (`leads.mid`).
 
-Added: the **Partners section of the left nav is now collapsible**, same
-`.nav-section-toggle`/`.nav-collapsible` pattern already used elsewhere,
-state persisted in `localStorage`.
+The **Partners section of the left nav** briefly went collapsible (same
+`.nav-section-toggle`/`.nav-collapsible` pattern used elsewhere) and was
+reverted back to a plain always-open section on request — it stays open
+alongside Overview and Pipeline now.
 
 Extended: the **Contacts tab is now a unified directory**, not just
 manually-added contacts — it merges in every Account, Lead, Agent, and

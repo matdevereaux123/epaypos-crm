@@ -1426,24 +1426,19 @@
           Follow-Ups
         </button>
 
-        <button class="nav-section-toggle" id="partnersSectionToggle" type="button">
-          <span>Partners</span>
-          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        <div class="nav-section-label">Partners</div>
+        <button class="nav-item active" data-view="referrals">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Referral Partners
         </button>
-        <div class="nav-collapsible" id="partnersSectionItems">
-          <button class="nav-item active" data-view="referrals">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            Referral Partners
-          </button>
-          <button class="nav-item" data-view="loaders" id="navLoadersItem" style="display:none;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
-            Loaders
-          </button>
-          <button class="nav-item" data-view="agents" id="navAgentsItem">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
-            Agents/ISOs
-          </button>
-        </div>
+        <button class="nav-item" data-view="loaders" id="navLoadersItem" style="display:none;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+          Loaders
+        </button>
+        <button class="nav-item" data-view="agents" id="navAgentsItem">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
+          Agents/ISOs
+        </button>
 
         <button class="nav-section-toggle" id="lendingSectionToggle" type="button">
           <span>Lending</span>
@@ -7338,10 +7333,10 @@ document.querySelectorAll('.nav-item[data-view]').forEach(btn=>{
 /* =========================================================================
    COLLAPSIBLE NAV SECTIONS
    Reusable pattern: any button.nav-section-toggle with a matching
-   .nav-collapsible sibling can collapse/expand. Overview and Pipeline stay
-   as plain always-open sections (nav-section-label); every other section
-   opts in the same way, by swapping its <div class="nav-section-label">
-   for this pair.
+   .nav-collapsible sibling can collapse/expand. Overview, Pipeline, and
+   Partners stay as plain always-open sections (nav-section-label); every
+   other section opts in the same way, by swapping its
+   <div class="nav-section-label"> for this pair.
    ========================================================================= */
 const LS_NAV_COLLAPSE_KEY = 'epay_crm_nav_collapse_v1';
 function loadCollapsedSections(){
