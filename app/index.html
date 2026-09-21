@@ -10929,16 +10929,63 @@ async function saveUserEdit(id){
 async function deleteUser(id){
   const u = USERS.find(x => x.id === id);
   if(!u) return;
-  if(u.id === currentUser.id){ alert("You can't delete the account you're currently logged in as."); return; }
+  if(u.id === currentUser.id){ showToast("You can't delete the account you're currently logged in as.", 'error'); return; }
   if(USERS.some(other => other.manager_id === id)){
-    alert(`Can't delete "${u.name}" — other users still report to them. Reassign their reports first.`);
+    showToast(`Can't delete “${u.name}” — other users still report to them. Reassign their reports first.`, 'error');
     return;
   }
-  if(!confirm(`Delete "${u.name}"? This can't be undone.`)) return;
-  const { error } = await supa.from('users').delete().eq('id', id);
-  if(error){ alert('Could not delete user: ' + error.message); return; }
+
+  // Deleting a user used to remove the CRM row and leave their Supabase login
+  // working, so the person could still sign in to an app with nothing behind
+  // them. It now goes through the delete-user function, which removes the
+  // login first and the record second.
+  const hasLogin = !!u.auth_id || !!u.invite_sent;
+  const assigned = LEADS.filter(l => l.assigned_to === id).length
+                 + COLD_LEADS.filter(c => c.assigned_to === id).length;
+
+  // Names what actually happens rather than a bare "can't be undone". The
+  // work does not disappear with them — it becomes unassigned — and that is
+  // the thing people most expect to lose.
+  const notes = [
+    hasLogin
+      ? 'Their login is removed too, so they can no longer sign in.'
+      : 'They were never invited, so there is no login to remove.',
+    assigned ? `${assigned} lead${assigned === 1 ? '' : 's'} assigned to them become unassigned, not deleted.` : null,
+    'Anything personal to them — their booking links, calendar connection and notifications — is removed.',
+    'This cannot be undone.'
+  ].filter(Boolean);
+
+  if(!confirm(`Delete “${u.name}”?\n\n${notes.join('\n')}`)) return;
+
+  // Raw fetch, not supa.functions.invoke(): invoke reports every non-2xx as
+  // "non-2xx status code" and discards the body, so the real reason — not
+  // authorised, last admin, whatever — would be unrecoverable.
+  let out;
+  try {
+    const { data: { session } } = await supa.auth.getSession();
+    const res = await fetch(SUPABASE_URL + '/functions/v1/delete-user', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + (session ? session.access_token : SUPABASE_ANON_KEY)
+      },
+      body: JSON.stringify({ userId: id })
+    });
+    const raw = await res.text();
+    try { out = JSON.parse(raw); } catch(e){ out = { error: raw || ('Request failed (' + res.status + ')') }; }
+    if(!res.ok && !out.error) out = { error: 'Request failed (' + res.status + ')' };
+  } catch(e){
+    out = { error: e.message || 'Could not reach the delete service' };
+  }
+
+  if(out.error){ showToast(out.error, 'error'); return; }
+
   USERS = USERS.filter(x => x.id !== id);
   renderUsersTable();
+  showToast(out.authDeleted
+    ? `“${u.name}” deleted. Their login has been removed.`
+    : `“${u.name}” deleted. They had no login to remove.`, 'success');
 }
 
 /* =========================================================================
