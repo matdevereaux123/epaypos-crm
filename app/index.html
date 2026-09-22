@@ -3631,7 +3631,7 @@ async function loadApplicationsFromSupabase(){
     dob, drivers_license_state, legal_business_name, dba_name,
     business_address, business_email, business_phone, business_start_date,
     business_type_services, highest_sale_amount, average_sale_amount,
-    monthly_sales_average, terms_accepted, paper_application_file_path
+    monthly_sales_average, terms_accepted, paper_application_file_path, assigned_to
   `).order('submitted_at', { ascending: false });
   if(error){ reportLoadFailure('applications from Supabase', error); return []; }
   return data;
@@ -12632,6 +12632,15 @@ async function saveColdLeadAssignment(id, userId){
   renderColdLeadsTable();
 }
 
+async function saveApplicationAssignment(id, userId){
+  const a = APPLICATIONS.find(x=>x.id===id); if(!a) return;
+  const assigned_to = userId || null;
+  const { error } = await supa.from('applications').update({ assigned_to }).eq('id', id);
+  if(error){ alert('Could not save: ' + error.message); return; }
+  a.assigned_to = assigned_to;
+  renderApplicationsTable();
+}
+
 async function saveInboundLeadFields(id){
   const l = LEADS.find(x=>x.id===id); if(!l) return;
   let lead_source = document.getElementById('spLeadSource').value.trim();
@@ -13833,8 +13842,23 @@ document.addEventListener('input', function(e){
 
 function applicationFormFieldsHtml(a){
   a = a || emptyApplicationFields();
+  // This form is staff-only (portal users cannot reach "New application" or
+  // "Upload paper application" at all), so every assignable user is a fair
+  // option here — no downline-only narrowing like the portal-facing dropdowns.
+  const assignable = assignableUsers().slice().sort((x, y) => x.name.localeCompare(y.name));
+  const internalAssignees = assignable.filter(u => roleOf(u).portal_scope === 'internal');
+  const portalAssignees = assignable.filter(u => roleOf(u).portal_scope === 'own');
   return `
-    <h3 style="font-size:14px;margin:0 0 12px;">Applicant</h3>
+    <div class="field">
+      <label>Assign to <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
+      <select id="apAssignedTo">
+        <option value="">Unassigned</option>
+        ${internalAssignees.length ? `<optgroup label="Employees">${internalAssignees.map(u => assigneeOptionHtml(u, a.assigned_to)).join('')}</optgroup>` : ''}
+        ${portalAssignees.length ? `<optgroup label="Agents &amp; partners">${portalAssignees.map(u => assigneeOptionHtml(u, a.assigned_to)).join('')}</optgroup>` : ''}
+      </select>
+      <p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">If this application came from an agent or ISO's own work, assign it to them so it shows up in their portal.</p>
+    </div>
+    <h3 style="font-size:14px;margin:20px 0 12px;">Applicant</h3>
     <div class="field"><label>First name*</label><input id="apFirst" value="${a.first_name}"></div>
     <div class="field"><label>Last name*</label><input id="apLast" value="${a.last_name}"></div>
     <div class="field"><label>Email*</label><input id="apEmail" type="email" value="${a.email}"></div>
@@ -13964,6 +13988,7 @@ async function saveNewApplication(source){
     average_sale_amount: document.getElementById('apAvgSale').value.trim(),
     monthly_sales_average: document.getElementById('apMonthlySales').value.trim(),
     terms_accepted: document.getElementById('apTerms').checked,
+    assigned_to: document.getElementById('apAssignedTo').value || null,
   };
 
   const match = findMatchingAccount(app);
@@ -14031,6 +14056,9 @@ async function openApplicationDetail(id){
   }
   const linkedAccount = a.linked_account_id ? LEADS.find(l => l.id === a.linked_account_id) : null;
   const accounts = scopedLeads().filter(l => l.converted_to_account);
+  const assignable = assignableUsers().slice().sort((x, y) => x.name.localeCompare(y.name));
+  const internalAssignees = assignable.filter(u => roleOf(u).portal_scope === 'internal');
+  const portalAssignees = assignable.filter(u => roleOf(u).portal_scope === 'own');
 
   document.getElementById('applicationDrawer').innerHTML = `
     <div class="drawer-head">
@@ -14053,6 +14081,15 @@ async function openApplicationDetail(id){
         <select onchange="linkApplicationToAccount('${a.id}', this.value)" style="width:100%;padding:9px 11px;border-radius:7px;border:1px solid var(--line);font-size:13.5px;margin-top:8px;">
           <option value="">${linkedAccount ? 'Re-link to a different account...' : 'Manually link to an account...'}</option>
           ${accounts.map(acc=>`<option value="${acc.id}" ${a.linked_account_id===acc.id?'selected':''}>${acc.business_name}</option>`).join('')}
+        </select>
+      </div>
+
+      <div class="field" style="margin-bottom:18px;">
+        <label>Assigned to</label>
+        <select id="applicationAssignedTo" onchange="saveApplicationAssignment('${a.id}', this.value)">
+          <option value="">Unassigned</option>
+          ${internalAssignees.length ? `<optgroup label="Employees">${internalAssignees.map(u => assigneeOptionHtml(u, a.assigned_to)).join('')}</optgroup>` : ''}
+          ${portalAssignees.length ? `<optgroup label="Agents &amp; partners">${portalAssignees.map(u => assigneeOptionHtml(u, a.assigned_to)).join('')}</optgroup>` : ''}
         </select>
       </div>
 
