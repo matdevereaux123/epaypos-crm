@@ -1337,6 +1337,66 @@
     body.printing-team-structure #teamStructureHierarchy *{ visibility:visible; }
     body.printing-team-structure #teamStructureHierarchy{ position:absolute; top:0; left:0; width:100%; }
   }
+
+  /* Quick-add FAB: fixed bottom-right, opens a small menu of the 5 record
+     types the user can jump straight into creating from anywhere in the
+     app. The triangle mirrors the EPAY wordmark's angular brand shape —
+     there's no exported vector logo to reuse, so this is a simple inline
+     SVG built to match the brand accent gradient rather than a real asset. */
+  #quickAddFab{ position:fixed; right:26px; bottom:26px; z-index:900; display:flex; flex-direction:column; align-items:flex-end; gap:10px; }
+  #quickAddFabBtn{
+    width:56px; height:56px; border-radius:50%; border:none; cursor:pointer;
+    background:linear-gradient(135deg, var(--brand-accent), var(--brand-accent-2));
+    color:#fff; display:flex; align-items:center; justify-content:center;
+    box-shadow:0 6px 20px rgba(0,0,0,.28); position:relative; overflow:hidden;
+    transition:transform .15s ease, box-shadow .15s ease;
+  }
+  #quickAddFabBtn svg{ width:22px; height:22px; fill:#fff; transition:transform .2s ease; }
+  #quickAddFabBtn:hover{ transform:translateY(-2px); box-shadow:0 8px 24px rgba(0,0,0,.34); }
+  #quickAddFabBtn:active{ transform:translateY(0) scale(.94); }
+  #quickAddFab.open #quickAddFabBtn svg{ transform:rotate(135deg); }
+
+  /* Click feedback: an expanding ring that fires on every press, plus the
+     brief scale-down above — a visible "something happened" pulse, on top
+     of (not instead of) the menu opening. */
+  #quickAddFabBtn::after{
+    content:''; position:absolute; inset:0; border-radius:50%;
+    background:#fff; opacity:0; transform:scale(1); pointer-events:none;
+  }
+  #quickAddFabBtn.pulse::after{ animation:fabPulse .5s ease-out; }
+  @keyframes fabPulse{
+    0%{ opacity:.55; transform:scale(.3); }
+    100%{ opacity:0; transform:scale(1.8); }
+  }
+
+  .quick-add-menu{
+    display:flex; flex-direction:column; gap:8px; align-items:flex-end;
+    opacity:0; pointer-events:none; transform:translateY(8px);
+    transition:opacity .15s ease, transform .15s ease;
+  }
+  #quickAddFab.open .quick-add-menu{ opacity:1; pointer-events:auto; transform:translateY(0); }
+  .quick-add-menu button{
+    display:flex; align-items:center; gap:8px; border:none; cursor:pointer;
+    background:var(--surface-2); color:var(--text); border:1px solid var(--line);
+    padding:9px 16px 9px 12px; border-radius:24px; font-size:13px; font-weight:600;
+    box-shadow:0 3px 10px rgba(0,0,0,.18); white-space:nowrap;
+    transition:background .12s ease, transform .12s ease;
+  }
+  .quick-add-menu button:hover{ background:var(--hover); transform:translateX(-2px); }
+  .quick-add-menu button:active{ transform:translateX(-2px) scale(.96); }
+  .quick-add-menu button svg{ width:16px; height:16px; stroke:var(--brand-accent-2); flex-shrink:0; }
+
+  .dash-tasks-bar{ display:flex; gap:10px; overflow-x:auto; padding-bottom:2px; }
+  .dash-task-chip{
+    display:flex; align-items:flex-start; gap:8px; cursor:pointer; flex-shrink:0;
+    min-width:180px; max-width:240px; padding:10px 12px; border-radius:10px;
+    border:1px solid var(--line); background:var(--surface-2);
+    transition:background .12s ease;
+  }
+  .dash-task-chip:hover{ background:var(--hover); }
+  .dash-task-chip input[type="checkbox"]{ margin-top:2px; flex-shrink:0; }
+  .dash-task-chip .txt{ font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .dash-task-chip .meta{ font-size:11.5px; color:var(--slate-400); margin-top:2px; }
 </style>
 </head><body data-brand="epay">
 
@@ -1447,6 +1507,10 @@
         <button class="nav-item" data-view="calendar" id="navCalendarItem">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           Calendar
+        </button>
+        <button class="nav-item" data-view="tasks">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          Tasks
         </button>
         <button class="nav-item" data-view="liverecall">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><path d="M11 8v3l2 2"/></svg>
@@ -1654,6 +1718,12 @@
           <div class="quick-actions" id="quickActions"></div>
         </div>
 
+        <div class="panel" style="margin-bottom:20px;">
+          <div class="panel-head"><h2>My tasks</h2><a href="#" onclick="showView('tasks'); return false;" style="font-size:12.5px;font-weight:600;">View all &rarr;</a></div>
+          <div id="dashTasksBar"></div>
+          <div id="dashTasksEmptyState" class="empty-state" style="display:none;">Nothing on your plate — add one from the + button.</div>
+        </div>
+
         <div class="dash-section-label" id="dashPrimaryLabel">Pipeline &amp; follow-ups</div>
         <div class="cards-row" id="dashCardsEpay"></div>
 
@@ -1711,6 +1781,26 @@
         <div class="panel">
           <div class="cal-grid-head" id="calGridHead"></div>
           <div class="cal-grid" id="calGrid"></div>
+        </div>
+      </section>
+
+      <!-- TASKS -->
+      <section id="view-tasks" class="view" style="display:none;">
+        <div class="topbar">
+          <div>
+            <h1>Tasks</h1>
+            <p class="subtext">Yours, and anything handed to you. Use the + button to add one from anywhere.</p>
+          </div>
+          <button class="btn btn-accent btn-sm" onclick="openTaskDrawer()">+ Add Task</button>
+        </div>
+
+        <div class="cal-toolbar">
+          <div class="phase-toggle" id="taskFilterToggle"></div>
+        </div>
+
+        <div class="panel">
+          <div id="tasksList"></div>
+          <div id="tasksEmptyState" class="empty-state" style="display:none;">No tasks here.</div>
         </div>
       </section>
 
@@ -2741,6 +2831,40 @@
 <!-- ================= DRAWER: ADD / VIEW APPLICATION ================= -->
 <div class="overlay" id="applicationOverlay">
   <div class="drawer" id="applicationDrawer"></div>
+</div>
+
+<!-- ================= DRAWER: ADD TASK ================= -->
+<div class="overlay" id="taskOverlay">
+  <div class="drawer" id="taskDrawer" style="width:420px;"></div>
+</div>
+
+<!-- ================= QUICK-ADD FAB ================= -->
+<div id="quickAddFab">
+  <div class="quick-add-menu" id="quickAddMenu">
+    <button onclick="quickAddChoice('task')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      Task
+    </button>
+    <button onclick="quickAddChoice('cold_lead')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      Cold Lead
+    </button>
+    <button onclick="quickAddChoice('lead')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      Lead
+    </button>
+    <button onclick="quickAddChoice('account')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+      Account
+    </button>
+    <button onclick="quickAddChoice('application')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+      Application
+    </button>
+  </div>
+  <button id="quickAddFabBtn" onclick="toggleQuickAddMenu(event)" aria-label="Quick add">
+    <svg viewBox="0 0 24 24"><polygon points="12,4 21,20 3,20"/></svg>
+  </button>
 </div>
 
 <script>
@@ -4025,6 +4149,11 @@ async function loadNotificationsFromSupabase(){
   if(error){ reportLoadFailure('notifications from Supabase', error); return []; }
   return data;
 }
+async function loadTasksFromSupabase(){
+  const { data, error } = await supa.from('tasks').select('*').order('due_date', { ascending: true, nullsFirst: false });
+  if(error){ reportLoadFailure('tasks from Supabase', error); return []; }
+  return data;
+}
 
 // Real data layer — reads the Supabase `partners` table (RLS-scoped: an
 // internal viewAllPartners role gets everyone, a portal login gets only
@@ -4091,6 +4220,8 @@ let BOOKING_LINKS = [];
 let BOOKING_AVAILABILITY = [];
 let NOTIFICATIONS = [];
 let notifPollTimer = null;
+let TASKS = [];
+let taskFilter = 'open';
 // Set by openPaperApplicationForLink(), consumed once by saveNewApplication()
 // — carries which Lead/Account/Cold Lead a quick "Mark as Physical
 // Application" was opened from, so the new row links straight to it.
@@ -4698,6 +4829,7 @@ async function enterAppAsAuthUser(authUser){
     loadBookingLinksFromSupabase(),
     loadBookingAvailabilityFromSupabase(),
     loadNotificationsFromSupabase(),
+    loadTasksFromSupabase(),
     loadResidualsFromSupabase(),
     loadLoadersFromSupabase(),
     loadInstantlyContactsFromSupabase(),
@@ -4732,7 +4864,7 @@ async function enterAppAsAuthUser(authUser){
     leadCallNotes, leadDocuments, offices, lendingLeads, lendingLeadNotes,
     lendingLeadCallNotes, isoLeads, isoLeadNotes, isoLeadCallNotes,
     newsletters, nlTemplates, connectedCalendars,
-    calendarEvents, bookingLinks, bookingAvailability, notifications, residualPayouts, atmLoaders, instantlyContacts, partnerDocuments, applicationLinks,
+    calendarEvents, bookingLinks, bookingAvailability, notifications, tasks, residualPayouts, atmLoaders, instantlyContacts, partnerDocuments, applicationLinks,
     integrationsFromDb, contacts
   ] = await tablesPromise;
 
@@ -4759,6 +4891,7 @@ async function enterAppAsAuthUser(authUser){
   BOOKING_LINKS = bookingLinks;
   BOOKING_AVAILABILITY = bookingAvailability;
   NOTIFICATIONS = notifications;
+  TASKS = tasks;
   calFilter = defaultCalendarFilter();
   RESIDUALS = residualPayouts;
   LOADERS = atmLoaders;
@@ -7754,6 +7887,7 @@ function showView(view, fromHistory){
   if(view === 'lendingleads') renderLendingLeadsBoard();
   if(view === 'isoleads') renderIsoLeadsBoard();
   if(view === 'calendar') renderCalendar();
+  if(view === 'tasks') renderTasksList();
   if(view === 'liverecall') renderLiveRecall();
   if(view === 'teamstructure') renderTeamStructure();
 
@@ -7966,6 +8100,7 @@ function scopedPartnersForCurrentUser(){
 
 function renderDashboard(){
   renderQuickActions();
+  renderDashboardTasksBar();
 
   const scoped = scopedPartnersForCurrentUser();
   const totalLeads = scoped.reduce((s,p)=>s+p.leads_submitted,0);
@@ -13255,6 +13390,7 @@ async function openLeadDetail(id){
     ${editableRow('Est. monthly volume', l.est_volume, { table:'leads', id:l.id, column:'est_volume', record:base })}
     ${editableRow('Business address', l.business_address, { table:'leads', id:l.id, column:'business_address', type:'textarea', record:base })}
     ${renderAttachApplicationWidget('lead', l.id)}
+    ${renderRecordTasksWidget('lead', l.id)}
     <div class="detail-row"><span class="k">Created</span><span class="v">${formatDate(l.created_at)}</span></div>
     ${createdByLabel(l) ? `<div class="detail-row"><span class="k">Created by</span><span class="v">${createdByLabel(l)}</span></div>` : ''}
     <div class="field" style="margin-top:12px;">
@@ -14635,6 +14771,7 @@ function openColdLeadDetail(id){
         ${editableRow('Website', c.website, { table:'cold_leads', id:c.id, column:'website', record:c })}
         ${editableRow('Source detail', c.source, { table:'cold_leads', id:c.id, column:'source', record:c })}
         ${renderAttachApplicationWidget('cold_lead', c.id)}
+        ${renderRecordTasksWidget('cold_lead', c.id)}
         <div class="detail-row"><span class="k">Added</span><span class="v">${formatDate(c.created_at)}</span></div>
         ${createdByLabel(c) ? `<div class="detail-row"><span class="k">Added by</span><span class="v">${createdByLabel(c)}</span></div>` : ''}
         <div class="field" style="margin-top:12px;">
@@ -16553,6 +16690,284 @@ function startNotificationPolling(){
 }
 function stopNotificationPolling(){
   if(notifPollTimer){ clearInterval(notifPollTimer); notifPollTimer = null; }
+}
+
+/* =========================================================================
+   TASKS — database/62_tasks.sql. Yours (created or assigned) show up here;
+   staff sees everyone's. Each can optionally point at one record (a
+   lead/account, a cold lead, or an application) via the same
+   "at-most-one-of-three-linked-ids" shape calendar_events already uses.
+   ========================================================================= */
+function myTasks(){
+  return roleOf(currentUser).perms.fullDashboard
+    ? TASKS.slice()
+    : TASKS.filter(t => t.created_by === currentUser.id || t.assigned_to === currentUser.id);
+}
+
+function taskLinkedRecordHtml(t){
+  if(t.linked_lead_id){
+    const l = LEADS.find(x => x.id === t.linked_lead_id);
+    if(!l) return '';
+    return `<a href="#" onclick="event.stopPropagation(); showView('leads'); openLeadDetail('${l.id}'); return false;">${l.business_name}</a>`;
+  }
+  if(t.linked_cold_lead_id){
+    const c = COLD_LEADS.find(x => x.id === t.linked_cold_lead_id);
+    if(!c) return '';
+    return `<a href="#" onclick="event.stopPropagation(); showView('coldleads'); openColdLeadDetail('${c.id}'); return false;">${c.business_name}</a>`;
+  }
+  if(t.linked_application_id){
+    const a = APPLICATIONS.find(x => x.id === t.linked_application_id);
+    if(!a) return '';
+    const label = a.legal_business_name || `${a.first_name||''} ${a.last_name||''}`.trim() || 'Application';
+    return `<a href="#" onclick="event.stopPropagation(); showView('applications'); openApplicationDetail('${a.id}'); return false;">${label}</a>`;
+  }
+  return '';
+}
+
+function renderTasksList(){
+  document.getElementById('taskFilterToggle').innerHTML = ['open','completed','all'].map(f => `
+    <button class="${taskFilter===f?'active':''}" onclick="setTaskFilter('${f}')">${f[0].toUpperCase()+f.slice(1)}</button>
+  `).join('');
+
+  let rows = myTasks();
+  if(taskFilter === 'open') rows = rows.filter(t => !t.completed);
+  else if(taskFilter === 'completed') rows = rows.filter(t => t.completed);
+  rows = rows.sort((a, b) => {
+    if(!!a.completed !== !!b.completed) return a.completed ? 1 : -1;
+    if(!a.due_date && !b.due_date) return 0;
+    if(!a.due_date) return 1;
+    if(!b.due_date) return -1;
+    return a.due_date.localeCompare(b.due_date);
+  });
+
+  const list = document.getElementById('tasksList');
+  const empty = document.getElementById('tasksEmptyState');
+  if(!rows.length){
+    list.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+
+  list.innerHTML = rows.map(t => {
+    const overdue = !t.completed && t.due_date && isPast(t.due_date);
+    const assignee = t.assigned_to !== currentUser.id ? USERS.find(u => u.id === t.assigned_to) : null;
+    return `
+    <div class="note-item" style="display:flex;align-items:flex-start;gap:10px;${t.completed?'opacity:.55;':''}">
+      <input type="checkbox" ${t.completed?'checked':''} onchange="toggleTaskComplete('${t.id}')" style="width:auto;margin-top:3px;flex-shrink:0;">
+      <div style="flex:1;min-width:0;">
+        <div class="txt" style="font-weight:600;${t.completed?'text-decoration:line-through;':''}">${t.title}</div>
+        <div class="meta">
+          ${t.due_date ? `<span style="${overdue?'color:var(--red);font-weight:600;':''}">${formatDate(t.due_date)}</span> &middot; ` : ''}
+          ${taskLinkedRecordHtml(t)}${taskLinkedRecordHtml(t) && assignee ? ' &middot; ' : ''}
+          ${assignee ? `Assigned to ${assignee.name}` : ''}
+        </div>
+        ${t.notes ? `<div class="meta" style="margin-top:2px;">${t.notes}</div>` : ''}
+      </div>
+      <button class="btn btn-xs" style="color:var(--red);flex-shrink:0;" onclick="deleteTask('${t.id}')">Delete</button>
+    </div>`;
+  }).join('');
+}
+
+function setTaskFilter(f){
+  taskFilter = f;
+  renderTasksList();
+}
+
+// Compact horizontal strip on the Dashboard — a preview of the full Tasks
+// list, not a duplicate of it, so it only shows what's still open.
+function renderDashboardTasksBar(){
+  const bar = document.getElementById('dashTasksBar');
+  const empty = document.getElementById('dashTasksEmptyState');
+  if(!bar) return;
+  const open = myTasks().filter(t => !t.completed).sort((a, b) => {
+    if(!a.due_date && !b.due_date) return 0;
+    if(!a.due_date) return 1;
+    if(!b.due_date) return -1;
+    return a.due_date.localeCompare(b.due_date);
+  }).slice(0, 8);
+
+  if(!open.length){
+    bar.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+  bar.innerHTML = `<div class="dash-tasks-bar">${open.map(t => {
+    const overdue = t.due_date && isPast(t.due_date);
+    return `
+    <div class="dash-task-chip" onclick="showView('tasks');">
+      <input type="checkbox" onclick="event.stopPropagation(); toggleTaskComplete('${t.id}');">
+      <div>
+        <div class="txt">${t.title}</div>
+        ${t.due_date ? `<div class="meta" style="${overdue?'color:var(--red);font-weight:600;':''}">${formatDate(t.due_date)}</div>` : ''}
+      </div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+async function toggleTaskComplete(id){
+  const t = TASKS.find(x => x.id === id);
+  if(!t) return;
+  const completed = !t.completed;
+  const completed_at = completed ? new Date().toISOString() : null;
+  const { error } = await supa.from('tasks').update({ completed, completed_at }).eq('id', id);
+  if(error){ alert('Could not save: ' + error.message); return; }
+  t.completed = completed;
+  t.completed_at = completed_at;
+  renderTasksList();
+  renderDashboardTasksBar();
+}
+
+async function deleteTask(id){
+  if(!confirm('Delete this task?')) return;
+  const { error } = await supa.from('tasks').delete().eq('id', id);
+  if(error){ alert('Could not delete: ' + error.message); return; }
+  TASKS = TASKS.filter(x => x.id !== id);
+  renderTasksList();
+  renderDashboardTasksBar();
+}
+
+// linkedKind/linkedId let this open pre-attached to a record — used by the
+// + button's quick-add menu when opened from a Lead/Cold Lead/Application
+// drawer, same idea as openPaperApplicationForLink()'s pendingLink.
+function openTaskDrawer(linkedKind, linkedId){
+  const assignable = assignableUsers().slice().sort((x, y) => x.name.localeCompare(y.name));
+  const internalAssignees = assignable.filter(u => roleOf(u).portal_scope === 'internal');
+  const portalAssignees = assignable.filter(u => roleOf(u).portal_scope === 'own');
+
+  let linkedLabel = '';
+  if(linkedKind === 'lead'){
+    const l = LEADS.find(x => x.id === linkedId);
+    if(l) linkedLabel = `Lead/Account: ${l.business_name}`;
+  } else if(linkedKind === 'cold_lead'){
+    const c = COLD_LEADS.find(x => x.id === linkedId);
+    if(c) linkedLabel = `Cold Lead: ${c.business_name}`;
+  } else if(linkedKind === 'application'){
+    const a = APPLICATIONS.find(x => x.id === linkedId);
+    if(a) linkedLabel = `Application: ${a.legal_business_name || `${a.first_name||''} ${a.last_name||''}`.trim()}`;
+  }
+
+  document.getElementById('taskDrawer').innerHTML = `
+    <div class="drawer-head">
+      <div><h2>Add task</h2></div>
+      <button class="drawer-close" onclick="closeTaskDrawer()">&times;</button>
+    </div>
+    <div class="drawer-body">
+      ${linkedLabel ? `<div class="detail-row"><span class="k">Attached to</span><span class="v">${linkedLabel}</span></div>` : ''}
+      <div class="field"><label>Title</label><input id="taskTitle" placeholder="e.g. Follow up on pricing"></div>
+      <div class="field"><label>Due date <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label><input id="taskDueDate" type="date"></div>
+      <div class="field"><label>Assign to</label>
+        <select id="taskAssignedTo">
+          <option value="${currentUser.id}">Me</option>
+          ${internalAssignees.filter(u=>u.id!==currentUser.id).length ? `<optgroup label="Employees">${internalAssignees.filter(u=>u.id!==currentUser.id).map(u => assigneeOptionHtml(u, null)).join('')}</optgroup>` : ''}
+          ${portalAssignees.filter(u=>u.id!==currentUser.id).length ? `<optgroup label="Agents &amp; partners">${portalAssignees.filter(u=>u.id!==currentUser.id).map(u => assigneeOptionHtml(u, null)).join('')}</optgroup>` : ''}
+        </select>
+      </div>
+      <div class="field"><label>Notes <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label><textarea id="taskNotes" rows="3"></textarea></div>
+    </div>
+    <div class="drawer-footer">
+      <button class="btn" style="flex:1;" onclick="closeTaskDrawer()">Cancel</button>
+      <button class="btn btn-accent" style="flex:1;" onclick="saveNewTask('${linkedKind||''}', '${linkedId||''}')">Save task</button>
+    </div>
+  `;
+  document.getElementById('taskOverlay').classList.add('open');
+}
+function closeTaskDrawer(){ document.getElementById('taskOverlay').classList.remove('open'); }
+
+async function saveNewTask(linkedKind, linkedId){
+  const title = document.getElementById('taskTitle').value.trim();
+  if(!title){ showToast('Give this task a title first.', 'error'); return; }
+
+  const task = {
+    title,
+    due_date: document.getElementById('taskDueDate').value || null,
+    assigned_to: document.getElementById('taskAssignedTo').value || currentUser.id,
+    notes: document.getElementById('taskNotes').value.trim() || null,
+    linked_lead_id: linkedKind === 'lead' ? linkedId : null,
+    linked_cold_lead_id: linkedKind === 'cold_lead' ? linkedId : null,
+    linked_application_id: linkedKind === 'application' ? linkedId : null,
+  };
+
+  const { data, error } = await supa.from('tasks').insert(task).select().single();
+  if(error){ showToast('Could not save: ' + error.message, 'error'); return; }
+  TASKS.unshift(data);
+  closeTaskDrawer();
+  showToast('Task added.', 'success');
+  if(document.getElementById('view-tasks').style.display !== 'none') renderTasksList();
+}
+
+/* =========================================================================
+   QUICK-ADD FAB — bottom-right triangle button. Opens a 5-option menu that
+   jumps into each record type's existing creation flow rather than
+   duplicating any of them.
+   ========================================================================= */
+function toggleQuickAddMenu(ev){
+  if(ev) ev.stopPropagation();
+  const fab = document.getElementById('quickAddFab');
+  const btn = document.getElementById('quickAddFabBtn');
+  fab.classList.toggle('open');
+  // Click feedback: restart the ring-pulse animation on every press,
+  // independent of whether the menu is opening or closing.
+  btn.classList.remove('pulse');
+  void btn.offsetWidth;
+  btn.classList.add('pulse');
+}
+document.addEventListener('click', function(ev){
+  const fab = document.getElementById('quickAddFab');
+  if(fab && fab.classList.contains('open') && !fab.contains(ev.target)) fab.classList.remove('open');
+});
+
+function quickAddChoice(kind){
+  document.getElementById('quickAddFab').classList.remove('open');
+  if(kind === 'task'){ openTaskDrawer(); return; }
+  const routes = {
+    cold_lead:  ['coldleads',   'addColdLeadBtn'],
+    lead:       ['leads',       'addLeadBtn'],
+    account:    ['accounts',    'addAccountBtn'],
+    application:['applications','addApplicationBtn'],
+  };
+  const [view, btnId] = routes[kind];
+  showView(view);
+  document.getElementById(btnId).click();
+}
+
+// Tasks associated with one Lead/Account or Cold Lead — same shape as
+// renderAttachApplicationWidget just above, but tasks are created directly
+// against this record (there's no separate "search and attach" step since
+// a task, unlike an application, doesn't already exist elsewhere).
+function taskLinkColumn(kind){ return kind === 'cold_lead' ? 'linked_cold_lead_id' : 'linked_lead_id'; }
+
+function renderRecordTasksWidget(kind, recordId){
+  const linkCol = taskLinkColumn(kind);
+  const linked = TASKS.filter(t => t[linkCol] === recordId).sort((a, b) => {
+    if(!!a.completed !== !!b.completed) return a.completed ? 1 : -1;
+    if(!a.due_date && !b.due_date) return 0;
+    if(!a.due_date) return 1;
+    if(!b.due_date) return -1;
+    return a.due_date.localeCompare(b.due_date);
+  });
+  return `
+    <div class="field" style="margin-bottom:18px;">
+      <label>Tasks</label>
+      ${linked.map(t => {
+        const overdue = !t.completed && t.due_date && isPast(t.due_date);
+        return `
+        <div class="note-item" style="display:flex;align-items:flex-start;gap:8px;${t.completed?'opacity:.55;':''}">
+          <input type="checkbox" ${t.completed?'checked':''} onchange="toggleTaskComplete('${t.id}'); openRecordDrawerFor('${kind}','${recordId}');" style="width:auto;margin-top:3px;flex-shrink:0;">
+          <div style="flex:1;min-width:0;">
+            <div class="txt" style="${t.completed?'text-decoration:line-through;':''}">${t.title}</div>
+            ${t.due_date ? `<div class="meta" style="${overdue?'color:var(--red);font-weight:600;':''}">${formatDate(t.due_date)}</div>` : ''}
+          </div>
+          <a href="#" onclick="event.preventDefault(); deleteTask('${t.id}'); openRecordDrawerFor('${kind}','${recordId}');" style="color:var(--red);font-size:12px;flex-shrink:0;">delete</a>
+        </div>`;
+      }).join('')}
+      <button class="btn btn-sm" style="width:100%;${linked.length?'margin-top:8px;':''}" onclick="openTaskDrawer('${kind}', '${recordId}')">+ Add Task</button>
+    </div>`;
+}
+
+function openRecordDrawerFor(kind, recordId){
+  if(kind === 'cold_lead') openColdLeadDetail(recordId); else openLeadDetail(recordId);
 }
 
 function renderConnectedCalendarsList(){
