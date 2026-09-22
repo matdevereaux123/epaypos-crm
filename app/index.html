@@ -3626,9 +3626,9 @@ function emptyApplicationFields(){
 // the app to wire up yet (openApplicationDetail is read-only display).
 async function loadApplicationsFromSupabase(){
   const { data, error } = await supa.from('applications').select(`
-    id, submitted_at, source, linked_account_id, match_status,
+    id, submitted_at, source, linked_account_id, linked_cold_lead_id, match_status,
     first_name, last_name, email, phone, business_type, pricing_plan,
-    dob, drivers_license_state, legal_business_name, dba_name,
+    dob, drivers_license_state, personal_address, legal_business_name, dba_name,
     business_address, business_email, business_phone, business_start_date,
     business_type_services, highest_sale_amount, average_sale_amount,
     monthly_sales_average, terms_accepted, paper_application_file_path, assigned_to
@@ -4091,6 +4091,10 @@ let BOOKING_LINKS = [];
 let BOOKING_AVAILABILITY = [];
 let NOTIFICATIONS = [];
 let notifPollTimer = null;
+// Set by openPaperApplicationForLink(), consumed once by saveNewApplication()
+// — carries which Lead/Account/Cold Lead a quick "Mark as Physical
+// Application" was opened from, so the new row links straight to it.
+let __pendingApplicationLink = null;
 let calViewDate = new Date();
 let calFilter = 'all';
 // Safe placeholder until real login resolves — enterAppAsAuthUser() replaces
@@ -5183,7 +5187,8 @@ const APPLICATION_LINK_SECTIONS = [
     { id:'alDob',         label:'Date of birth', type:'date', required:true },
     { id:'alSsn',         label:'Social security number', required:true },
     { id:'alDl',          label:'Driver\u2019s licence number', required:true },
-    { id:'alDlState',     label:'Driver\u2019s licence state', required:true }
+    { id:'alDlState',     label:'Driver\u2019s licence state', required:true },
+    { id:'alPersonalAddress', label:'Personal (home) address' }
   ]},
   { title: 'Your business', fields: [
     { id:'alLegalName',   label:'Legal business name', required:true },
@@ -5915,6 +5920,7 @@ async function submitApplicationLink(slug){
     p_ssn: v('alSsn'),
     p_drivers_license: v('alDl'),
     p_drivers_license_state: v('alDlState'),
+    p_personal_address: v('alPersonalAddress'),
     p_legal_business_name: v('alLegalName'),
     p_dba_name: v('alDba'),
     p_business_address: v('alBizAddress'),
@@ -8266,7 +8272,11 @@ document.getElementById('deleteSelectedReferralsBtn').addEventListener('click', 
 });
 
 function copyLink(text){
-  const full = 'https://' + text;
+  // Most callers pass a protocol-less string (referral/booking links) and
+  // rely on this to add https:// — but applicationShareUrl() already
+  // returns a full URL, and doubling the protocol on top of it produced
+  // "https://https://..." when copied. Idempotent either way now.
+  const full = /^https?:\/\//i.test(text) ? text : ('https://' + text);
   navigator.clipboard && navigator.clipboard.writeText(full);
 }
 
@@ -13244,6 +13254,7 @@ async function openLeadDetail(id){
     ${editableRow('Lead source', l.lead_source, { table:'leads', id:l.id, column:'lead_source', record:base })}
     ${editableRow('Est. monthly volume', l.est_volume, { table:'leads', id:l.id, column:'est_volume', record:base })}
     ${editableRow('Business address', l.business_address, { table:'leads', id:l.id, column:'business_address', type:'textarea', record:base })}
+    ${renderAttachApplicationWidget('lead', l.id)}
     <div class="detail-row"><span class="k">Created</span><span class="v">${formatDate(l.created_at)}</span></div>
     ${createdByLabel(l) ? `<div class="detail-row"><span class="k">Created by</span><span class="v">${createdByLabel(l)}</span></div>` : ''}
     <div class="field" style="margin-top:12px;">
@@ -13900,6 +13911,7 @@ function applicationFormFieldsHtml(a){
     <div class="field"><label>Date of birth*</label><input id="apDob" type="date" value="${a.dob}"></div>
     <div class="field"><label>Driver's license</label><input id="apDL" value="${a.drivers_license}"></div>
     <div class="field"><label>Driver's license state</label><input id="apDLState" value="${a.drivers_license_state}" maxlength="2"></div>
+    <div class="field"><label>Personal (home) address</label><input id="apPersonalAddress" value="${a.personal_address||''}" placeholder="Street, city, state, ZIP"></div>
     <div class="field"><label>Social Security Number*</label><input id="apSSN" type="password" value="${a.ssn}" placeholder="XXX-XX-XXXX"></div>
 
     <h3 style="font-size:14px;margin:20px 0 12px;">Business</h3>
@@ -13928,6 +13940,7 @@ function applicationFormFieldsHtml(a){
 }
 
 document.getElementById('addApplicationBtn').addEventListener('click', function(){
+  __pendingApplicationLink = null;
   document.getElementById('applicationDrawer').innerHTML = `
     <div class="drawer-head">
       <div><h2>New application</h2><p style="font-size:11.5px;color:var(--slate-500);margin:4px 0 0;">Fields match the live application form on the website.</p></div>
@@ -13945,6 +13958,7 @@ document.getElementById('addApplicationBtn').addEventListener('click', function(
 });
 
 document.getElementById('addPaperApplicationBtn').addEventListener('click', function(){
+  __pendingApplicationLink = null;
   document.getElementById('applicationDrawer').innerHTML = `
     <div class="drawer-head">
       <div><h2>Upload paper application</h2><p style="font-size:11.5px;color:var(--slate-500);margin:4px 0 0;">Attach the scanned/photographed form, and fill in what you can below.</p></div>
@@ -13999,6 +14013,7 @@ async function saveNewApplication(source){
     // through set_application_dob below with the other sensitive fields.
 
     drivers_license_state: document.getElementById('apDLState').value.trim().toUpperCase(),
+    personal_address: document.getElementById('apPersonalAddress').value.trim(),
     legal_business_name: document.getElementById('apLegalName').value.trim(),
     dba_name: document.getElementById('apDba').value.trim(),
     business_address: document.getElementById('apBizAddress').value.trim(),
@@ -14013,9 +14028,22 @@ async function saveNewApplication(source){
     assigned_to: document.getElementById('apAssignedTo').value || null,
   };
 
-  const match = findMatchingAccount(app);
-  app.linked_account_id = match ? match.id : null;
-  app.match_status = match ? 'auto-matched' : 'unmatched';
+  // Opened via "Mark as Physical Application" from a Lead/Account/Cold Lead
+  // drawer — we already know exactly which record this is for, so skip the
+  // name/email/phone auto-match entirely and link it directly instead.
+  const pendingLink = __pendingApplicationLink;
+  let match = null;
+  if(pendingLink && pendingLink.kind === 'cold_lead'){
+    app.linked_cold_lead_id = pendingLink.recordId;
+    app.match_status = 'manual';
+  } else if(pendingLink){
+    app.linked_account_id = pendingLink.recordId;
+    app.match_status = 'manual';
+  } else {
+    match = findMatchingAccount(app);
+    app.linked_account_id = match ? match.id : null;
+    app.match_status = match ? 'auto-matched' : 'unmatched';
+  }
 
   const { data: saved, error } = await supa.from('applications').insert(app).select().single();
   if(error){ alert('Could not save application: ' + error.message); return; }
@@ -14047,6 +14075,12 @@ async function saveNewApplication(source){
 
   if(match){
     alert(`Auto-linked to existing account: ${match.business_name}`);
+  }
+
+  if(pendingLink){
+    __pendingApplicationLink = null;
+    if(pendingLink.kind === 'cold_lead') openColdLeadDetail(pendingLink.recordId);
+    else openLeadDetail(pendingLink.recordId);
   }
 }
 
@@ -14133,6 +14167,7 @@ async function openApplicationDetail(id){
       ${editableRow("Licence state", a.drivers_license_state, { table:'applications', id:a.id,
           column:'drivers_license_state', type:'select', record:a,
           options: [{value:'',label:'—'}].concat(US_STATES.map(st => ({value:st,label:st}))) })}
+      ${editableRow('Personal address', a.personal_address, { table:'applications', id:a.id, column:'personal_address', type:'textarea', record:a })}
       ${editableRow('SSN', a.ssn, { id:a.id, can:canEditSensitive,
           // Masked when shown, full when editing — there is no point asking
           // someone to retype nine digits they cannot see.
@@ -14264,6 +14299,116 @@ async function linkApplicationToAccount(appId, accountId){
   a.match_status = match_status;
   openApplicationDetail(appId);
   renderApplicationsTable();
+}
+
+/* =========================================================================
+   ATTACH APPLICATION — the reverse direction of linkApplicationToAccount()
+   above: from a Lead/Account or Cold Lead's own drawer, search for the
+   application by name and attach it here, rather than having to go to the
+   Applications tab and use its own linking dropdown. `kind` is 'lead'
+   (covers Accounts too — same table, same drawer) or 'cold_lead'.
+   ========================================================================= */
+function attachApplicationLinkColumn(kind){
+  return kind === 'cold_lead' ? 'linked_cold_lead_id' : 'linked_account_id';
+}
+
+function renderAttachApplicationWidget(kind, recordId){
+  const linkCol = attachApplicationLinkColumn(kind);
+  const attached = APPLICATIONS.filter(a => a[linkCol] === recordId);
+  return `
+    <div class="field" style="margin-bottom:18px;">
+      <label>Application</label>
+      ${attached.map(a => `
+        <div class="note-item" style="cursor:pointer;margin-bottom:6px;" onclick="closeApplicationDrawer(); closeLeadDrawer(); closeColdLeadDrawer(); openApplicationDetail('${a.id}');">
+          <div class="txt" style="font-weight:600;">${a.legal_business_name || `${a.first_name||''} ${a.last_name||''}`.trim() || 'Application'}</div>
+          <div class="meta">${a.source==='paper' ? 'Paper application' : a.source==='link' ? 'Portal application link' : a.source==='wix' ? 'From Wix' : 'Manual entry'} &middot; click to view &middot; <a href="#" onclick="event.stopPropagation(); detachApplication('${kind}','${recordId}','${a.id}'); return false;" style="color:var(--red);">detach</a></div>
+        </div>`).join('')}
+      <input type="text" id="attachAppSearch" placeholder="Search applications by name or business..." oninput="renderAttachApplicationResults('${kind}', '${recordId}')" autocomplete="off" style="${attached.length ? 'margin-top:2px;' : ''}">
+      <div id="attachAppResults" style="margin-top:6px;"></div>
+      <button class="btn btn-sm" style="width:100%;margin-top:8px;" onclick="openPaperApplicationForLink('${kind}', '${recordId}')">+ Mark as Physical Application</button>
+    </div>`;
+}
+
+function renderAttachApplicationResults(kind, recordId){
+  const el = document.getElementById('attachAppResults');
+  if(!el) return;
+  const input = document.getElementById('attachAppSearch');
+  const q = ((input || {}).value || '').trim().toLowerCase();
+  if(!q){ el.innerHTML = ''; return; }
+  const matches = APPLICATIONS.filter(a => {
+    const hay = `${a.legal_business_name||''} ${a.dba_name||''} ${a.first_name||''} ${a.last_name||''}`.toLowerCase();
+    return hay.includes(q);
+  }).slice(0, 8);
+  el.innerHTML = matches.length
+    ? matches.map(a => `
+      <div class="note-item" style="cursor:pointer;" onclick="attachApplicationTo('${kind}', '${recordId}', '${a.id}')">
+        <div class="txt" style="font-weight:600;">${a.legal_business_name || `${a.first_name||''} ${a.last_name||''}`.trim() || 'Application'}</div>
+        <div class="meta">${formatDate(a.submitted_at)} &middot; ${a.email || a.phone || '—'}</div>
+      </div>`).join('')
+    : '<p style="font-size:12px;color:var(--slate-500);margin:4px 0 0;">No matching applications.</p>';
+}
+
+async function attachApplicationTo(kind, recordId, appId){
+  const a = APPLICATIONS.find(x => x.id === appId);
+  if(!a) return;
+  const linkCol = attachApplicationLinkColumn(kind);
+  const payload = { [linkCol]: recordId };
+  if(kind !== 'cold_lead') payload.match_status = 'manual';
+  const { error } = await supa.from('applications').update(payload).eq('id', appId);
+  if(error){ alert('Could not attach: ' + error.message); return; }
+  a[linkCol] = recordId;
+  if(kind !== 'cold_lead') a.match_status = 'manual';
+  renderApplicationsTable();
+  if(kind === 'cold_lead') openColdLeadDetail(recordId); else openLeadDetail(recordId);
+}
+
+async function detachApplication(kind, recordId, appId){
+  const a = APPLICATIONS.find(x => x.id === appId);
+  if(!a) return;
+  if(!confirm('Detach this application? It stays in the Applications tab, just no longer linked here.')) return;
+  const linkCol = attachApplicationLinkColumn(kind);
+  const { error } = await supa.from('applications').update({ [linkCol]: null }).eq('id', appId);
+  if(error){ alert('Could not detach: ' + error.message); return; }
+  a[linkCol] = null;
+  renderApplicationsTable();
+  if(kind === 'cold_lead') openColdLeadDetail(recordId); else openLeadDetail(recordId);
+}
+
+// The quick path: satisfies the "Application" stage requirement (which only
+// ever checks that a linked application row exists — see
+// getStageRequirementError()'s 'application' case) without filling out the
+// full form. The file input is optional on purpose — marking this as a
+// physical application is the override; attaching the scan afterward, or
+// never, does not change that.
+function openPaperApplicationForLink(kind, recordId){
+  const record = kind === 'cold_lead' ? COLD_LEADS.find(x => x.id === recordId) : LEADS.find(x => x.id === recordId);
+  if(!record) return;
+  __pendingApplicationLink = { kind, recordId };
+
+  const prefill = emptyApplicationFields();
+  prefill.legal_business_name = record.business_name || '';
+  const contactParts = (record.contact_name || '').trim().split(/\s+/).filter(Boolean);
+  prefill.first_name = contactParts[0] || '';
+  prefill.last_name = contactParts.slice(1).join(' ');
+  prefill.email = record.email || '';
+  prefill.phone = record.phone || '';
+
+  document.getElementById('applicationDrawer').innerHTML = `
+    <div class="drawer-head">
+      <div><h2>Mark as physical application</h2><p style="font-size:11.5px;color:var(--slate-500);margin:4px 0 0;">Attaching the scanned file is optional — saving this is what clears the Application stage on its own.</p></div>
+      <button class="drawer-close" onclick="__pendingApplicationLink=null; closeApplicationDrawer();">&times;</button>
+    </div>
+    <div class="drawer-body">
+      <div class="field"><label>Paper application file <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label><input id="apPaperFile" type="file" accept="application/pdf,image/*"></div>
+      <hr style="border:none;border-top:1px solid var(--line);margin:16px 0;">
+      ${applicationFormFieldsHtml(prefill)}
+    </div>
+    <div class="drawer-footer">
+      <button class="btn" style="flex:1;" onclick="__pendingApplicationLink=null; closeApplicationDrawer();">Cancel</button>
+      <button class="btn btn-accent" style="flex:1;" onclick="saveNewApplication('paper')">Save application</button>
+    </div>
+  `;
+  document.getElementById('applicationOverlay').classList.add('open');
 }
 
 /* =========================================================================
@@ -14489,6 +14634,7 @@ function openColdLeadDetail(id){
         ${editableRow('Address', c.address, { table:'cold_leads', id:c.id, column:'address', type:'textarea', record:c })}
         ${editableRow('Website', c.website, { table:'cold_leads', id:c.id, column:'website', record:c })}
         ${editableRow('Source detail', c.source, { table:'cold_leads', id:c.id, column:'source', record:c })}
+        ${renderAttachApplicationWidget('cold_lead', c.id)}
         <div class="detail-row"><span class="k">Added</span><span class="v">${formatDate(c.created_at)}</span></div>
         ${createdByLabel(c) ? `<div class="detail-row"><span class="k">Added by</span><span class="v">${createdByLabel(c)}</span></div>` : ''}
         <div class="field" style="margin-top:12px;">
