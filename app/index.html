@@ -2091,7 +2091,7 @@
             <h1>EPAY Resellers</h1>
             <p class="subtext">Agents authorized to resell EPAY POS — a filtered view of Agents, scoped to this tier only.</p>
           </div>
-          <button class="btn btn-accent" id="addResellerBtn">+ Add Authorized Reseller</button>
+
         </div>
         <div class="cards-row" id="resellersStats"></div>
 
@@ -2815,12 +2815,12 @@ const DEFAULT_ROLES = {
   admin: {
     label:'Admin', portal_scope:'internal',
     description:'Full control — every tab, every record, both brands, banking info, user management, and settings.',
-    perms:{ manageUsers:true, manageSettings:true, viewAllPartners:true, editPartners:true, viewBanking:true, editBanking:true, manageAutomation:true, fullDashboard:true },
+    perms:{ manageUsers:true, manageSettings:true, viewAllPartners:true, editPartners:true, viewBanking:true, editBanking:true, manageAutomation:true, fullDashboard:true, viewAllLeads:true },
   },
   in_house_sales: {
     label:'In House Sales', portal_scope:'internal',
-    description:'Internal reps — full working access to partners, pipeline, and follow-ups. Can view but not edit payout banking info. No user or settings management.',
-    perms:{ manageUsers:false, manageSettings:false, viewAllPartners:true, editPartners:true, viewBanking:true, editBanking:false, manageAutomation:true, fullDashboard:true },
+    description:'Internal reps — see leads that come in through the public forms plus anything they created or are assigned, not leads other users created. Full access to partners and follow-ups; can view but not edit payout banking. No user or settings management.',
+    perms:{ manageUsers:false, manageSettings:false, viewAllPartners:true, editPartners:true, viewBanking:true, editBanking:false, manageAutomation:true, fullDashboard:true, viewAllLeads:false },
   },
   iso: {
     label:'ISO', portal_scope:'own',
@@ -2835,11 +2835,6 @@ const DEFAULT_ROLES = {
   referral_partner: {
     label:'Referral Partner', portal_scope:'own',
     description:'The most limited external login — can see their own referral link and lead count, and update their own payout banking. No pipeline or deal detail.',
-    perms:{ manageUsers:false, manageSettings:false, viewAllPartners:false, editPartners:false, viewBanking:false, editBanking:'own', manageAutomation:false, fullDashboard:false },
-  },
-  epay_reseller: {
-    label:'EPAY Reseller', portal_scope:'own',
-    description:'Authorized EPAY POS reseller-tier agent — same restricted self-view as Agent, flagged for the Authorized Reseller tier and its commission schedule.',
     perms:{ manageUsers:false, manageSettings:false, viewAllPartners:false, editPartners:false, viewBanking:false, editBanking:'own', manageAutomation:false, fullDashboard:false },
   },
 };
@@ -4111,6 +4106,9 @@ const EPAY_ONLY_VIEWS = ['aiscraper', 'coldemail', 'reportsubs', 'calendar', 'au
 // Loaders are an Envision ATM concept — nobody loads cash into a card
 // terminal. Same hard gate as EPAY_ONLY_VIEWS, mirrored.
 const ATM_ONLY_VIEWS = ['loaders', 'isoleads'];
+// Reachable by internal staff only, whichever brand. Hiding the nav item is
+// not the same as being unable to reach the view.
+const INTERNAL_ONLY_VIEWS = ['loaders'];
 // Controls where openLeadDetail()/openColdLeadDetail() render: the normal
 // slide-over drawer everywhere in the app, or full-width inline content —
 // used only by the Live Recall tab. Every internal re-render (after a save,
@@ -4205,7 +4203,11 @@ function setBrand(brand){
   const navAgents = document.getElementById('navAgentsItem');
   const navLoaders = document.getElementById('navLoadersItem');
   if(navAgents)  navAgents.style.display  = (brand === 'epay') ? 'flex' : 'none';
-  if(navLoaders) navLoaders.style.display = (brand === 'atm')  ? 'flex' : 'none';
+  // Internal only as well as ATM only: atm_loaders is readable by staff
+  // alone, so a portal user would get an empty list and an Add button the
+  // database always refuses.
+  if(navLoaders) navLoaders.style.display =
+    (brand === 'atm' && roleOf(currentUser).perms.fullDashboard) ? 'flex' : 'none';
   lendingToggle.style.display = (brand === 'epay') ? 'flex' : 'none';
   lendingItems.style.display = (brand === 'epay') ? 'block' : 'none';
   isoToggle.style.display = (brand === 'atm') ? 'flex' : 'none';
@@ -4362,6 +4364,18 @@ function applyRolePermissions(){
   // part. So the section header opens up to them while the two internal
   // reports inside it stay admin-only.
   applyReportsNavVisibility();
+
+  // Add/upload controls whose table refuses the current role. Found by
+  // rendering the app as each portal role: all of these were visible, and
+  // every one ended in "new row violates row-level security policy".
+  {
+    const pp = roleOf(currentUser).perms;
+    const show = (id, ok) => { const el = document.getElementById(id); if(el) el.style.display = ok ? '' : 'none'; };
+    show('uploadReferralsBtn',     !!pp.editPartners);   // partners need editPartners
+    show('addAgentBtn',            !!pp.editPartners);
+    show('addApplicationBtn',      !!pp.fullDashboard);  // applications insert: staff only
+    show('addPaperApplicationBtn', !!pp.fullDashboard);  // and a staff-only storage bucket
+  }
 
   // Same reasoning as the admin-only check above: hiding a nav item is not the
   // same as being unable to reach the view, so bounce anyone already sitting
@@ -6551,7 +6565,7 @@ function residualPartnerRows(rows){
 }
 
 function partnerTypeLabel(p){
-  if(p.reseller_type === 'authorized_reseller') return 'EPAY Reseller';
+  // Authorized resellers are Agents (58); the tier lives on as reseller_type.
   if(p.type === 'referral_partner') return 'Referral Partner';
   if(p.type === 'iso') return 'ISO';
   return 'Agent';
@@ -7430,11 +7444,13 @@ function buildUnifiedContactRows(){
     if(p.type !== 'agent') return;
     const isReseller = p.reseller_type === 'authorized_reseller';
     rows.push({
-      source: isReseller ? 'reseller' : 'agent', id: p.id,
+      source: 'agent', id: p.id,
       name: (p.contact && p.contact !== '—') ? p.contact : p.name,
       business_name: p.name, phone: p.phone, email: p.email, notes: '',
-      typeKey: isReseller ? 'reseller' : 'agent',
-      typeLabel: isReseller ? 'EPAY Reseller' : 'Agent',
+      // One key for both. 'reseller' had no option in the type filter, so
+      // choosing "Agents" silently hid every authorized reseller.
+      typeKey: 'agent',
+      typeLabel: 'Agent',
     });
   });
 
@@ -7672,6 +7688,9 @@ function showView(view, fromHistory){
   if(EPAY_ONLY_VIEWS.includes(view) && currentBrand !== 'epay'){
     view = 'referrals';
   }
+  if(INTERNAL_ONLY_VIEWS.includes(view) && !roleOf(currentUser).perms.fullDashboard){
+    view = 'dashboard';
+  }
   if(ATM_ONLY_VIEWS.includes(view) && currentBrand !== 'atm'){
     view = 'referrals';
   }
@@ -7859,10 +7878,17 @@ function scopedLeads(){
   // where the one that gets forgotten is a lead haunting a stage nobody can
   // explain. LEADS still holds it, so the record and its history survive.
   const inPlay = LEADS.filter(l => !l.returned_to_cold_at);
-  if(perms.fullDashboard) return inPlay;
+  // Mirrors leads_select (migration 58). The server already refuses to send
+  // anything else; this keeps "Preview as" honest, where the browser holds an
+  // admin's data while pretending to be someone who may not see it all.
+  if(perms.viewAllLeads) return inPlay;
   const pid = currentUser.linked_partner_id;
   return inPlay.filter(l =>
-    (pid && l.linked_partner_id === pid) || l.assigned_to === currentUser.id);
+    (pid && l.linked_partner_id === pid)
+    || l.assigned_to === currentUser.id
+    || l.created_by === currentUser.id
+    // internal staff also see leads with no user behind them — the forms
+    || (perms.fullDashboard && !l.created_by));
 }
 
 function scopedColdLeads(){
@@ -8679,7 +8705,9 @@ const ONBOARDING_LABELS = {
 // decision — the same inference partner creation used to make silently.
 function suggestedRoleForPartner(p){
   if(p.type === 'referral_partner') return 'referral_partner';
-  return p.reseller_type === 'authorized_reseller' ? 'epay_reseller' : 'agent';
+  // Authorized resellers are Agents now (migration 58). Returning the old
+  // role key would fail users.role's foreign key the moment it was deleted.
+  return 'agent';
 }
 
 // Every portal-scoped role, including any custom ones built in Settings, so
@@ -9462,7 +9490,7 @@ function openAddPartnerForm(defaultType, defaultReseller){
 }
 document.getElementById('addReferralBtn').addEventListener('click', () => openAddPartnerForm('referral_partner', null));
 document.getElementById('addAgentBtn').addEventListener('click', () => openAddPartnerForm('agent', 'basic_payments'));
-document.getElementById('addResellerBtn').addEventListener('click', () => openAddPartnerForm('agent', 'authorized_reseller'));
+
 document.getElementById('addIsoBtn').addEventListener('click', () => openAddPartnerForm('iso', null));
 
 // Referral Partners, Agents, EPAY Resellers, and ISOs all get a portal
@@ -9505,7 +9533,7 @@ async function ensurePartnerPortalUser(partner){
 
   const role = partner.type === 'referral_partner' ? 'referral_partner'
     : partner.type === 'iso' ? 'iso'
-    : (partner.reseller_type === 'authorized_reseller' ? 'epay_reseller' : 'agent');
+    : 'agent';   // authorized resellers included — the epay_reseller role is gone (58)
   const { data: newUser, error: userErr } = await supa.from('users').insert({
     name: partner.contact && partner.contact !== '—' ? partner.contact : partner.name,
     email: partner.email,
