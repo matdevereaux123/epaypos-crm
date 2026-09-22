@@ -14287,23 +14287,23 @@ async function openApplicationDetail(id){
 
       <hr style="border:none;border-top:1px solid var(--line);margin:16px 0;">
 
-      ${editableRow('First name', a.first_name, { table:'applications', id:a.id, column:'first_name', record:a,
+      ${editableRow('First name', a.first_name, { table:'applications', id:a.id, column:'first_name', record:base,
           onSaved: () => renderApplicationsTable() })}
-      ${editableRow('Last name', a.last_name, { table:'applications', id:a.id, column:'last_name', record:a,
+      ${editableRow('Last name', a.last_name, { table:'applications', id:a.id, column:'last_name', record:base,
           onSaved: () => renderApplicationsTable() })}
-      ${editableRow('Email', a.email, { table:'applications', id:a.id, column:'email', type:'email', record:a })}
-      ${editableRow('Phone', a.phone, { table:'applications', id:a.id, column:'phone', type:'tel', record:a })}
-      ${editableRow('Business type', a.business_type, { table:'applications', id:a.id, column:'business_type', record:a })}
-      ${editableRow('Pricing plan', a.pricing_plan, { table:'applications', id:a.id, column:'pricing_plan', record:a })}
+      ${editableRow('Email', a.email, { table:'applications', id:a.id, column:'email', type:'email', record:base })}
+      ${editableRow('Phone', a.phone, { table:'applications', id:a.id, column:'phone', type:'tel', record:base })}
+      ${editableRow('Business type', a.business_type, { table:'applications', id:a.id, column:'business_type', record:base })}
+      ${editableRow('Pricing plan', a.pricing_plan, { table:'applications', id:a.id, column:'pricing_plan', record:base })}
       ${editableRow('Date of birth', a.dob, { id:a.id, type:'date', can:canEditSensitive,
           display: v => v ? formatDate(v) : '—',
           rpc:{ fn:'set_application_dob', idParam:'p_application_id', valueParam:'p_value' } })}
       ${editableRow("Driver's license", a.drivers_license, { id:a.id, can:canEditSensitive,
           rpc:{ fn:'set_application_drivers_license', idParam:'p_application_id', valueParam:'p_value' } })}
       ${editableRow("Licence state", a.drivers_license_state, { table:'applications', id:a.id,
-          column:'drivers_license_state', type:'select', record:a,
+          column:'drivers_license_state', type:'select', record:base,
           options: [{value:'',label:'—'}].concat(US_STATES.map(st => ({value:st,label:st}))) })}
-      ${editableRow('Personal address', a.personal_address, { table:'applications', id:a.id, column:'personal_address', type:'textarea', record:a })}
+      ${editableRow('Personal address', a.personal_address, { table:'applications', id:a.id, column:'personal_address', type:'textarea', record:base })}
       ${editableRow('SSN', a.ssn, { id:a.id, can:canEditSensitive,
           // Masked when shown, full when editing — there is no point asking
           // someone to retype nine digits they cannot see.
@@ -14311,20 +14311,20 @@ async function openApplicationDetail(id){
           rpc:{ fn:'set_application_ssn', idParam:'p_application_id', valueParam:'p_value' } })}
 
       <h3 style="font-size:14px;margin:20px 0 12px;">Business</h3>
-      ${editableRow('Legal name', a.legal_business_name, { table:'applications', id:a.id, column:'legal_business_name', record:a,
+      ${editableRow('Legal name', a.legal_business_name, { table:'applications', id:a.id, column:'legal_business_name', record:base,
           onSaved: () => renderApplicationsTable() })}
-      ${editableRow('DBA', a.dba_name, { table:'applications', id:a.id, column:'dba_name', record:a })}
-      ${editableRow('Address', a.business_address, { table:'applications', id:a.id, column:'business_address', type:'textarea', record:a })}
-      ${editableRow('Business email', a.business_email, { table:'applications', id:a.id, column:'business_email', type:'email', record:a })}
-      ${editableRow('Business phone', a.business_phone, { table:'applications', id:a.id, column:'business_phone', type:'tel', record:a })}
-      ${editableRow('Start date', a.business_start_date, { table:'applications', id:a.id, column:'business_start_date', type:'date', record:a,
+      ${editableRow('DBA', a.dba_name, { table:'applications', id:a.id, column:'dba_name', record:base })}
+      ${editableRow('Address', a.business_address, { table:'applications', id:a.id, column:'business_address', type:'textarea', record:base })}
+      ${editableRow('Business email', a.business_email, { table:'applications', id:a.id, column:'business_email', type:'email', record:base })}
+      ${editableRow('Business phone', a.business_phone, { table:'applications', id:a.id, column:'business_phone', type:'tel', record:base })}
+      ${editableRow('Start date', a.business_start_date, { table:'applications', id:a.id, column:'business_start_date', type:'date', record:base,
           display: v => v ? formatDate(v) : '—' })}
-      ${editableRow('Type &amp; services', a.business_type_services, { table:'applications', id:a.id, column:'business_type_services', type:'textarea', record:a })}
+      ${editableRow('Type &amp; services', a.business_type_services, { table:'applications', id:a.id, column:'business_type_services', type:'textarea', record:base })}
       ${editableRow('Tax ID', a.business_tax_id, { id:a.id, can:canEditSensitive,
           rpc:{ fn:'set_application_tax_id', idParam:'p_application_id', valueParam:'p_value' } })}
-      ${editableRow('Highest sale', a.highest_sale_amount, { table:'applications', id:a.id, column:'highest_sale_amount', record:a })}
-      ${editableRow('Average sale', a.average_sale_amount, { table:'applications', id:a.id, column:'average_sale_amount', record:a })}
-      ${editableRow('Monthly sales avg', a.monthly_sales_average, { table:'applications', id:a.id, column:'monthly_sales_average', record:a })}
+      ${editableRow('Highest sale', a.highest_sale_amount, { table:'applications', id:a.id, column:'highest_sale_amount', record:base })}
+      ${editableRow('Average sale', a.average_sale_amount, { table:'applications', id:a.id, column:'average_sale_amount', record:base })}
+      ${editableRow('Monthly sales avg', a.monthly_sales_average, { table:'applications', id:a.id, column:'monthly_sales_average', record:base })}
 
       <h3 style="font-size:14px;margin:20px 0 12px;">Banking</h3>
       ${['bank_name','routing_number','account_number'].map((key, i) => {
