@@ -4602,6 +4602,28 @@ function loadXLSX(){
   return __xlsxPromise;
 }
 
+/* =========================================================================
+   HTML2PDF ON DEMAND — same reasoning as loadXLSX() above: only the
+   application drawer's "Download PDF" button needs this, so it is not worth
+   every page load paying for it.
+   ========================================================================= */
+let __html2pdfPromise = null;
+function loadHtml2Pdf(){
+  if(window.html2pdf) return Promise.resolve(window.html2pdf);
+  if(__html2pdfPromise) return __html2pdfPromise;
+  __html2pdfPromise = new Promise(function(resolve, reject){
+    const el = document.createElement('script');
+    el.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+    el.onload = function(){ resolve(window.html2pdf); };
+    el.onerror = function(){
+      __html2pdfPromise = null;
+      reject(new Error('Could not load the PDF library'));
+    };
+    document.head.appendChild(el);
+  });
+  return __html2pdfPromise;
+}
+
 async function fetchCurrentAppUser(authUser){
   // Every read below is gated by RLS, which means it needs the signed-in
   // user's JWT attached to the request. Immediately after signInWithPassword()
@@ -14066,7 +14088,7 @@ async function openApplicationDetail(id){
         <h2>${a.legal_business_name || (a.first_name+' '+a.last_name)}</h2>
         <span class="pill ${a.source==='wix' ? 'pill-referral': a.source==='paper' ? 'pill-agent-auth' : a.source==='link' ? 'pill-status-active' : 'pill-agent-basic'}" style="margin-top:4px;display:inline-block;">${a.source==='wix' ? 'From Wix': a.source==='paper' ? 'Paper application' : a.source==='link' ? 'Portal application link' : 'Manual entry'}</span>
       </div>
-      <button class="btn btn-xs" onclick="window.print()" style="margin-right:8px;">Print / Save as PDF</button>
+      <button class="btn btn-xs" id="apDownloadPdfBtn" onclick="downloadApplicationPdf('${a.id}')" style="margin-right:8px;">Download PDF</button>
       <button class="drawer-close" onclick="closeApplicationDrawer()">&times;</button>
     </div>
     <div class="drawer-body">
@@ -14171,6 +14193,64 @@ async function viewPaperApplicationFile(id){
   const { data, error } = await supa.storage.from('applications').createSignedUrl(a.paper_application_file_path, 60);
   if(error){ alert('Could not open file: ' + error.message); return; }
   window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+}
+
+// Replaces the old window.print() button — that opened the browser's print
+// dialog and made the person choose "Save as PDF" themselves. This saves a
+// real PDF file directly, no dialog. Captures the drawer exactly as it is
+// showing right now (masked SSN stays masked unless someone already clicked
+// reveal first) — same as the print flow it replaces, not a new exposure.
+async function downloadApplicationPdf(id){
+  const a = APPLICATIONS.find(x => x.id === id);
+  if(!a) return;
+
+  const btn = document.getElementById('apDownloadPdfBtn');
+  const originalLabel = btn ? btn.textContent : '';
+  if(btn){ btn.disabled = true; btn.textContent = 'Preparing…'; }
+
+  // html2canvas needs the source actually attached to the DOM (a detached
+  // clone often measures as zero-size or renders with the wrong layout) —
+  // so the clone is positioned off-screen rather than left detached, and
+  // always removed again in `finally`, success or failure.
+  let mount = null;
+  try {
+    const html2pdf = await loadHtml2Pdf();
+
+    // Work off a clone so hiding the pencil icons never touches the real,
+    // live drawer — same "clone rather than mutate" reasoning as the
+    // decrypted-fields copy above.
+    const source = document.querySelector('#applicationDrawer .drawer-body');
+    const clone = source.cloneNode(true);
+    clone.style.padding = '24px';
+    clone.style.background = '#ffffff';
+    clone.querySelectorAll('.row-edit, .row-edit-btn').forEach(el => el.remove());
+
+    const heading = document.createElement('h2');
+    heading.textContent = a.legal_business_name || `${a.first_name || ''} ${a.last_name || ''}`.trim() || 'Application';
+    heading.style.margin = '0 0 16px';
+    clone.insertBefore(heading, clone.firstChild);
+
+    mount = document.createElement('div');
+    mount.style.cssText = 'position:fixed;top:0;left:-99999px;width:700px;background:#ffffff;';
+    mount.appendChild(clone);
+    document.body.appendChild(mount);
+
+    const safeName = (a.legal_business_name || `${a.first_name || ''}-${a.last_name || ''}` || 'application')
+      .toString().trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 60) || 'application';
+
+    await html2pdf().set({
+      margin: 10,
+      filename: `${safeName}-application.pdf`,
+      html2canvas: { scale: 2, backgroundColor: '#ffffff' },
+      jsPDF: { unit: 'pt', format: 'letter', orientation: 'portrait' },
+      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
+    }).from(clone).save();
+  } catch(e){
+    alert('Could not create the PDF: ' + (e.message || 'unknown error'));
+  } finally {
+    if(mount) mount.remove();
+    if(btn){ btn.disabled = false; btn.textContent = originalLabel; }
+  }
 }
 
 async function linkApplicationToAccount(appId, accountId){
