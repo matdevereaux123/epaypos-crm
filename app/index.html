@@ -5531,8 +5531,8 @@ async function createLeadForm(){
   if(error){ showToast('Could not create the form: ' + error.message, 'error'); return; }
   LEAD_FORM_TOKENS.unshift(data);
   renderLeadFormDrawer();
+  showToast('Lead form created.', 'success');
   copyLink(applicationShareUrl(data.slug));
-  showToast('Lead form created and copied to your clipboard', 'success');
 }
 
 async function createAndEmailLeadForm(){
@@ -5565,8 +5565,8 @@ async function createAndEmailLeadForm(){
   });
 
   if(!sent){
+    showToast('Could not send the email \u2014 here\u2019s the link to send manually.', 'error');
     copyLink(applicationShareUrl(data.slug));
-    showToast('Form created and copied \u2014 send it manually for now.', 'error');
   }
 }
 
@@ -5671,8 +5671,8 @@ async function createApplicationLinkForLead(leadId){
 
   if(error){ showToast('Could not create the link: ' + error.message, 'error'); return; }
   APPLICATION_LINK_TOKENS.unshift(data);
+  showToast('Application link for ' + label + ' created.', 'success');
   copyLink(applicationShareUrl(data.slug));
-  showToast('Application link for ' + label + ' copied to your clipboard', 'success');
 }
 
 async function createAndEmailApplicationLink(){
@@ -5714,8 +5714,8 @@ async function createAndEmailApplicationLink(){
   // The link exists either way. If sending failed the toast said why, so put
   // it on the clipboard rather than leaving them with nothing to show for it.
   if(!sent){
+    showToast('Could not send the email \u2014 here\u2019s the link to send manually.', 'error');
     copyLink(applicationShareUrl(data.slug));
-    showToast('Link created and copied \u2014 send it manually for now.', 'error');
   }
 }
 
@@ -5734,8 +5734,8 @@ async function createApplicationLink(){
   if(error){ showToast('Could not create the link: ' + error.message, 'error'); return; }
   APPLICATION_LINK_TOKENS.unshift(data);
   renderApplicationLinksDrawer();
+  showToast('Link created.', 'success');
   copyLink(applicationShareUrl(data.slug));
-  showToast('Link created and copied to your clipboard', 'success');
 }
 
 async function toggleApplicationLink(id){
@@ -8410,13 +8410,46 @@ document.getElementById('deleteSelectedReferralsBtn').addEventListener('click', 
   if(document.getElementById('view-authresellers').style.display !== 'none') renderResellersTable();
 });
 
-function copyLink(text){
+async function copyLink(text){
   // Most callers pass a protocol-less string (referral/booking links) and
   // rely on this to add https:// — but applicationShareUrl() already
   // returns a full URL, and doubling the protocol on top of it produced
   // "https://https://..." when copied. Idempotent either way now.
   const full = /^https?:\/\//i.test(text) ? text : ('https://' + text);
-  navigator.clipboard && navigator.clipboard.writeText(full);
+
+  let ok = false;
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      await navigator.clipboard.writeText(full);
+      ok = true;
+    }
+  } catch(e){ /* falls through to the execCommand fallback below */ }
+
+  // The Clipboard API silently rejects in some real situations (Safari right
+  // after a drawer steals focus, a non-secure context, permission never
+  // granted) — previously this returned with no error and every caller went
+  // on to claim "copied to your clipboard" anyway. Whatever was on the
+  // clipboard before stayed there, so pasting silently handed back
+  // whatever had last actually been copied — looking like the wrong thing
+  // got copied instead of like a failure. A hidden-textarea + execCommand
+  // fallback covers those cases, and the toast below is now the one place
+  // that reports whether the copy actually happened.
+  if(!ok){
+    try{
+      const ta = document.createElement('textarea');
+      ta.value = full;
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+    } catch(e){ ok = false; }
+  }
+
+  showToast(ok ? 'Link copied to your clipboard.' : 'Could not copy automatically — select and copy the link manually.', ok ? 'success' : 'error');
+  return ok;
 }
 
 function previewReferralLink(slug){
@@ -16380,8 +16413,7 @@ function bookingShareUrl(slug){
   return (PREFERRED_LINK_HOST || window.location.origin) + '/book/' + encodeURIComponent(slug);
 }
 function copyBookingLink(slug){
-  navigator.clipboard && navigator.clipboard.writeText(bookingShareUrl(slug));
-  showToast('Booking link copied.', 'success');
+  copyLink(bookingShareUrl(slug));
 }
 
 // Reuses sendOutboundEmail() (the same function every other "email this"
