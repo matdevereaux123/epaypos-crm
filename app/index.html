@@ -716,6 +716,12 @@
     border-radius:7px;padding:5px 10px;font-size:12px;color:var(--navy-500);
   }
   .link-chip button{border:none;background:none;color:var(--indigo-500);font-weight:600;font-size:11.5px;}
+  /* Preview is a real <a target="_blank">, not a window.open() button — a
+     script-initiated popup can get silently blocked with no visible error;
+     an anchor click opening a new tab is not treated as a popup by any
+     browser, so this can't quietly fail the way the button version did. */
+  .link-chip a{border:none;background:none;color:var(--indigo-500);font-weight:600;font-size:11.5px;cursor:pointer;text-decoration:none;}
+  .link-chip a:hover{text-decoration:underline;}
   .empty-state{padding:60px 20px;text-align:center;color:var(--slate-500);}
   .empty-state svg{width:40px;height:40px;opacity:.35;margin-bottom:12px;}
 
@@ -5503,7 +5509,7 @@ function renderLeadFormDrawer(){
             </div>
             <span class="link-chip mono" style="width:100%;margin-top:8px;">${applicationShareUrl(t.slug)}
               <button onclick="copyLink('${applicationShareUrl(t.slug)}')">Copy</button>
-              <button onclick="window.open('${applicationShareUrl(t.slug)}','_blank','noopener')">Preview</button>
+              <a href="${applicationShareUrl(t.slug)}" target="_blank" rel="noopener">Preview</a>
             </span>
             <button class="btn btn-xs" style="margin-top:8px;" onclick="toggleLeadFormLink('${t.id}')">
               ${t.is_active ? 'Retire this form' : 'Make active again'}
@@ -5646,7 +5652,7 @@ function renderApplicationLinksDrawer(){
             </div>
             <span class="link-chip mono" style="width:100%;margin-top:8px;">${applicationShareUrl(t.slug)}
               <button onclick="copyLink('${applicationShareUrl(t.slug)}')">Copy</button>
-              <button onclick="window.open('${applicationShareUrl(t.slug)}','_blank','noopener')">Preview</button>
+              <a href="${applicationShareUrl(t.slug)}" target="_blank" rel="noopener">Preview</a>
             </span>
             <button class="btn btn-xs" style="margin-top:8px;" onclick="toggleApplicationLink('${t.id}')">
               ${t.is_active ? 'Retire this link' : 'Make active again'}
