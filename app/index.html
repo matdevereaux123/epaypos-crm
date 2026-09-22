@@ -1352,6 +1352,10 @@
     transition:transform .15s ease, box-shadow .15s ease;
   }
   #quickAddFabBtn svg{ width:22px; height:22px; fill:#fff; transition:transform .2s ease; }
+  /* Traced from app/icon-512.png (apex ~255,124; base corners ~105/406,380 in the
+     512px mark) so this matches the logo's actual triangle proportions, not a
+     generic one — slight stroke-linejoin round echoes its softened base corners. */
+  #quickAddFabBtn svg polygon{ stroke:#fff; stroke-width:1.3; stroke-linejoin:round; }
   #quickAddFabBtn:hover{ transform:translateY(-2px); box-shadow:0 8px 24px rgba(0,0,0,.34); }
   #quickAddFabBtn:active{ transform:translateY(0) scale(.94); }
   #quickAddFab.open #quickAddFabBtn svg{ transform:rotate(135deg); }
@@ -2863,7 +2867,7 @@
     </button>
   </div>
   <button id="quickAddFabBtn" onclick="toggleQuickAddMenu(event)" aria-label="Quick add">
-    <svg viewBox="0 0 24 24"><polygon points="12,4 21,20 3,20"/></svg>
+    <svg viewBox="0 0 24 24"><polygon points="12,5.8 19.3,18.2 4.7,18.2"/></svg>
   </button>
 </div>
 
