@@ -1593,6 +1593,17 @@
           </button>
         </div>
 
+        <button class="nav-section-toggle" id="prospectingSectionToggle" type="button">
+          <span>Prospecting</span>
+          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="nav-collapsible" id="prospectingSectionItems">
+          <button class="nav-item" data-view="coldoutreach">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            Cold Outreach
+          </button>
+        </div>
+
         <button class="nav-section-toggle" id="marketingSectionToggle" type="button">
           <span>Marketing</span>
           <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
@@ -2270,6 +2281,37 @@
         </div>
       </section>
 
+      <!-- COLD OUTREACH (Prospecting) -->
+      <section id="view-coldoutreach" class="view" style="display:none;">
+        <div class="topbar">
+          <div>
+            <h1>Cold Outreach</h1>
+            <p class="subtext">A basic log of places you've physically been to — business, address, and a contact if you got one. Not a pipeline, just the visit log.</p>
+          </div>
+          <div class="topbar-actions">
+            <button class="btn btn-accent btn-sm" id="addColdOutreachBtn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Log a Visit
+            </button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h2>All visits</h2>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <button class="btn btn-sm" id="deleteSelectedColdOutreachBtn" style="display:none;color:var(--red);">Delete selected</button>
+              <input class="search-input" placeholder="Search by business or address..." id="coldOutreachSearch">
+            </div>
+          </div>
+          <table>
+            <thead><tr><th style="width:34px;"><input type="checkbox" id="coldOutreachSelectAll"></th><th>Business</th><th>Address</th><th>Contact</th><th>Added</th><th></th></tr></thead>
+            <tbody id="coldOutreachTableBody"></tbody>
+          </table>
+          <div id="coldOutreachEmptyState" class="empty-state" style="display:none;">No visits logged yet.</div>
+        </div>
+      </section>
+
       <!-- LEADS PIPELINE -->
       <section id="view-leads" class="view" style="display:none;">
         <div class="topbar">
@@ -2789,6 +2831,11 @@
 <!-- ================= DRAWER: ADD COLD LEAD ================= -->
 <div class="overlay" id="coldLeadOverlay">
   <div class="drawer" id="coldLeadDrawer"></div>
+</div>
+
+<!-- ================= DRAWER: LOG COLD OUTREACH VISIT ================= -->
+<div class="overlay" id="coldOutreachOverlay">
+  <div class="drawer" id="coldOutreachDrawer"></div>
 </div>
 
 <!-- ================= DRAWER: SCHEDULE / EDIT MEETING ================= -->
@@ -3853,6 +3900,12 @@ async function loadColdLeadsFromSupabase(){
   return data;
 }
 
+async function loadColdOutreachFromSupabase(){
+  const { data, error } = await supa.from('cold_outreach').select('*').order('created_at', { ascending: false });
+  if(error){ reportLoadFailure('cold outreach from Supabase', error); return []; }
+  return data;
+}
+
 /* =========================================================================
    COLD EMAIL (Instantly tracking)
    Mirrors what Instantly's webhooks would report per contact. status moves
@@ -4233,6 +4286,7 @@ let NOTIFICATIONS = [];
 let notifPollTimer = null;
 let TASKS = [];
 let taskFilter = 'open';
+let COLD_OUTREACH = [];
 // Set by openPaperApplicationForLink(), consumed once by saveNewApplication()
 // — carries which Lead/Account/Cold Lead a quick "Mark as Physical
 // Application" was opened from, so the new row links straight to it.
@@ -4841,6 +4895,7 @@ async function enterAppAsAuthUser(authUser){
     loadBookingAvailabilityFromSupabase(),
     loadNotificationsFromSupabase(),
     loadTasksFromSupabase(),
+    loadColdOutreachFromSupabase(),
     loadResidualsFromSupabase(),
     loadLoadersFromSupabase(),
     loadInstantlyContactsFromSupabase(),
@@ -4875,7 +4930,7 @@ async function enterAppAsAuthUser(authUser){
     leadCallNotes, leadDocuments, offices, lendingLeads, lendingLeadNotes,
     lendingLeadCallNotes, isoLeads, isoLeadNotes, isoLeadCallNotes,
     newsletters, nlTemplates, connectedCalendars,
-    calendarEvents, bookingLinks, bookingAvailability, notifications, tasks, residualPayouts, atmLoaders, instantlyContacts, partnerDocuments, applicationLinks,
+    calendarEvents, bookingLinks, bookingAvailability, notifications, tasks, coldOutreach, residualPayouts, atmLoaders, instantlyContacts, partnerDocuments, applicationLinks,
     integrationsFromDb, contacts
   ] = await tablesPromise;
 
@@ -4903,6 +4958,7 @@ async function enterAppAsAuthUser(authUser){
   BOOKING_AVAILABILITY = bookingAvailability;
   NOTIFICATIONS = notifications;
   TASKS = tasks;
+  COLD_OUTREACH = coldOutreach;
   calFilter = defaultCalendarFilter();
   RESIDUALS = residualPayouts;
   LOADERS = atmLoaders;
@@ -7885,6 +7941,7 @@ function showView(view, fromHistory){
   if(view === 'contacts') renderContacts();
   if(view === 'authresellers') renderResellersTable();
   if(view === 'coldleads') renderColdLeadsTable();
+  if(view === 'coldoutreach') renderColdOutreachTable();
   if(view === 'leads') renderLeadsBoard();
   if(view === 'accounts') renderAccountsTable();
   if(view === 'applications') renderApplicationsTable();
@@ -13937,7 +13994,7 @@ document.getElementById('deleteSelectedAccountsBtn').addEventListener('click', a
 
 function updateBulkDeleteBar(kind){
   const checked = document.querySelectorAll('.row-check-'+kind+':checked').length;
-  const btnIdMap = { coldLeads:'deleteSelectedColdLeadsBtn', accounts:'deleteSelectedAccountsBtn', referrals:'deleteSelectedReferralsBtn' };
+  const btnIdMap = { coldLeads:'deleteSelectedColdLeadsBtn', accounts:'deleteSelectedAccountsBtn', referrals:'deleteSelectedReferralsBtn', coldOutreach:'deleteSelectedColdOutreachBtn' };
   const btn = document.getElementById(btnIdMap[kind]);
   if(!btn) return;
   btn.style.display = checked > 0 ? 'inline-flex' : 'none';
@@ -14780,6 +14837,129 @@ document.getElementById('deleteSelectedColdLeadsBtn').addEventListener('click', 
   COLD_LEADS = COLD_LEADS.filter(c => !ids.includes(c.id));
   renderColdLeadsTable();
 });
+
+/* =========================================================================
+   COLD OUTREACH (Prospecting) — a basic visit log, deliberately simpler
+   than Cold Leads: no temperature, no stages, no follow-up scheduling.
+   Business name, address, and a contact if one was actually picked up.
+   ========================================================================= */
+function renderColdOutreachTable(filterText){
+  const q = (filterText || (document.getElementById('coldOutreachSearch') ? document.getElementById('coldOutreachSearch').value : '') || '').toLowerCase();
+  let rows = COLD_OUTREACH.slice().sort((a,b)=> new Date(b.created_at) - new Date(a.created_at));
+  if(q) rows = rows.filter(c => (c.business_name||'').toLowerCase().includes(q) || (c.address||'').toLowerCase().includes(q));
+
+  document.getElementById('coldOutreachSelectAll').checked = false;
+  updateBulkDeleteBar('coldOutreach');
+
+  if(rows.length === 0){
+    document.getElementById('coldOutreachTableBody').innerHTML = '';
+    document.getElementById('coldOutreachEmptyState').style.display = 'block';
+    return;
+  }
+  document.getElementById('coldOutreachEmptyState').style.display = 'none';
+
+  const __pg_coldOutreach = paginateRows('coldOutreach', rows);
+  renderPager('coldOutreach', __pg_coldOutreach, function(){ renderColdOutreachTable(); });
+  document.getElementById('coldOutreachTableBody').innerHTML = __pg_coldOutreach.rows.map(c => `
+    <tr onclick="openColdOutreachDetail('${c.id}')">
+      <td onclick="event.stopPropagation();"><input type="checkbox" class="row-check-coldOutreach" data-id="${c.id}" onchange="updateBulkDeleteBar('coldOutreach')"></td>
+      <td class="name-cell">${c.business_name}</td>
+      <td>${c.address || '—'}</td>
+      <td>${c.contact_name ? `${c.contact_name}<div class="sub">${[c.contact_phone, c.contact_email].filter(Boolean).join(' &middot; ')}</div>` : '—'}</td>
+      <td>${formatDate(c.created_at)}</td>
+      <td style="text-align:right;">
+        <button class="btn btn-xs" onclick="event.stopPropagation(); deleteColdOutreach('${c.id}');" style="color:var(--red);">Delete</button>
+      </td>
+    </tr>`).join('');
+}
+document.addEventListener('input', function(e){
+  if(e.target && e.target.id === 'coldOutreachSearch') renderColdOutreachTable(e.target.value);
+});
+document.getElementById('coldOutreachSelectAll').addEventListener('change', function(){
+  document.querySelectorAll('.row-check-coldOutreach').forEach(cb => cb.checked = this.checked);
+  updateBulkDeleteBar('coldOutreach');
+});
+document.getElementById('deleteSelectedColdOutreachBtn').addEventListener('click', async function(){
+  const ids = Array.from(document.querySelectorAll('.row-check-coldOutreach:checked')).map(cb => cb.dataset.id);
+  if(ids.length === 0) return;
+  if(!confirm(`Delete ${ids.length} visit${ids.length===1?'':'s'}? This can't be undone.`)) return;
+  const { error } = await supa.from('cold_outreach').delete().in('id', ids);
+  if(error){ alert('Could not delete: ' + error.message); return; }
+  COLD_OUTREACH = COLD_OUTREACH.filter(c => !ids.includes(c.id));
+  renderColdOutreachTable();
+});
+
+async function deleteColdOutreach(id){
+  if(!confirm('Delete this visit?')) return;
+  const { error } = await supa.from('cold_outreach').delete().eq('id', id);
+  if(error){ showToast('Could not delete: ' + error.message, 'error'); return; }
+  COLD_OUTREACH = COLD_OUTREACH.filter(c => c.id !== id);
+  closeColdOutreachDrawer();
+  renderColdOutreachTable();
+}
+
+function openAddColdOutreachDrawer(){
+  document.getElementById('coldOutreachDrawer').innerHTML = coldOutreachFormHtml(null);
+  document.getElementById('coldOutreachOverlay').classList.add('open');
+}
+function openColdOutreachDetail(id){
+  const c = COLD_OUTREACH.find(x => x.id === id);
+  if(!c) return;
+  document.getElementById('coldOutreachDrawer').innerHTML = coldOutreachFormHtml(c);
+  document.getElementById('coldOutreachOverlay').classList.add('open');
+}
+function closeColdOutreachDrawer(){
+  document.getElementById('coldOutreachOverlay').classList.remove('open');
+}
+
+function coldOutreachFormHtml(c){
+  return `
+    <div class="drawer-head">
+      <div><h2>${c ? 'Edit visit' : 'Log a visit'}</h2></div>
+      <button class="drawer-close" onclick="closeColdOutreachDrawer()">&times;</button>
+    </div>
+    <div class="drawer-body">
+      <div class="field"><label>Business name</label><input id="coBusinessName" value="${c ? escAttr(c.business_name) : ''}" placeholder="e.g. Riverside Diner"></div>
+      <div class="field"><label>Address</label><input id="coAddress" value="${c ? escAttr(c.address||'') : ''}" placeholder="Street, city, state"></div>
+      <div class="field"><label>Contact name <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label><input id="coContactName" value="${c ? escAttr(c.contact_name||'') : ''}"></div>
+      <div class="field"><label>Contact phone <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label><input id="coContactPhone" type="tel" value="${c ? escAttr(c.contact_phone||'') : ''}"></div>
+      <div class="field"><label>Contact email <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label><input id="coContactEmail" type="email" value="${c ? escAttr(c.contact_email||'') : ''}"></div>
+      <div class="field"><label>Notes <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label><textarea id="coNotes" rows="3">${c ? (c.notes||'') : ''}</textarea></div>
+    </div>
+    <div class="drawer-footer">
+      ${c ? `<button class="btn" style="flex:1;color:var(--red);" onclick="deleteColdOutreach('${c.id}')">Delete</button>` : `<button class="btn" style="flex:1;" onclick="closeColdOutreachDrawer()">Cancel</button>`}
+      <button class="btn btn-accent" style="flex:1;" onclick="saveColdOutreach(${c ? `'${c.id}'` : 'null'})">${c ? 'Save changes' : 'Save visit'}</button>
+    </div>
+  `;
+}
+
+async function saveColdOutreach(id){
+  const business_name = document.getElementById('coBusinessName').value.trim();
+  if(!business_name){ showToast('Give it a business name first.', 'error'); return; }
+  const fields = {
+    business_name,
+    address: document.getElementById('coAddress').value.trim() || null,
+    contact_name: document.getElementById('coContactName').value.trim() || null,
+    contact_phone: document.getElementById('coContactPhone').value.trim() || null,
+    contact_email: document.getElementById('coContactEmail').value.trim() || null,
+    notes: document.getElementById('coNotes').value.trim() || null,
+  };
+  if(id){
+    const { error } = await supa.from('cold_outreach').update(fields).eq('id', id);
+    if(error){ showToast('Could not save: ' + error.message, 'error'); return; }
+    Object.assign(COLD_OUTREACH.find(c => c.id === id), fields);
+    showToast('Visit updated.', 'success');
+  } else {
+    const { data, error } = await supa.from('cold_outreach').insert(fields).select().single();
+    if(error){ showToast('Could not save: ' + error.message, 'error'); return; }
+    COLD_OUTREACH.unshift(data);
+    showToast('Visit logged.', 'success');
+  }
+  closeColdOutreachDrawer();
+  renderColdOutreachTable();
+}
+
+document.getElementById('addColdOutreachBtn').addEventListener('click', openAddColdOutreachDrawer);
 
 function openColdLeadDetail(id){
   const c = COLD_LEADS.find(x => x.id === id);
