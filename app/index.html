@@ -17501,7 +17501,11 @@ function openDayDrawer(dateStr){
                 </div>
                 ${e.google_sync_error
                   ? `<div style="font-size:11px;color:var(--red);margin-top:3px;">Not on Google: ${e.google_sync_error}</div>`
-                  : (fromGoogle ? '' : (e.google_event_id ? `<div style="font-size:11px;color:var(--ok-text);margin-top:3px;">On your Google Calendar</div>` : ''))}
+                  : (fromGoogle ? '' : (e.google_event_id
+                      ? (e.google_html_link
+                          ? `<div style="font-size:11px;margin-top:3px;"><a href="${e.google_html_link}" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="color:var(--ok-text);">On your Google Calendar &middot; view it &rarr;</a></div>`
+                          : `<div style="font-size:11px;color:var(--ok-text);margin-top:3px;">On your Google Calendar</div>`)
+                      : ''))}
               </div>
               ${fromGoogle ? `<span class="integration-status not-connected" style="flex:none;">Google</span>` : ''}
             </div>`;
@@ -17615,7 +17619,7 @@ async function saveMeeting(eventId){
       showToast('Saved, but Google Calendar rejected it: ' + out.error, 'error');
     } else {
       const row = CALENDAR_EVENTS.find(e => e.id === savedId);
-      if(row){ row.google_event_id = out.googleEventId; row.google_sync_error = null; }
+      if(row){ row.google_event_id = out.googleEventId; row.google_sync_error = null; row.google_html_link = out.htmlLink || null; }
       showToast('Meeting saved and added to your Google Calendar.', 'success');
     }
   }
@@ -17677,6 +17681,7 @@ async function pushAllMeetingsToGoogle(){
       pushed++;
       ev.google_event_id = out.googleEventId;
       ev.google_sync_error = null;
+      ev.google_html_link = out.htmlLink || null;
     }
   }
 
