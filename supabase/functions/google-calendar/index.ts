@@ -232,12 +232,32 @@ async function pushEventToGoogle(
   };
   if (ev.zoom_link) body.location = ev.zoom_link;
 
+  // Whoever scheduled it owns the event either way — this only ever adds
+  // other teammates as Google attendees on that same event, never a second
+  // owner. Looked up fresh rather than trusting anything the browser sent,
+  // same reasoning as every other server-side email lookup in this project.
+  const attendeeIds = (Array.isArray(ev.attendee_user_ids) ? ev.attendee_user_ids : [])
+    .filter((id: unknown) => typeof id === 'string' && id !== ownerUserId);
+  if (attendeeIds.length) {
+    const { data: attendeeUsers } = await admin
+      .from('users')
+      .select('email')
+      .in('id', attendeeIds);
+    const emails = (attendeeUsers ?? [])
+      .map((u: { email?: string }) => u.email)
+      .filter((e: unknown): e is string => typeof e === 'string' && e.length > 0);
+    if (emails.length) body.attendees = emails.map((email: string) => ({ email }));
+  }
+
   const existing = ev.google_event_id as string | null;
   const endpoint = existing
     ? `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(existing)}`
     : 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
+  // sendUpdates=all is what actually makes Google email the invite to each
+  // attendee rather than silently attaching them to the event.
+  const url = `${endpoint}?sendUpdates=all`;
 
-  const res = await fetch(endpoint, {
+  const res = await fetch(url, {
     method: existing ? 'PATCH' : 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

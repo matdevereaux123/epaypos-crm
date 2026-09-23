@@ -17409,6 +17409,16 @@ function meetingFormHtml(ev, prefillDate, prefillColdLead, prefillLead){
       </select>
     </div>
     <div class="field">
+      <label>Also invite <span style="color:var(--slate-300);font-weight:400;">(optional — you're on it either way)</span></label>
+      <div id="mtAttendees" style="display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;padding:8px 10px;">
+        ${assignableUsers().filter(u => u.id !== currentUser.id).sort((a,b)=>a.name.localeCompare(b.name)).map(u => `
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:400;cursor:pointer;">
+            <input type="checkbox" value="${u.id}" ${(ev.attendee_user_ids||[]).includes(u.id) ? 'checked' : ''} style="width:auto;">
+            ${u.name}${u.email ? ` <span style="color:var(--slate-400);font-size:11.5px;">${u.email}</span>` : ''}
+          </label>`).join('') || '<span style="font-size:12.5px;color:var(--slate-400);">Nobody else to invite yet.</span>'}
+      </div>
+    </div>
+    <div class="field">
       <label>Linked Cold Lead (optional)</label>
       <select id="mtColdLead">
         <option value="">None</option>
@@ -17499,6 +17509,7 @@ function openDayDrawer(dateStr){
                 <div style="font-size:11.5px;color:var(--slate-500);">
                   ${timeLabel(e)}${e.all_day || !e.time ? '' : ' &middot; ' + (e.duration || 30) + ' min'} &middot; ${mt.label}
                 </div>
+                ${(e.attendee_user_ids||[]).length ? `<div style="font-size:11px;color:var(--slate-400);margin-top:2px;">With ${e.attendee_user_ids.map(id => (USERS.find(u=>u.id===id)||{}).name).filter(Boolean).join(', ')}</div>` : ''}
                 ${e.google_sync_error
                   ? `<div style="font-size:11px;color:var(--red);margin-top:3px;">Not on Google: ${e.google_sync_error}</div>`
                   : (fromGoogle ? '' : (e.google_event_id
@@ -17595,6 +17606,7 @@ async function saveMeeting(eventId){
     linked_lead_id: document.getElementById('mtLead').value || null,
     zoom_link: document.getElementById('mtZoomLink').value.trim(),
     notes: document.getElementById('mtNotes').value.trim(),
+    attendee_user_ids: Array.from(document.querySelectorAll('#mtAttendees input:checked')).map(el => el.value),
   };
   let savedId = eventId;
   if(eventId){
