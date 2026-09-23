@@ -702,6 +702,65 @@ Deno.serve(async (req) => {
       return json(body, status);
     }
 
+    // Not Google-specific at all — this is the CRM-native "you've been added
+    // to a meeting" email, sent regardless of whether anyone involved has
+    // Google connected. Lives here anyway to reuse this file's existing
+    // branded-email helper rather than duplicating it into a third function.
+    // notified_attendee_ids is what keeps re-saving the same meeting from
+    // re-emailing everyone already on it — only ids that are on
+    // attendee_user_ids but not yet on notified_attendee_ids get one.
+    case 'notify_attendees': {
+      const eventId = String(payload.eventId ?? '');
+      if (!eventId) return json({ error: 'eventId is required' }, 400);
+
+      const { data: ev, error: evErr } = await admin
+        .from('calendar_events')
+        .select('*')
+        .eq('id', eventId)
+        .single();
+      if (evErr || !ev) return json({ error: 'That meeting no longer exists' }, 404);
+      if (ev.owner_id !== userId) return json({ error: 'Only the meeting owner can invite people to it' }, 403);
+
+      const already = new Set((ev.notified_attendee_ids ?? []) as string[]);
+      const current = (Array.isArray(ev.attendee_user_ids) ? ev.attendee_user_ids : []) as string[];
+      const newIds = current.filter((id) => !already.has(id));
+      if (!newIds.length) return json({ success: true, notified: 0 }, 200);
+
+      const [{ data: organizer }, { data: invitees }] = await Promise.all([
+        admin.from('users').select('name').eq('id', userId).maybeSingle(),
+        admin.from('users').select('id, name, email').in('id', newIds),
+      ]);
+
+      const meetingLabel = TYPE_LABELS[ev.type as string] || 'meeting';
+      const when = `${ev.date}${ev.time ? ` at ${ev.time}` : ''}`;
+      const organizerName = (organizer as { name?: string } | null)?.name ?? 'A teammate';
+
+      const notifRows = (invitees ?? []).map((u: { id: string }) => ({
+        user_id: u.id,
+        type: 'meeting_invite',
+        title: `${organizerName} added you to "${ev.title}"`,
+        body: `${meetingLabel} — ${when}`,
+        link_view: 'calendar',
+        link_id: ev.id,
+      }));
+      if (notifRows.length) await admin.from('notifications').insert(notifRows);
+
+      for (const u of (invitees ?? []) as { id: string; name?: string; email?: string }[]) {
+        if (!u.email) continue;
+        await sendBookingEmail(
+          admin, u.email, `You're invited: ${ev.title}`, "You've been added to a meeting",
+          `${organizerName} added you to "${ev.title}" (${meetingLabel}), scheduled for ${when}.` +
+          (ev.zoom_link ? `\n\nJoin: ${ev.zoom_link}` : ''),
+        );
+      }
+
+      await admin.from('calendar_events')
+        .update({ notified_attendee_ids: Array.from(new Set([...already, ...newIds])) })
+        .eq('id', eventId);
+
+      return json({ success: true, notified: newIds.length }, 200);
+    }
+
     case 'import_events': {
       const got = await accessTokenFor(admin, userId);
       if (got.error) return json({ error: got.error }, 400);

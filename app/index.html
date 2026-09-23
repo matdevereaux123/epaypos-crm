@@ -16704,6 +16704,10 @@ async function openNotification(id){
     // Referral Partners because the ATM brand tab happened to be active.
     if(n.link_view === 'calendar' && currentBrand !== 'epay') setBrand('epay');
     showView(n.link_view);
+    if(n.link_view === 'calendar' && n.link_id){
+      const ev = CALENDAR_EVENTS.find(e => e.id === n.link_id);
+      if(ev) openDayDrawer(ev.date);
+    }
   }
 }
 
@@ -17433,6 +17437,10 @@ function meetingFormHtml(ev, prefillDate, prefillColdLead, prefillLead){
       </select>
     </div>
     <div class="field"><label>Zoom link (optional)</label><input id="mtZoomLink" value="${ev.zoom_link||''}" placeholder="https://zoom.us/j/..."></div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;margin:2px 0 14px;cursor:pointer;">
+      <input type="checkbox" id="mtRemindBefore" ${ev.remind_before ? 'checked' : ''} style="width:auto;">
+      Remind me 30 minutes before
+    </label>
     <div class="field"><label>Notes</label><textarea id="mtNotes" placeholder="Agenda, prep notes...">${ev.notes||''}</textarea></div>
   `;
 }
@@ -17607,6 +17615,11 @@ async function saveMeeting(eventId){
     zoom_link: document.getElementById('mtZoomLink').value.trim(),
     notes: document.getElementById('mtNotes').value.trim(),
     attendee_user_ids: Array.from(document.querySelectorAll('#mtAttendees input:checked')).map(el => el.value),
+    remind_before: document.getElementById('mtRemindBefore').checked,
+    // Reset on every save, not just when the checkbox is freshly turned on —
+    // editing the date/time of a meeting that already fired its reminder
+    // should let it fire again for the new time, not stay silently spent.
+    reminder_sent_at: null,
   };
   let savedId = eventId;
   if(eventId){
@@ -17622,9 +17635,10 @@ async function saveMeeting(eventId){
   renderCalendar();
   if(calOpenDay) openDayDrawer(calOpenDay); else closeMeetingDrawer();
 
-  // The meeting is saved either way. Pushing it to Google is a second,
-  // failable step, so it happens after the drawer closes and a failure is
-  // reported without pretending the meeting did not save.
+  // The meeting is saved either way. Pushing it to Google, and emailing
+  // anyone newly added, are both second, failable steps — they happen after
+  // the drawer closes and a failure is reported without pretending the
+  // meeting did not save.
   if(myConnectedCalendar() && savedId){
     const out = await callGoogleCalendar('push_event', { eventId: savedId });
     if(out.error){
@@ -17633,6 +17647,14 @@ async function saveMeeting(eventId){
       const row = CALENDAR_EVENTS.find(e => e.id === savedId);
       if(row){ row.google_event_id = out.googleEventId; row.google_sync_error = null; row.google_html_link = out.htmlLink || null; }
       showToast('Meeting saved and added to your Google Calendar.', 'success');
+    }
+  }
+  if(savedId && fields.attendee_user_ids.length){
+    const out = await callGoogleCalendar('notify_attendees', { eventId: savedId });
+    if(out.error) showToast('Saved, but could not email the people invited: ' + out.error, 'error');
+    else if(out.notified){
+      const row = CALENDAR_EVENTS.find(e => e.id === savedId);
+      if(row) row.notified_attendee_ids = Array.from(new Set([...(row.notified_attendee_ids||[]), ...fields.attendee_user_ids]));
     }
   }
   if(document.getElementById('view-coldleads').style.display !== 'none') renderColdLeadsTable();
