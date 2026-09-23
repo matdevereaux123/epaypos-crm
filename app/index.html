@@ -1571,6 +1571,17 @@
           Agents/ISOs
         </button>
 
+        <button class="nav-section-toggle" id="prospectingSectionToggle" type="button">
+          <span>Prospecting</span>
+          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="nav-collapsible" id="prospectingSectionItems">
+          <button class="nav-item" data-view="coldoutreach">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            Cold Outreach
+          </button>
+        </div>
+
         <button class="nav-section-toggle" id="lendingSectionToggle" type="button">
           <span>Lending</span>
           <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
@@ -1590,17 +1601,6 @@
           <button class="nav-item" data-view="isoleads">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
             ISO Leads
-          </button>
-        </div>
-
-        <button class="nav-section-toggle" id="prospectingSectionToggle" type="button">
-          <span>Prospecting</span>
-          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-        </button>
-        <div class="nav-collapsible" id="prospectingSectionItems">
-          <button class="nav-item" data-view="coldoutreach">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-            Cold Outreach
           </button>
         </div>
 
@@ -14898,10 +14898,95 @@ async function deleteColdOutreach(id){
   renderColdOutreachTable();
 }
 
+// Logging visits is almost always a batch after a day of door-knocking, not
+// one at a time — this is the whole reason "+ Log a Visit" opens several
+// blank rows instead of a single form. 5 keeps it fitting in the drawer
+// without heavy scrolling; editing an existing one (below) stays single-row.
+const COLD_OUTREACH_BATCH_MAX = 5;
+
+function coldOutreachBatchRowHtml(){
+  return `
+    <div class="co-batch-row" style="border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:10px;position:relative;">
+      <button type="button" class="co-row-remove" onclick="removeColdOutreachRow(this)" title="Remove this one"
+              style="display:none;position:absolute;top:8px;right:8px;background:none;border:none;color:var(--slate-400);cursor:pointer;font-size:18px;line-height:1;">&times;</button>
+      <div class="field" style="margin-bottom:8px;"><label>Business name</label><input data-field="business_name" placeholder="e.g. Riverside Diner"></div>
+      <div class="field" style="margin-bottom:8px;"><label>Address</label><input data-field="address" placeholder="Street, city, state"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div class="field" style="margin-bottom:8px;"><label>Contact name</label><input data-field="contact_name"></div>
+        <div class="field" style="margin-bottom:8px;"><label>Contact phone</label><input data-field="contact_phone" type="tel"></div>
+      </div>
+      <div class="field" style="margin-bottom:0;"><label>Contact email</label><input data-field="contact_email" type="email"></div>
+    </div>`;
+}
+
+// Shows each row's remove button only once there's more than one row (no
+// point offering to remove the only row left), and hides "+ Add another"
+// once the cap is reached rather than letting it silently no-op.
+function syncColdOutreachRowControls(){
+  const rows = document.querySelectorAll('#coBatchRows .co-batch-row');
+  rows.forEach(row => {
+    const x = row.querySelector('.co-row-remove');
+    if(x) x.style.display = rows.length > 1 ? '' : 'none';
+  });
+  const addBtn = document.getElementById('coAddRowBtn');
+  if(addBtn) addBtn.style.display = rows.length >= COLD_OUTREACH_BATCH_MAX ? 'none' : '';
+}
+
+function addColdOutreachRow(){
+  const wrap = document.getElementById('coBatchRows');
+  if(wrap.querySelectorAll('.co-batch-row').length >= COLD_OUTREACH_BATCH_MAX) return;
+  wrap.insertAdjacentHTML('beforeend', coldOutreachBatchRowHtml());
+  syncColdOutreachRowControls();
+}
+
+function removeColdOutreachRow(btn){
+  const row = btn.closest('.co-batch-row');
+  if(row) row.remove();
+  syncColdOutreachRowControls();
+}
+
 function openAddColdOutreachDrawer(){
-  document.getElementById('coldOutreachDrawer').innerHTML = coldOutreachFormHtml(null);
+  document.getElementById('coldOutreachDrawer').innerHTML = `
+    <div class="drawer-head">
+      <div>
+        <h2>Log visits</h2>
+        <p style="font-size:11.5px;color:var(--slate-500);margin:4px 0 0;">Add up to ${COLD_OUTREACH_BATCH_MAX} at once — rows left blank are skipped.</p>
+      </div>
+      <button class="drawer-close" onclick="closeColdOutreachDrawer()">&times;</button>
+    </div>
+    <div class="drawer-body">
+      <div id="coBatchRows">${coldOutreachBatchRowHtml()}</div>
+      <button type="button" class="btn btn-sm" id="coAddRowBtn" style="width:100%;" onclick="addColdOutreachRow()">+ Add another visit</button>
+    </div>
+    <div class="drawer-footer">
+      <button class="btn" style="flex:1;" onclick="closeColdOutreachDrawer()">Cancel</button>
+      <button class="btn btn-accent" style="flex:1;" onclick="saveColdOutreachBatch()">Save visits</button>
+    </div>
+  `;
   document.getElementById('coldOutreachOverlay').classList.add('open');
 }
+
+async function saveColdOutreachBatch(){
+  const rows = Array.from(document.querySelectorAll('#coBatchRows .co-batch-row'));
+  const field = (row, name) => row.querySelector(`[data-field="${name}"]`).value.trim();
+  const payload = rows.map(row => ({
+    business_name: field(row, 'business_name'),
+    address: field(row, 'address') || null,
+    contact_name: field(row, 'contact_name') || null,
+    contact_phone: field(row, 'contact_phone') || null,
+    contact_email: field(row, 'contact_email') || null,
+  })).filter(r => r.business_name);
+
+  if(!payload.length){ showToast('Give at least one visit a business name.', 'error'); return; }
+
+  const { data, error } = await supa.from('cold_outreach').insert(payload).select();
+  if(error){ showToast('Could not save: ' + error.message, 'error'); return; }
+  COLD_OUTREACH = [...data, ...COLD_OUTREACH];
+  closeColdOutreachDrawer();
+  showToast(`${data.length} visit${data.length === 1 ? '' : 's'} logged.`, 'success');
+  renderColdOutreachTable();
+}
+
 function openColdOutreachDetail(id){
   const c = COLD_OUTREACH.find(x => x.id === id);
   if(!c) return;
