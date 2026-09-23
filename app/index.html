@@ -1784,6 +1784,7 @@
           <div style="display:flex;align-items:center;gap:10px;">
             <span id="calSyncStatus" style="font-size:11.5px;color:var(--slate-400);"></span>
             <button class="btn btn-sm" id="calSyncBtn">Sync Google</button>
+            <button class="btn btn-sm" id="calPushAllBtn" title="Push every one of your CRM meetings that isn't on Google yet">Push to Google</button>
             <div class="phase-toggle" id="calCalendarFilter"></div>
           </div>
         </div>
@@ -17367,6 +17368,7 @@ document.getElementById('residualsStatusFilter').addEventListener('change', func
 });
 
 document.getElementById('calSyncBtn').addEventListener('click', function(){ syncGoogleCalendar(false); });
+document.getElementById('calPushAllBtn').addEventListener('click', pushAllMeetingsToGoogle);
 document.getElementById('calTodayBtn').addEventListener('click', function(){
   calViewDate = new Date();
   renderCalendar();
@@ -17641,6 +17643,54 @@ async function deleteMeeting(eventId){
 document.getElementById('newMeetingBtn').addEventListener('click', function(){
   openMeetingDrawer(null, todayISO());
 });
+
+// One-time backfill for meetings created before Google was connected (or
+// created while it was disconnected) — saveMeeting() already pushes on
+// every future save, this just catches up everything that predates that.
+// Only ever touches this user's own meetings that have never been pushed
+// (no google_event_id) — a row that already has one either came FROM
+// Google or was pushed already, and re-pushing it is not this button's job.
+async function pushAllMeetingsToGoogle(){
+  if(!myConnectedCalendar()){
+    showToast('Connect your Google Calendar first — Settings → Connected calendars.', 'error');
+    return;
+  }
+  const mine = CALENDAR_EVENTS.filter(e => e.owner_id === currentUser.id && !e.google_event_id);
+  if(!mine.length){
+    showToast('Nothing to push — every meeting of yours is already on Google.', 'info');
+    return;
+  }
+
+  const btn = document.getElementById('calPushAllBtn');
+  const originalLabel = btn ? btn.textContent : '';
+  if(btn) btn.disabled = true;
+
+  let pushed = 0, failed = 0, lastError = '';
+  for(const ev of mine){
+    if(btn) btn.textContent = `Pushing ${pushed + failed + 1} of ${mine.length}…`;
+    const out = await callGoogleCalendar('push_event', { eventId: ev.id });
+    if(out.error){
+      failed++;
+      lastError = out.error;
+      ev.google_sync_error = out.error;
+    } else {
+      pushed++;
+      ev.google_event_id = out.googleEventId;
+      ev.google_sync_error = null;
+    }
+  }
+
+  if(btn){ btn.disabled = false; btn.textContent = originalLabel; }
+  renderCalendar();
+
+  if(failed && !pushed){
+    showToast(`Could not push any meetings: ${lastError}`, 'error');
+  } else if(failed){
+    showToast(`Pushed ${pushed} of ${mine.length} meetings — ${failed} failed (${lastError}).`, 'error');
+  } else {
+    showToast(`Pushed ${pushed} meeting${pushed === 1 ? '' : 's'} to Google Calendar.`, 'success');
+  }
+}
 
 /* =========================================================================
    LIVE RECALL — a single search across Leads, Accounts, and Cold Leads for
