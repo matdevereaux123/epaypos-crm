@@ -490,6 +490,25 @@
   .btn{padding:10px 16px;border-radius:8px;border:1px solid var(--line);background:var(--card);font-size:13.5px;font-weight:600;color:var(--navy-700);}
   .btn:hover{border-color:var(--brand-accent-2);}
 
+  /* Training walkthrough */
+  .training-card{
+    position:relative;width:min(520px,calc(100vw - 32px));max-height:calc(100vh - 48px);overflow-y:auto;
+    background:var(--card);border:1px solid var(--line-strong);border-radius:16px;
+    padding:26px 26px 20px;box-shadow:0 24px 60px -18px rgba(20,40,80,.4);
+  }
+  .training-x{position:absolute;top:12px;right:14px;border:none;background:none;font-size:22px;line-height:1;color:var(--slate-300);cursor:pointer;}
+  .training-x:hover{color:var(--navy-700);}
+  .training-dots{display:flex;gap:5px;margin-bottom:18px;}
+  .training-dots span{height:3px;flex:1;border-radius:2px;background:var(--line);transition:background .2s ease;}
+  .training-dots span.done{background:var(--brand-accent-2);opacity:.45;}
+  .training-dots span.on{background:var(--brand-accent-2);}
+  .training-count{font-size:10.5px;text-transform:uppercase;letter-spacing:1px;color:var(--slate-300);margin-bottom:8px;}
+  .training-step h2{margin:0 0 10px;font-size:19px;color:var(--navy-700);line-height:1.3;}
+  .training-step p{margin:0 0 10px;font-size:13.5px;line-height:1.6;color:var(--slate-600,var(--slate-500));}
+  .training-note{font-size:12px;color:var(--slate-500);background:var(--surface-2);border-left:2px solid var(--brand-accent-2);
+    padding:9px 12px;border-radius:0 7px 7px 0;}
+  .training-actions{display:flex;align-items:center;gap:8px;margin-top:20px;}
+
   /* Application document uploads */
   .doc-drop{
     display:flex;align-items:center;gap:12px;padding:13px 14px;cursor:pointer;
@@ -1772,6 +1791,15 @@
                 <span class="theme-switch" aria-hidden="true"><span class="theme-knob"></span></span>
               </button>
               <div class="profile-dropdown-divider"></div>
+              <button type="button" class="theme-row" id="openTrainingBtn">
+                <span class="theme-row-label">
+                  <svg class="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+                  </svg>
+                  How this works
+                </span>
+              </button>
+              <div class="profile-dropdown-divider"></div>
               <div class="profile-dropdown-footer">
                 <span id="sessionUserLabel">admin@epaypos.net</span>
                 <button id="logoutBtn">Sign out</button>
@@ -2897,6 +2925,10 @@
 </div>
 
 <!-- ================= DRAWER: SCHEDULE / EDIT MEETING ================= -->
+<div class="modal-overlay" id="trainingOverlay">
+  <div class="training-card" id="trainingCard"></div>
+</div>
+
 <div class="overlay" id="loaderOverlay">
   <div class="drawer" id="loaderDrawer"></div>
 </div>
@@ -4527,6 +4559,9 @@ function enterApp(){
   populatePreviewAsSelect();
   initNotificationBell();
   startNotificationPolling();
+  // After applyRolePermissions()/setBrand() above, because the walkthrough is
+  // built from the tabs this role can actually see.
+  maybeOpenTrainingOnLogin();
   // Honour the hash so refreshing keeps you on the tab you were looking at;
   // anything unrecognised (including a leftover #access_token from a recovery
   // link) falls back to the dashboard.
@@ -5351,6 +5386,11 @@ document.getElementById('logoutBtn').addEventListener('click', async function(){
 
 // Overlays are all static markup, so one pass at startup covers them.
 wireOverlayDismiss();
+
+document.getElementById('openTrainingBtn').addEventListener('click', function(){
+  document.getElementById('profileDropdown').classList.remove('open');
+  openTraining();
+});
 
 initAuth();
 async function initAuth(){
@@ -8102,6 +8142,154 @@ async function refreshPublicSubmissions(view){
    Reads the visible section rather than tracking a "current view" variable,
    so it cannot drift out of step with what is actually displayed.
    ------------------------------------------------------------------------- */
+/* =========================================================================
+   TRAINING
+
+   Nobody has been taught this system, and the gap shows up as the same
+   questions asked once per new person. This runs the first time someone logs
+   in and can be re-opened from the profile menu.
+
+   Built from what the signed-in role can actually see, not from a fixed
+   script. An agent is never shown Cold Leads or Applications: a walkthrough
+   that teaches things untrue of your own account is worse than none, because
+   the person then looks for a tab that is not there and assumes they are
+   doing it wrong.
+   ========================================================================= */
+const TRAINING_VERSION = 1;
+
+// Each step names the view it belongs to. A step whose view the role cannot
+// reach is dropped, so the same definition serves every role.
+function trainingSteps(){
+  const perms = roleOf(currentUser).perms || {};
+  const portal = roleOf(currentUser).portal_scope === 'own';
+  const first = (currentUser.name || '').split(' ')[0] || 'there';
+
+  const all = [
+    { view: null, title: `Welcome, ${first}`, body:
+      portal
+        ? `This is your portal. You will only ever see your own records here — your leads, your accounts and your payouts. Nobody else's, and nothing of ours.`
+        : `A quick tour of the parts you will use most. It takes about a minute, and you can reopen it any time from your profile menu.`,
+      note: 'Use the arrow keys or the buttons. Skip if you would rather explore on your own.' },
+
+    { view:'leads', title:'Leads move left to right', body:
+      'Each card is a business. Drag it into the next column as it progresses, or open it and use Move stage. Some stages will not let you past until something is on file — the app tells you what is missing rather than failing silently.'
+      + (portal ? ' You see the leads you entered and any assigned to you, and nobody else’s.' : '') },
+
+    { view:'coldleads', title:'Cold leads are the ones not worked yet', body:
+      'Anything not yet in the pipeline. Convert turns one into a real lead, carrying the details across. The Added column shows New, Medium or Old so a list that has gone stale is obvious at a glance.'
+      + (portal ? ' Yours only — cold leads are not shared between agents.' : '') },
+
+    { view:'coldoutreach', title:'Log a visit when you call on somewhere', body:
+      'Somewhere you physically went. If it turns into something, Convert makes it a cold lead or a pipeline lead without retyping anything. The visit stays in the log either way.' },
+
+    { view:'applications', title:'Applications arrive here', body:
+      portal
+        ? 'Applications from the links you send land here. Each shows whether the voided check and driver’s licence came with it, so you know what is still to be chased. Sending a link is how you start one — head office enters the paper ones.'
+        : 'Submitted through a link you send, or entered by hand. Each shows whether the voided check and driver’s licence came with it, so you know what is still to be chased before underwriting will look at it.' },
+
+    { view:'accounts', title:'Accounts are leads that closed', body:
+      'A lead becomes an account once it converts. Everything recorded along the way stays with it — the notes, the call log and the documents.' },
+
+    { view:'calendar', title:'Your calendar, and your booking link', body:
+      'Connect your Google Calendar once and meetings booked here appear on it. Booking Links gives you a personal link a client can use to pick a time from your real availability — no back and forth about when you are free.' },
+
+    { view:'residuals', title: portal ? 'Your residual statements' : 'Residual payouts', body:
+      portal
+        ? 'Every month we post, with what was paid and what is pending. You can download any of it for your own records.'
+        : 'Log a month for one partner, or paste a whole month at once. By partner shows each agent’s running total; the partner sees only their own.' },
+
+    { view: null, title:'Two things worth knowing', body:
+      'Most detail rows have a small pencil beside them — click it to correct a value in place. And deleting a lead also deletes its notes and its documents, which cannot be undone. Sending a lead back to cold leads does not: use that when something goes quiet.',
+      note: 'That difference is not obvious from either button, which is exactly why it is here.' },
+
+    { view: null, title:'That is the tour', body:
+      portal
+        ? 'Anything you cannot see is not hidden from you by accident — your account is scoped to your own work. If something looks missing that should not be, ask us.'
+        : 'Reopen this any time from your profile menu under “How this works”.' }
+  ];
+
+  return all.filter(step => {
+    if(!step.view) return true;
+    const nav = [...document.querySelectorAll('.nav-item')]
+      .filter(n => n.style.display !== 'none' && n.offsetParent !== null)
+      .map(n => n.dataset.view);
+    return nav.includes(step.view);
+  });
+}
+
+let trainingIdx = 0;
+let trainingStepsCache = [];
+
+function openTraining(){
+  trainingStepsCache = trainingSteps();
+  trainingIdx = 0;
+  renderTrainingStep();
+  document.getElementById('trainingOverlay').classList.add('open');
+}
+
+function renderTrainingStep(){
+  const steps = trainingStepsCache;
+  const step = steps[trainingIdx];
+  if(!step) return closeTraining(true);
+  const last = trainingIdx === steps.length - 1;
+
+  document.getElementById('trainingCard').innerHTML = `
+    <button type="button" class="modal-close training-x" onclick="closeTraining(false)" aria-label="Close">&times;</button>
+    <div class="training-dots">
+      ${steps.map((_, i) => `<span class="${i === trainingIdx ? 'on' : (i < trainingIdx ? 'done' : '')}"></span>`).join('')}
+    </div>
+    <div class="training-step">
+      <div class="training-count">Step ${trainingIdx + 1} of ${steps.length}</div>
+      <h2>${step.title}</h2>
+      <p>${step.body}</p>
+      ${step.note ? `<p class="training-note">${step.note}</p>` : ''}
+    </div>
+    <div class="training-actions">
+      <button type="button" class="btn" onclick="closeTraining(false)">Skip</button>
+      <div style="flex:1;"></div>
+      ${trainingIdx > 0 ? `<button type="button" class="btn" onclick="trainingGo(-1)">Back</button>` : ''}
+      <button type="button" class="btn btn-accent" onclick="${last ? 'closeTraining(true)' : 'trainingGo(1)'}">${last ? 'Finish' : 'Next'}</button>
+    </div>`;
+
+  // Show the tab being described, so the words are attached to something.
+  if(step.view){ try { showView(step.view); } catch(e){} }
+}
+
+function trainingGo(delta){
+  trainingIdx = Math.max(0, Math.min(trainingStepsCache.length - 1, trainingIdx + delta));
+  renderTrainingStep();
+}
+
+async function closeTraining(completed){
+  document.getElementById('trainingOverlay').classList.remove('open');
+  // Recorded through an RPC: users_write is manageUsers-only, so a portal
+  // user cannot tick this on their own row. Failing to record it is not
+  // worth interrupting anyone over — the worst case is being offered the
+  // tour again.
+  try {
+    await supa.rpc('set_my_training_state', { p_completed: !!completed, p_version: TRAINING_VERSION });
+    currentUser[completed ? 'training_completed_at' : 'training_skipped_at'] = new Date().toISOString();
+  } catch(e){ console.error('Could not record training state', e); }
+  if(completed) showToast('That is the tour. Reopen it any time from your profile menu.', 'success');
+}
+
+// Arrow keys, since the card invites them.
+document.addEventListener('keydown', function(e){
+  const ov = document.getElementById('trainingOverlay');
+  if(!ov || !ov.classList.contains('open')) return;
+  if(e.key === 'ArrowRight'){ e.preventDefault(); trainingGo(1); }
+  if(e.key === 'ArrowLeft'){ e.preventDefault(); trainingGo(-1); }
+});
+
+// First login: offered once, to someone who has neither finished nor skipped.
+function maybeOpenTrainingOnLogin(){
+  if(!currentUser || !currentUser.id) return;
+  if(currentUser.training_completed_at || currentUser.training_skipped_at) return;
+  // After the nav has been permission-filtered, since the steps are built
+  // from what this role can actually see.
+  setTimeout(openTraining, 600);
+}
+
 function refreshActiveView(){
   const shown = [...document.querySelectorAll('section.view')].find(v => v.style.display !== 'none');
   if(!shown) return;
