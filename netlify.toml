@@ -41,6 +41,12 @@
   to = "/index.html"
   status = 200
 
+# The e-signature link a client gets by email (database/69_esignature.sql).
+[[redirects]]
+  from = "/sign/*"
+  to = "/index.html"
+  status = 200
+
 # ---------------------------------------------------------------------------
 # Google's OAuth redirect lands here.
 #

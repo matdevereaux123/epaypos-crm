@@ -47,6 +47,10 @@ const ALLOWED_KINDS = [
   // for anyone who can create one — it's just a URL, no lead or account
   // data — so this one kind is exempt from the fullDashboard check below.
   'booking_link_share',
+  // The "please sign this" email and its reminder (database/69_esignature.sql).
+  // Left under the fullDashboard check below rather than exempted: it carries
+  // a link that lets whoever holds it sign a contract in our name.
+  'signature_request',
 ] as const;
 
 Deno.serve(async (req) => {

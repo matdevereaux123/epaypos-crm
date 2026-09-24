@@ -17,7 +17,7 @@
     // so a dark-mode visitor never sees a flash of it.
     var params = new URLSearchParams(window.location.search);
     var path = window.location.pathname || '';
-    if(params.get('ref') || params.get('app') || /^\/(r|apply|book)\//.test(path)){
+    if(params.get('ref') || params.get('app') || /^\/(r|apply|book|sign)\//.test(path)){
       document.documentElement.setAttribute('data-theme', 'light');
       document.documentElement.setAttribute('data-public-page', 'true');
       return;
@@ -1221,6 +1221,87 @@
     padding:12px 26px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13.5px;margin:6px 0 18px;}
   .email-preview-footer{background:var(--email-bg);padding:16px 24px;font-size:11px;color:var(--email-muted);text-align:center;}
 
+  /* ---------- E-SIGNATURE ---------- */
+  /* The signing page is the only public page that has to hold a whole
+     contract, so it gets a wider card than the referral/booking ones. */
+  .landing-wrap.wide{max-width:860px;}
+  .sign-paper{
+    background:#fff;border:1px solid var(--line);border-radius:10px;
+    padding:30px 34px;max-height:52vh;overflow-y:auto;
+    font-size:13.5px;line-height:1.7;color:#1B2B47;
+  }
+  .sign-paper h2{font-family:'Space Grotesk';font-size:17px;color:#16233E;margin:22px 0 8px;}
+  .sign-paper h2:first-child{margin-top:0;}
+  .sign-paper h3{font-size:14px;color:#16233E;margin:18px 0 6px;}
+  .sign-paper p{margin:0 0 11px;}
+  .sign-paper ul{margin:0 0 11px;padding-left:20px;}
+  .sign-paper li{margin-bottom:4px;}
+  .sign-paper b{color:#16233E;}
+  .sign-paper hr{border:none;border-top:1px solid #E4E9F2;margin:18px 0;}
+  .sign-scroll-note{font-size:11.5px;color:var(--slate-500);text-align:center;margin:8px 0 0;}
+  .sign-tabs{display:flex;gap:6px;margin-bottom:12px;}
+  .sign-tab{
+    flex:1;padding:9px;border-radius:8px;border:1px solid var(--line);background:var(--surface-3);
+    font-size:12.5px;font-weight:600;color:var(--slate-500);cursor:pointer;
+  }
+  .sign-tab.active{background:var(--card);border-color:var(--brand-accent-2);color:var(--navy-700);}
+  .sign-pad{
+    border:1px dashed var(--slate-300);border-radius:10px;background:#fff;
+    position:relative;touch-action:none;width:100%;height:150px;cursor:crosshair;
+  }
+  .sign-pad-line{
+    position:absolute;left:24px;right:24px;bottom:34px;border-bottom:1px solid #E4E9F2;
+    pointer-events:none;
+  }
+  .sign-pad-hint{
+    position:absolute;left:0;right:0;bottom:12px;text-align:center;font-size:11px;
+    color:var(--slate-300);pointer-events:none;
+  }
+  .sign-typed-preview{
+    border:1px solid #E4E9F2;border-radius:10px;background:#fff;padding:18px 20px;
+    min-height:76px;display:flex;align-items:center;justify-content:center;
+    font-size:30px;color:#16233E;
+  }
+  .sign-consent{
+    display:flex;gap:10px;align-items:flex-start;background:var(--surface-3);
+    border:1px solid var(--line);border-radius:10px;padding:13px 15px;margin:16px 0;
+    font-size:12px;line-height:1.55;color:var(--slate-500);
+  }
+  .sign-consent input{margin-top:2px;width:16px;height:16px;flex:0 0 auto;}
+  /* The block that ends up on the signed copy, in the CRM and on the page. */
+  .sig-block{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px;
+    margin-top:24px;padding-top:20px;border-top:1px solid #E4E9F2;
+  }
+  .sig-slot .sig-line{
+    border-bottom:1px solid #1B2B47;min-height:52px;display:flex;align-items:flex-end;
+    padding-bottom:4px;
+  }
+  .sig-slot .sig-line img{max-height:50px;max-width:100%;}
+  .sig-slot .sig-script{font-size:27px;color:#16233E;line-height:1.1;}
+  .sig-slot .sig-meta{font-size:10.5px;color:#5B6B8C;margin-top:5px;line-height:1.5;}
+  .esign-status{
+    display:inline-block;padding:3px 9px;border-radius:20px;font-size:10.5px;font-weight:700;
+    text-transform:uppercase;letter-spacing:.3px;
+  }
+  .esign-status.sent{background:var(--warn-bg);color:var(--warn-text);}
+  .esign-status.viewed{background:var(--accent-soft);color:var(--navy-500);}
+  .esign-status.signed{background:var(--ok-bg);color:var(--ok-text);}
+  .esign-status.declined,.esign-status.voided,.esign-status.expired{background:var(--err-bg);color:var(--err-text);}
+  .esign-status.draft{background:var(--hover);color:var(--slate-500);}
+  .audit-row{
+    display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:12px;
+  }
+  .audit-row:last-child{border-bottom:none;}
+  .audit-dot{width:8px;height:8px;border-radius:50%;background:var(--brand-accent-2);margin-top:5px;flex:0 0 auto;}
+  .audit-meta{font-size:10.5px;color:var(--slate-300);margin-top:2px;}
+  .merge-chip{
+    display:inline-block;background:var(--hover);border:1px solid var(--line);border-radius:6px;
+    padding:3px 7px;font-size:10.5px;font-family:'IBM Plex Mono',monospace;color:var(--navy-500);
+    cursor:pointer;margin:0 4px 4px 0;
+  }
+  .merge-chip:hover{border-color:var(--brand-accent-2);color:var(--navy-700);}
+
   /* ---------- PUBLIC REFERRAL LANDING PAGE ---------- */
   #landing-screen{min-height:100vh;background:linear-gradient(160deg,var(--bg) 0%,var(--accent-soft) 100%);display:flex;align-items:center;justify-content:center;padding:40px 20px;}
   .landing-wrap{width:100%;max-width:480px;}
@@ -1687,6 +1768,21 @@
           </button>
         </div>
 
+        <button class="nav-section-toggle" id="esignSectionToggle" type="button">
+          <span>Agreements</span>
+          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="nav-collapsible" id="esignSectionItems">
+          <button class="nav-item" data-view="esign">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M8 16c1.5-2.5 2.5-4 3.5-4s1 3 2 3 1.5-1 3-1"/></svg>
+            Sent for Signature
+          </button>
+          <button class="nav-item" data-view="esigntemplates">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
+            Templates
+          </button>
+        </div>
+
         <button class="nav-section-toggle" id="isoSectionToggle" type="button" style="display:none;">
           <span>Envision ISO</span>
           <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
@@ -2102,6 +2198,83 @@
         </div>
 
         <div id="lendingLeadsBoard"></div>
+      </section>
+
+      <!-- ================= AGREEMENTS: SENT FOR SIGNATURE ================= -->
+      <section id="view-esign" class="view" style="display:none;">
+        <div class="topbar">
+          <div>
+            <h1>Sent for Signature</h1>
+            <p class="subtext">Every agreement sent out, what the client has done with it, and the signed copy once it comes back. Each one is attached to the lead, account or partner it was sent for.</p>
+          </div>
+          <div class="topbar-actions">
+            <button class="btn btn-accent btn-sm" id="newSignatureBtn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Send for Signature
+            </button>
+          </div>
+        </div>
+
+        <div class="cards-row" id="esignStats"></div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h2 id="esignCount">All documents</h2>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <select id="esignStatusFilter" style="width:auto;min-width:150px;">
+                <option value="open">Open</option>
+                <option value="all">All</option>
+                <option value="sent">Waiting on client</option>
+                <option value="viewed">Viewed, not signed</option>
+                <option value="signed">Signed</option>
+                <option value="declined">Declined</option>
+                <option value="voided">Cancelled</option>
+                <option value="expired">Expired</option>
+              </select>
+              <input class="search-input" placeholder="Search signer, business or document..." id="esignSearch">
+            </div>
+          </div>
+          <table>
+            <thead><tr><th>Document</th><th>Signer</th><th>Attached to</th><th>Status</th><th>Sent</th><th></th></tr></thead>
+            <tbody id="esignTableBody"></tbody>
+          </table>
+          <div id="esignEmptyState" class="empty-state" style="display:none;"></div>
+        </div>
+      </section>
+
+      <!-- ================= AGREEMENTS: TEMPLATES ================= -->
+      <section id="view-esigntemplates" class="view" style="display:none;">
+        <div class="topbar">
+          <div>
+            <h1>Agreement Templates</h1>
+            <p class="subtext">Write a contract once, send it as many times as you like. Merge fields such as <span class="mono">{{business_name}}</span> fill themselves in from the record you send it for.</p>
+          </div>
+          <div class="topbar-actions">
+            <button class="btn btn-accent btn-sm" id="newTemplateBtn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              New Template
+            </button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h2 id="templatesCount">All templates</h2>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <select id="templatesActiveFilter" style="width:auto;min-width:120px;">
+                <option value="active">Active</option>
+                <option value="all">All</option>
+                <option value="inactive">Archived</option>
+              </select>
+              <input class="search-input" placeholder="Search templates..." id="templatesSearch">
+            </div>
+          </div>
+          <table>
+            <thead><tr><th>Template</th><th>Type</th><th>Brand</th><th>Sent</th><th>Signed</th><th></th></tr></thead>
+            <tbody id="templatesTableBody"></tbody>
+          </table>
+          <div id="templatesEmptyState" class="empty-state" style="display:none;"></div>
+        </div>
       </section>
 
       <section id="view-isoleads" class="view" style="display:none;">
@@ -2931,6 +3104,21 @@
 
 <div class="overlay" id="loaderOverlay">
   <div class="drawer" id="loaderDrawer"></div>
+</div>
+
+<!-- ================= DRAWER: AGREEMENT TEMPLATE (add/edit) ================= -->
+<div class="overlay" id="templateOverlay">
+  <div class="drawer" id="templateDrawer" style="width:640px;"></div>
+</div>
+
+<!-- ================= DRAWER: SEND FOR SIGNATURE ================= -->
+<div class="overlay" id="sendSignOverlay">
+  <div class="drawer" id="sendSignDrawer" style="width:600px;"></div>
+</div>
+
+<!-- ================= DRAWER: ONE SIGNATURE REQUEST ================= -->
+<div class="overlay" id="signRequestOverlay">
+  <div class="drawer" id="signRequestDrawer" style="width:640px;"></div>
 </div>
 
 <!-- ================= DRAWER: ADD / EDIT CONTACT ================= -->
@@ -4397,7 +4585,7 @@ const EPAY_ONLY_VIEWS = ['aiscraper', 'coldemail', 'reportsubs', 'calendar', 'au
 const ATM_ONLY_VIEWS = ['loaders', 'isoleads'];
 // Reachable by internal staff only, whichever brand. Hiding the nav item is
 // not the same as being unable to reach the view.
-const INTERNAL_ONLY_VIEWS = ['loaders'];
+const INTERNAL_ONLY_VIEWS = ['loaders', 'esign', 'esigntemplates'];
 // Controls where openLeadDetail()/openColdLeadDetail() render: the normal
 // slide-over drawer everywhere in the app, or full-width inline content —
 // used only by the Live Recall tab. Every internal re-render (after a save,
@@ -4630,6 +4818,14 @@ function applyRolePermissions(){
   if(teamStructureNav) teamStructureNav.style.display = perms.viewAllPartners ? 'flex' : 'none';
 
   // AI Lead Scraper and Cold Email are admin-only (further gated to EPAY POS brand in setBrand)
+  // Agreements is staff-only for now: sending a contract goes through the
+  // send-email function, which refuses anyone without fullDashboard, so an
+  // agent would get a tab whose only button always failed.
+  const esignToggle = document.getElementById('esignSectionToggle');
+  const esignItems = document.getElementById('esignSectionItems');
+  if(esignToggle) esignToggle.style.display = perms.fullDashboard ? 'flex' : 'none';
+  if(esignItems)  esignItems.style.display  = perms.fullDashboard ? 'block' : 'none';
+
   const marketingToggle = document.getElementById('marketingSectionToggle');
   const marketingItems = document.getElementById('marketingSectionItems');
   const isAdmin = perms.manageUsers; // manageUsers is exclusive to the Admin role
@@ -4994,7 +5190,9 @@ async function enterAppAsAuthUser(authUser){
     loadPartnerDocumentsFromSupabase(),
     loadApplicationLinksFromSupabase(),
     loadIntegrationsFromSupabase(),
-    loadContactsFromSupabase()
+    loadContactsFromSupabase(),
+    loadAgreementTemplatesFromSupabase(),
+    loadSignatureRequestsFromSupabase()
   ]);
 
   const appUser = await userPromise;
@@ -5023,10 +5221,12 @@ async function enterAppAsAuthUser(authUser){
     lendingLeadCallNotes, isoLeads, isoLeadNotes, isoLeadCallNotes,
     newsletters, nlTemplates, connectedCalendars,
     calendarEvents, bookingLinks, bookingAvailability, notifications, tasks, coldOutreach, residualPayouts, atmLoaders, instantlyContacts, partnerDocuments, applicationLinks,
-    integrationsFromDb, contacts
+    integrationsFromDb, contacts, agreementTemplates, signatureRequests
   ] = await tablesPromise;
 
   USERS = users;
+  AGREEMENT_TEMPLATES = agreementTemplates;
+  SIGNATURE_REQUESTS = signatureRequests;
   PARTNERS = partners;
   LEADS = leads;
   APPLICATIONS = applications;
@@ -5431,6 +5631,14 @@ async function initAuth(){
   const bookSlug = pathSlug && pathKind === 'book' ? pathSlug : null;
   if(bookSlug){
     renderBookingLandingPage(bookSlug);
+    return;
+  }
+
+  // An e-signature link (/sign/<token>) — public page, three anon functions,
+  // no session (database/69_esignature.sql).
+  const signToken = pathSlug && pathKind === 'sign' ? pathSlug : null;
+  if(signToken){
+    renderSignaturePage(signToken);
     return;
   }
 
@@ -8309,6 +8517,8 @@ function refreshActiveView(){
     else if(view === 'residuals')   renderResidualsReport();
     else if(view === 'isoleads')    renderIsoLeadsBoard();
     else if(view === 'lendingleads')renderLendingLeadsBoard();
+    else if(view === 'esign')       renderEsignTable();
+    else if(view === 'esigntemplates')renderTemplatesTable();
     else if(view === 'liverecall')  renderLiveRecall();
   } catch(e){
     // A save must never fail because the screen behind it could not redraw.
@@ -8367,6 +8577,8 @@ function showView(view, fromHistory){
   if(view === 'reportsubs') renderSubscriptionReport();
   if(view === 'collections') renderCollectionsReport();
   if(view === 'lendingleads') renderLendingLeadsBoard();
+  if(view === 'esign'){ renderEsignTable(); refreshSignatureRequests(); }
+  if(view === 'esigntemplates') renderTemplatesTable();
   if(view === 'isoleads') renderIsoLeadsBoard();
   if(view === 'calendar') renderCalendar();
   if(view === 'tasks') renderTasksList();
@@ -9834,6 +10046,8 @@ async function openReferralDetail(id){
       ${buildApplicationSectionHTML(p, decryptedPartnerSensitiveCache[p.id])}
 
       ${buildResidualsSectionHTML(p)}
+
+      ${roleOf(currentUser).perms.fullDashboard ? agreementsSectionHtml('partner', p.id) : ''}
 
       ${buildOnboardingSectionHTML(p)}
 
@@ -14064,6 +14278,7 @@ async function openLeadDetail(id){
       ${drawerSection('sec-shipments-'+l.id, 'Shipments', shipmentsBody, false)}
       ${buildCollectionsSectionHTML(l)}
       ${buildDocsSectionHTML(l)}
+      ${roleOf(currentUser).perms.fullDashboard ? agreementsSectionHtml(l.converted_to_account ? 'account' : 'lead', l.id) : ''}
 
       <hr style="border:none;border-top:1px solid var(--line);margin:20px 0;">
       ${l.converted_to_account ? '' : `
@@ -14183,6 +14398,1575 @@ function openMiniMenu(ev, ownerId, itemsHtml){
   }, 0);
 }
 
+/* =========================================================================
+   E-SIGNATURE  (database/69_esignature.sql)
+
+   The Agreements tab, and everything behind it: the template library, the
+   envelopes sent out from a lead/account/partner, the public signing page,
+   and the signed copy that comes back and stays attached to the record.
+
+   Two rules this whole module is built around:
+
+   1. A template is a draft; an envelope is a photograph. When something is
+      sent, the merged text is copied into signature_requests.document_text
+      and never read from the template again. Edit the template tomorrow and
+      what somebody signed yesterday is unchanged — which is the only way a
+      signed copy means anything.
+
+   2. Nothing the signer's browser says about the signer is trusted. The IP
+      and user agent on the record are read from the request headers inside
+      the SECURITY DEFINER function, not posted from the page.
+
+   Template bodies are plain text with a small amount of markdown, rendered
+   through renderAgreementText() below — escaped first, then a fixed set of
+   patterns turned into tags. Deliberately not rich HTML: these documents get
+   shown to people outside the company, and a contract editor that accepts
+   arbitrary HTML is a stored-XSS hole pointed at our own merchants.
+   ========================================================================= */
+let AGREEMENT_TEMPLATES = [];
+let SIGNATURE_REQUESTS = [];
+let templateSearch = '';
+let templateActiveFilter = 'active';
+let esignSearch = '';
+let esignStatusFilter = 'open';
+
+// The list view never needs the document body or the signature images, and
+// those are by far the biggest columns — a hundred envelopes' worth of
+// contract text on every login would be megabytes for a table that shows
+// six fields. Pulled per envelope in openSignRequestDetail() instead.
+const SIGNATURE_LIST_COLUMNS = 'id, token, template_id, title, brand, record_type, record_id, record_label,' +
+  ' signer_name, signer_email, signer_title, status, sent_at, first_viewed_at, last_viewed_at, view_count,' +
+  ' signed_at, declined_at, voided_at, expires_at, decline_reason, require_countersign, countersigned_at,' +
+  ' countersign_name, sent_by, sent_by_name, sent_by_email, created_at';
+
+async function loadAgreementTemplatesFromSupabase(){
+  const { data, error } = await supa.from('agreement_templates').select('*').order('name');
+  if(error){ reportLoadFailure('agreement templates', error); return []; }
+  return data || [];
+}
+
+async function loadSignatureRequestsFromSupabase(){
+  const { data, error } = await supa.from('signature_requests')
+    .select(SIGNATURE_LIST_COLUMNS).order('created_at', { ascending: false });
+  if(error){ reportLoadFailure('signature requests', error); return []; }
+  return data || [];
+}
+
+function esignWhen(iso){
+  if(!iso) return '—';
+  const d = new Date(iso);
+  if(isNaN(d)) return '—';
+  return d.toLocaleString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' });
+}
+function esignDayOnly(iso){
+  if(!iso) return '—';
+  const d = new Date(iso);
+  if(isNaN(d)) return '—';
+  return d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+}
+
+/* -------------------------------------------------------------------------
+   MERGE FIELDS
+   What {{business_name}} and friends resolve to. Filled at send time from
+   whichever record the envelope is attached to, so the snapshot has real
+   values in it rather than placeholders resolved at read time.
+   ------------------------------------------------------------------------- */
+const MERGE_FIELDS = [
+  { key:'business_name',  label:'Business name' },
+  { key:'contact_name',   label:'Contact name' },
+  { key:'signer_name',    label:'Signer name' },
+  { key:'signer_title',   label:'Signer title' },
+  { key:'email',          label:'Email' },
+  { key:'phone',          label:'Phone' },
+  { key:'address',        label:'Business address' },
+  { key:'city',           label:'City' },
+  { key:'state',          label:'State' },
+  { key:'zip',            label:'ZIP' },
+  { key:'agent_id',       label:'Agent ID' },
+  { key:'mid',            label:'MID' },
+  { key:'today',          label:"Today's date" },
+  { key:'sender_name',    label:'Your name' },
+  { key:'sender_email',   label:'Your email' },
+  { key:'company_name',   label:'Our company name' },
+];
+
+// Anything the record does not have becomes a ruled blank rather than an
+// empty gap or a literal {{tag}} — a contract with a line to fill in by hand
+// reads as intentional; one that says {{city}} reads as broken.
+const MERGE_BLANK = '__________';
+
+function mergeContextFor(recordType, recordId){
+  const brandName = currentBrand === 'atm' ? 'Envision ATM' : 'EPAY POS';
+  const ctx = {
+    today: new Date().toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' }),
+    sender_name: (currentUser && currentUser.name) || '',
+    sender_email: (currentUser && currentUser.email) || '',
+    company_name: brandName,
+  };
+  let r = null;
+  if(recordType === 'lead' || recordType === 'account') r = LEADS.find(x => x.id === recordId);
+  else if(recordType === 'cold_lead')    r = COLD_LEADS.find(x => x.id === recordId);
+  else if(recordType === 'partner')      r = PARTNERS.find(x => x.id === recordId);
+  else if(recordType === 'lending_lead') r = LENDING_LEADS.find(x => x.id === recordId);
+  else if(recordType === 'iso_lead')     r = ISO_LEADS.find(x => x.id === recordId);
+  else if(recordType === 'contact')      r = CONTACTS.find(x => x.id === recordId);
+  if(!r) return ctx;
+
+  ctx.business_name = r.business_name || r.name || '';
+  ctx.contact_name  = r.contact_name || r.name || '';
+  ctx.signer_name   = r.contact_name || r.name || '';
+  ctx.email         = r.email || '';
+  ctx.phone         = r.phone || '';
+  ctx.address       = r.business_address || r.address || '';
+  ctx.city          = r.city || '';
+  ctx.state         = r.state || '';
+  ctx.zip           = r.zip || '';
+  ctx.agent_id      = r.agent_id || '';
+  ctx.mid           = r.mid || r.boarding_mid || '';
+  return ctx;
+}
+
+function applyMerge(text, ctx){
+  return String(text == null ? '' : text).replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, (m, key) => {
+    const v = ctx[key.toLowerCase()];
+    return (v == null || v === '') ? MERGE_BLANK : String(v);
+  });
+}
+
+// Which merge fields in a body will come out blank for this record. Shown on
+// the send screen before anything goes out, because "the contract went to the
+// merchant with a blank where their address should be" is the kind of thing
+// you want to know thirty seconds earlier.
+function unresolvedMergeFields(text, ctx){
+  const found = [];
+  String(text || '').replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, (m, key) => {
+    const k = key.toLowerCase();
+    const v = ctx[k];
+    if((v == null || v === '') && found.indexOf(k) === -1) found.push(k);
+    return m;
+  });
+  return found;
+}
+
+/* -------------------------------------------------------------------------
+   Plain text -> safe document HTML.
+   Escape everything first, then recognise a handful of patterns. Nothing the
+   author types can produce a tag that wasn't put there by this function.
+   ------------------------------------------------------------------------- */
+function renderAgreementText(text){
+  const esc = v => String(v == null ? '' : v)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  const inline = v => esc(v)
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    .replace(/(^|[\s(])_([^_]+)_(?=[\s.,;:)!?]|$)/g, '$1<i>$2</i>');
+
+  const lines = String(text == null ? '' : text).split(/\r?\n/);
+  let html = '', listOpen = false, para = [];
+
+  const flushPara = () => {
+    if(para.length){ html += '<p>' + para.join('<br>') + '</p>'; para = []; }
+  };
+  const closeList = () => { if(listOpen){ html += '</ul>'; listOpen = false; } };
+
+  lines.forEach(raw => {
+    const line = raw.trim();
+    if(line === ''){ flushPara(); closeList(); return; }
+    if(/^-{3,}$|^_{3,}$/.test(line)){ flushPara(); closeList(); html += '<hr>'; return; }
+    if(/^##\s+/.test(line)){ flushPara(); closeList(); html += '<h3>' + inline(line.replace(/^##\s+/,'')) + '</h3>'; return; }
+    if(/^#\s+/.test(line)){ flushPara(); closeList(); html += '<h2>' + inline(line.replace(/^#\s+/,'')) + '</h2>'; return; }
+    if(/^[-*]\s+/.test(line)){
+      flushPara();
+      if(!listOpen){ html += '<ul>'; listOpen = true; }
+      html += '<li>' + inline(line.replace(/^[-*]\s+/,'')) + '</li>';
+      return;
+    }
+    closeList();
+    para.push(inline(line));
+  });
+  flushPara(); closeList();
+  return html || '<p style="color:#8894ad;">This document is empty.</p>';
+}
+
+/* The signature block that appears at the foot of the document — on the
+   signing page, in the drawer, and on the printed copy. One function so the
+   three can never drift into showing different things. */
+function signatureBlockHtml(req){
+  const esc = escAttr;
+  const slot = (heading, name, title, image, style, when) => `
+    <div class="sig-slot">
+      <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:#5B6B8C;margin-bottom:6px;">${esc(heading)}</div>
+      <div class="sig-line">
+        ${image
+          ? `<img src="${esc(image)}" alt="Signature">`
+          : (name ? `<span class="sig-script" style="font-family:${style === 'print' ? 'Inter, sans-serif' : "'Brush Script MT', cursive"};">${esc(name)}</span>` : '')}
+      </div>
+      <div class="sig-meta">
+        ${name ? `<div><b>${esc(name)}</b></div>` : '<div>&nbsp;</div>'}
+        ${title ? `<div>${esc(title)}</div>` : ''}
+        ${when ? `<div>Signed ${esc(esignWhen(when))}</div>` : ''}
+      </div>
+    </div>`;
+
+  let html = '<div class="sig-block">';
+  html += slot('Client signature', req.signature_name, req.signer_title, req.signature_image, req.signature_style, req.signed_at);
+  if(req.require_countersign || req.countersigned_at){
+    html += slot(
+      (currentBrandLabelForReq(req)) + ' signature',
+      req.countersign_name, req.countersign_title, req.countersign_image, null, req.countersigned_at);
+  }
+  html += '</div>';
+  return html;
+}
+
+function currentBrandLabelForReq(req){
+  return (req && req.brand === 'atm') ? 'Envision ATM' : 'EPAY POS';
+}
+
+function esignStatusPill(status){
+  const labels = {
+    draft:'Draft', sent:'Waiting on client', viewed:'Viewed', signed:'Signed',
+    declined:'Declined', voided:'Cancelled', expired:'Expired'
+  };
+  const s = status || 'draft';
+  return `<span class="esign-status ${s}">${labels[s] || s}</span>`;
+}
+
+function signingUrl(token){
+  return (PREFERRED_LINK_HOST || window.location.origin) + '/sign/' + encodeURIComponent(token);
+}
+
+/* =========================================================================
+   TEMPLATE LIBRARY  (Agreements -> Templates)
+   ========================================================================= */
+const STARTER_AGREEMENT_BODY = `# Merchant Services Agreement
+
+This Agreement is entered into on {{today}} between {{company_name}} ("Company") and {{business_name}} ("Merchant"), located at {{address}}, {{city}}, {{state}} {{zip}}.
+
+## 1. Services
+Company will provide point-of-sale equipment, payment processing and related support services to Merchant as described in the schedule of services provided with this Agreement.
+
+## 2. Term
+This Agreement begins on the date signed below and continues until cancelled by either party in writing.
+
+## 3. Fees
+Merchant agrees to the rates and fees disclosed in the accompanying schedule. Fees may be adjusted on thirty (30) days' written notice.
+
+## 4. Equipment
+Equipment supplied under this Agreement remains the property of Company unless purchased outright, and must be returned in working order on cancellation.
+
+## 5. Merchant responsibilities
+- Keep account and contact information current
+- Use the equipment only for lawful transactions
+- Notify Company promptly of any suspected fraud or chargeback activity
+
+## 6. Entire agreement
+This document, together with any schedule attached to it, is the entire agreement between the parties and replaces any prior understanding.
+
+By signing below, {{contact_name}} confirms they are authorised to enter into this Agreement on behalf of {{business_name}}.`;
+
+function scopedTemplates(){
+  const q = templateSearch.trim().toLowerCase();
+  return AGREEMENT_TEMPLATES.filter(t => {
+    if(templateActiveFilter === 'active'   && t.active === false) return false;
+    if(templateActiveFilter === 'inactive' && t.active !== false) return false;
+    if(!q) return true;
+    return [t.name, t.description, t.category, t.body].some(v => (v || '').toLowerCase().includes(q));
+  });
+}
+
+function templateUseCounts(templateId){
+  const sent = SIGNATURE_REQUESTS.filter(r => r.template_id === templateId);
+  return { sent: sent.length, signed: sent.filter(r => r.status === 'signed').length };
+}
+
+function renderTemplatesTable(){
+  const rows = scopedTemplates();
+  const body = document.getElementById('templatesTableBody');
+  const empty = document.getElementById('templatesEmptyState');
+  if(!body) return;
+
+  document.getElementById('templatesCount').textContent =
+    rows.length === AGREEMENT_TEMPLATES.length
+      ? `All templates (${rows.length})`
+      : `${rows.length} of ${AGREEMENT_TEMPLATES.length} templates`;
+
+  if(rows.length === 0){
+    body.innerHTML = '';
+    empty.style.display = 'block';
+    empty.innerHTML = AGREEMENT_TEMPLATES.length === 0
+      ? 'No templates yet. Create one and it becomes available to send from any lead, account or partner.<br><br><button class="btn btn-accent btn-sm" onclick="openTemplateDrawer(null, true)">Start from a sample merchant agreement</button>'
+      : 'No templates match that search.';
+    return;
+  }
+  empty.style.display = 'none';
+
+  const catLabels = { agreement:'Agreement', addendum:'Addendum', disclosure:'Disclosure',
+                      authorization:'Authorization', nda:'NDA', other:'Other' };
+  const brandLabels = { epay:'EPAY POS', atm:'Envision ATM', both:'Both brands' };
+
+  body.innerHTML = rows.map(t => {
+    const use = templateUseCounts(t.id);
+    return `
+    <tr style="cursor:pointer;" onclick="openTemplateDrawer('${t.id}')">
+      <td><b>${escAttr(t.name)}</b>${t.active === false ? ' <span class="integration-status not-connected">Archived</span>' : ''}
+        ${t.description ? `<div style="font-size:11.5px;color:var(--slate-500);">${escAttr(t.description)}</div>` : ''}</td>
+      <td>${catLabels[t.category] || t.category}</td>
+      <td>${brandLabels[t.brand] || t.brand}</td>
+      <td>${use.sent || '—'}</td>
+      <td>${use.signed || '—'}</td>
+      <td style="text-align:right;white-space:nowrap;">
+        <button class="btn btn-sm" onclick="event.stopPropagation(); openSendSignatureDrawer(null, null, '${t.id}')">Send</button>
+        ${recordMenuBtn('agreementTemplate', t.id, t.name)}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openTemplateDrawer(templateId, useStarter){
+  const t = templateId ? AGREEMENT_TEMPLATES.find(x => x.id === templateId) : null;
+  const v = (k, d) => (t && t[k] != null ? String(t[k]) : (d || ''));
+  const body = t ? t.body : (useStarter ? STARTER_AGREEMENT_BODY : '');
+  const fields = (t && Array.isArray(t.signer_fields)) ? t.signer_fields : [];
+
+  document.getElementById('templateDrawer').innerHTML = `
+    <div class="drawer-head">
+      <div><h2>${t ? 'Edit template' : 'New template'}</h2>
+        <span style="font-size:12px;color:var(--slate-300);">${t ? 'Edits apply to documents sent from now on — anything already signed keeps the wording it was signed with.' : 'Write it once, send it as often as you like.'}</span></div>
+      <button class="drawer-close" onclick="closeTemplateDrawer()">&times;</button>
+    </div>
+    <div class="drawer-body">
+      <div id="templateError" style="display:none;margin-bottom:12px;padding:10px 12px;background:var(--err-bg);border:1px solid var(--err-border);border-radius:8px;color:var(--err-text);font-size:12.5px;"></div>
+
+      <div class="field"><label>Template name</label>
+        <input id="tplName" value="${escAttr(v('name'))}" placeholder="e.g. Merchant Services Agreement"></div>
+
+      <div class="field"><label>Short description <span style="color:var(--slate-300);font-weight:400;">(internal only)</span></label>
+        <input id="tplDesc" value="${escAttr(v('description'))}" placeholder="When to use this one"></div>
+
+      <div class="ai-search-grid">
+        <div class="field"><label>Type</label>
+          <select id="tplCategory">
+            ${['agreement','addendum','disclosure','authorization','nda','other'].map(c =>
+              `<option value="${c}" ${v('category','agreement')===c?'selected':''}>${({agreement:'Agreement',addendum:'Addendum',disclosure:'Disclosure',authorization:'Authorization',nda:'NDA',other:'Other'})[c]}</option>`).join('')}
+          </select></div>
+        <div class="field"><label>Brand</label>
+          <select id="tplBrand">
+            <option value="epay" ${v('brand','epay')==='epay'?'selected':''}>EPAY POS</option>
+            <option value="atm"  ${v('brand')==='atm'?'selected':''}>Envision ATM</option>
+            <option value="both" ${v('brand')==='both'?'selected':''}>Both brands</option>
+          </select></div>
+      </div>
+
+      <h3 style="font-size:14px;margin:22px 0 8px;">Document</h3>
+      <p style="font-size:11.5px;color:var(--slate-500);margin:0 0 8px;">
+        Click a field to drop it in at the cursor. <span class="mono">#&nbsp;Heading</span>, <span class="mono">##&nbsp;Subheading</span>,
+        <span class="mono">-&nbsp;bullet</span> and <span class="mono">**bold**</span> all work. A signature block is added at the end automatically.
+      </p>
+      <div style="margin-bottom:8px;">
+        ${MERGE_FIELDS.map(f => `<span class="merge-chip" onclick="insertMergeField('{{${f.key}}}')" title="${escAttr(f.label)}">{{${f.key}}}</span>`).join('')}
+      </div>
+      <div class="field">
+        <textarea id="tplBody" rows="18" style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.6;">${escAttr(body)}</textarea>
+      </div>
+      <button class="btn btn-sm" style="width:100%;" onclick="previewTemplateBody()">Preview how it will look</button>
+      <div id="tplPreview" style="display:none;margin-top:12px;"></div>
+
+      <h3 style="font-size:14px;margin:22px 0 8px;">What the signer fills in</h3>
+      <p style="font-size:11.5px;color:var(--slate-500);margin:0 0 10px;">Beyond their signature. One per line, as <span class="mono">Label</span> or <span class="mono">Label*</span> to make it required.</p>
+      <div class="field">
+        <textarea id="tplSignerFields" rows="3" placeholder="Title at company*&#10;Federal Tax ID">${escAttr(fields.map(f => f.label + (f.required ? '*' : '')).join('\n'))}</textarea>
+      </div>
+
+      <div class="field">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" id="tplCountersign" ${t && t.require_countersign ? 'checked' : ''} style="width:auto;">
+          <span style="font-weight:500;">We countersign this after the client signs</span>
+        </label>
+        <p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">Adds a second signature block. Once the client signs, a Countersign button appears on the document in the CRM.</p>
+      </div>
+
+      <h3 style="font-size:14px;margin:22px 0 8px;">Default email</h3>
+      <p style="font-size:11.5px;color:var(--slate-500);margin:0 0 10px;">What goes out with the signing link. Editable on every send.</p>
+      <div class="field"><label>Subject</label>
+        <input id="tplSubject" value="${escAttr(v('email_subject'))}" placeholder="Please sign: Merchant Services Agreement"></div>
+      <div class="field"><label>Message</label>
+        <textarea id="tplMessage" rows="3" placeholder="Hi {{contact_name}} — here is the agreement we discussed. Click below to read and sign it. Any questions, just reply to this email.">${escAttr(v('email_message'))}</textarea></div>
+
+      <div class="field"><label>Status</label>
+        <select id="tplActive">
+          <option value="true" ${!t || t.active !== false ? 'selected' : ''}>Active</option>
+          <option value="false" ${t && t.active === false ? 'selected' : ''}>Archived — cannot be sent</option>
+        </select></div>
+    </div>
+    <div class="drawer-footer">
+      ${t ? `<button class="btn" style="flex:1;" onclick="duplicateTemplate('${t.id}')">Duplicate</button>`
+          : `<button class="btn" style="flex:1;" onclick="closeTemplateDrawer()">Cancel</button>`}
+      <button class="btn btn-accent" style="flex:1;" id="tplSaveBtn" onclick="saveTemplate(${t ? `'${t.id}'` : 'null'})">${t ? 'Save changes' : 'Create template'}</button>
+    </div>`;
+  document.getElementById('templateOverlay').classList.add('open');
+}
+
+function closeTemplateDrawer(){ document.getElementById('templateOverlay').classList.remove('open'); }
+
+// Drops a merge field in at the cursor rather than at the end — writing a
+// contract means putting {{business_name}} mid-sentence far more often than
+// on its own line.
+function insertMergeField(tag){
+  const ta = document.getElementById('tplBody');
+  if(!ta) return;
+  const start = ta.selectionStart == null ? ta.value.length : ta.selectionStart;
+  const end   = ta.selectionEnd == null ? ta.value.length : ta.selectionEnd;
+  ta.value = ta.value.slice(0, start) + tag + ta.value.slice(end);
+  ta.focus();
+  ta.selectionStart = ta.selectionEnd = start + tag.length;
+}
+
+function previewTemplateBody(){
+  const box = document.getElementById('tplPreview');
+  const text = (document.getElementById('tplBody') || {}).value || '';
+  if(box.style.display === 'block'){ box.style.display = 'none'; return; }
+  // Previewed with the merge fields left visible: this is the author's view,
+  // and seeing exactly which tags are in the document is the point.
+  box.innerHTML = `<div class="sign-paper" style="max-height:340px;">${renderAgreementText(text)}</div>`;
+  box.style.display = 'block';
+}
+
+function parseSignerFields(raw){
+  return String(raw || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(l => {
+    const required = l.endsWith('*');
+    const label = (required ? l.slice(0, -1) : l).trim();
+    return { key: label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''), label, type:'text', required };
+  }).filter(f => f.key);
+}
+
+async function saveTemplate(templateId){
+  const val = id => ((document.getElementById(id) || {}).value || '').trim();
+  const err = document.getElementById('templateError');
+  const btn = document.getElementById('tplSaveBtn');
+  err.style.display = 'none';
+
+  const name = val('tplName');
+  const body = ((document.getElementById('tplBody') || {}).value || '').trim();
+  if(!name){ err.textContent = 'A template name is required.'; err.style.display = 'block'; return; }
+  if(!body){ err.textContent = 'The document is empty — there is nothing to sign.'; err.style.display = 'block'; return; }
+
+  const fields = {
+    name,
+    description:   val('tplDesc') || null,
+    category:      val('tplCategory') || 'agreement',
+    brand:         val('tplBrand') || 'epay',
+    body,
+    signer_fields: parseSignerFields((document.getElementById('tplSignerFields') || {}).value),
+    require_countersign: !!(document.getElementById('tplCountersign') || {}).checked,
+    email_subject: val('tplSubject') || null,
+    email_message: val('tplMessage') || null,
+    active:        val('tplActive') === 'true',
+    updated_at:    new Date().toISOString(),
+  };
+
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.textContent = 'Saving…';
+
+  let error;
+  if(templateId){
+    ({ error } = await supa.from('agreement_templates').update(fields).eq('id', templateId));
+    if(!error) Object.assign(AGREEMENT_TEMPLATES.find(x => x.id === templateId), fields);
+  } else {
+    const res = await supa.from('agreement_templates')
+      .insert(Object.assign({ created_by: currentUser.id }, fields)).select().single();
+    error = res.error;
+    if(!error) AGREEMENT_TEMPLATES.push(res.data);
+  }
+
+  btn.disabled = false;
+  btn.textContent = original;
+  if(error){ err.textContent = error.message; err.style.display = 'block'; return; }
+
+  closeTemplateDrawer();
+  renderTemplatesTable();
+  showToast(templateId ? 'Template saved' : 'Template created', 'success');
+}
+
+async function duplicateTemplate(templateId){
+  const t = AGREEMENT_TEMPLATES.find(x => x.id === templateId);
+  if(!t) return;
+  const copy = {
+    name: t.name + ' (copy)', description: t.description, category: t.category, brand: t.brand,
+    body: t.body, signer_fields: t.signer_fields, require_countersign: t.require_countersign,
+    email_subject: t.email_subject, email_message: t.email_message, active: t.active,
+    created_by: currentUser.id,
+  };
+  const { data, error } = await supa.from('agreement_templates').insert(copy).select().single();
+  if(error){ showToast('Could not duplicate: ' + error.message, 'error'); return; }
+  AGREEMENT_TEMPLATES.push(data);
+  closeTemplateDrawer();
+  renderTemplatesTable();
+  openTemplateDrawer(data.id);
+}
+
+async function deleteAgreementTemplate(templateId){
+  const t = AGREEMENT_TEMPLATES.find(x => x.id === templateId);
+  if(!t) return;
+  const use = templateUseCounts(templateId);
+  const warning = use.sent
+    ? `"${t.name}" has been sent ${use.sent} time${use.sent === 1 ? '' : 's'}. Deleting the template does NOT delete those documents — signed copies keep their own wording and stay attached to their records. Delete the template?`
+    : `Delete the template "${t.name}"? This cannot be undone.`;
+  if(!confirm(warning)) return;
+
+  const { error } = await supa.from('agreement_templates').delete().eq('id', templateId);
+  if(error){ showToast('Could not delete: ' + error.message, 'error'); return; }
+  AGREEMENT_TEMPLATES = AGREEMENT_TEMPLATES.filter(x => x.id !== templateId);
+  closeTemplateDrawer();
+  renderTemplatesTable();
+  showToast('Template deleted', 'success');
+}
+
+/* =========================================================================
+   SENT FOR SIGNATURE  (Agreements -> Sent for Signature)
+   ========================================================================= */
+const ESIGN_OPEN_STATUSES = ['draft','sent','viewed'];
+
+async function refreshSignatureRequests(){
+  const fresh = await loadSignatureRequestsFromSupabase();
+  // A failed read reports itself through reportLoadFailure() and comes back
+  // empty; replacing a good list with that would look like every document
+  // had been deleted.
+  if(!fresh.length && SIGNATURE_REQUESTS.length) return;
+  SIGNATURE_REQUESTS = fresh;
+  if(document.getElementById('view-esign').style.display !== 'none') renderEsignTable();
+}
+
+function scopedSignatureRequests(){
+  const q = esignSearch.trim().toLowerCase();
+  return SIGNATURE_REQUESTS.filter(r => {
+    if(esignStatusFilter === 'open' && !ESIGN_OPEN_STATUSES.includes(r.status)) return false;
+    if(!['open','all'].includes(esignStatusFilter) && r.status !== esignStatusFilter) return false;
+    if(!q) return true;
+    return [r.title, r.signer_name, r.signer_email, r.record_label, r.sent_by_name]
+      .some(v => (v || '').toLowerCase().includes(q));
+  });
+}
+
+function renderEsignTable(){
+  const rows = scopedSignatureRequests();
+  const body = document.getElementById('esignTableBody');
+  const empty = document.getElementById('esignEmptyState');
+  if(!body) return;
+
+  // Waiting-on-client is the number that matters day to day, so it leads.
+  const all = SIGNATURE_REQUESTS;
+  const waiting = all.filter(r => ['sent','viewed'].includes(r.status)).length;
+  const signed  = all.filter(r => r.status === 'signed').length;
+  const toCountersign = all.filter(r => r.status === 'signed' && r.require_countersign && !r.countersigned_at).length;
+  const stale = all.filter(r => ['sent','viewed'].includes(r.status) && r.sent_at &&
+    (Date.now() - new Date(r.sent_at).getTime()) > 5 * 24 * 3600 * 1000).length;
+
+  document.getElementById('esignStats').innerHTML = `
+    <div class="stat-card"><div class="label">Waiting on client</div><div class="value">${waiting}</div></div>
+    <div class="stat-card"><div class="label">Signed</div><div class="value">${signed}</div></div>
+    <div class="stat-card${toCountersign ? ' attention' : ''}"><div class="label">Needs our signature</div><div class="value">${toCountersign}</div></div>
+    <div class="stat-card"><div class="label">Out more than 5 days</div><div class="value">${stale}</div></div>`;
+
+  document.getElementById('esignCount').textContent =
+    rows.length === all.length ? `All documents (${rows.length})` : `${rows.length} of ${all.length} documents`;
+
+  if(rows.length === 0){
+    body.innerHTML = '';
+    empty.style.display = 'block';
+    empty.textContent = all.length === 0
+      ? 'Nothing sent for signature yet. Send one from here, or from the Agreements section on any lead, account or partner.'
+      : 'No documents match that filter.';
+    return;
+  }
+  empty.style.display = 'none';
+
+  body.innerHTML = rows.map(r => `
+    <tr style="cursor:pointer;" onclick="openSignRequestDetail('${r.id}')">
+      <td><b>${escAttr(r.title)}</b>
+        ${r.status === 'signed' && r.require_countersign && !r.countersigned_at
+          ? '<div style="font-size:11px;color:var(--warn-text);">Needs your countersignature</div>' : ''}</td>
+      <td>${escAttr(r.signer_name)}<div style="font-size:11.5px;color:var(--slate-500);">${escAttr(r.signer_email)}</div></td>
+      <td>${r.record_label ? escAttr(r.record_label) : '<span style="color:var(--slate-300);">Not attached</span>'}</td>
+      <td>${esignStatusPill(r.status)}</td>
+      <td>${r.sent_at ? esignDayOnly(r.sent_at) : '—'}
+        ${r.view_count ? `<div style="font-size:11px;color:var(--slate-500);">Opened ${r.view_count}&times;</div>` : ''}</td>
+      <td style="text-align:right;white-space:nowrap;">
+        <button class="btn btn-sm" onclick="event.stopPropagation(); openSignRequestDetail('${r.id}')">Open</button>
+        ${recordMenuBtn('signatureRequest', r.id, r.title)}
+      </td>
+    </tr>`).join('');
+}
+
+/* -------------------------------------------------------------------------
+   SENDING
+   Opened either from a record (Agreements section on a lead/account/partner)
+   or from the tab with nothing attached, in which case the record is picked
+   here. Attaching is optional but strongly preferred — an unattached signed
+   contract is a file nobody will ever find again.
+   ------------------------------------------------------------------------- */
+let sendSignState = { recordType:null, recordId:null, templateId:null };
+
+function signableRecords(){
+  const out = [];
+  LEADS.forEach(l => out.push({
+    type: l.converted_to_account ? 'account' : 'lead',
+    id: l.id,
+    label: l.business_name || 'Untitled',
+    sub: (l.converted_to_account ? 'Account' : 'Lead') + (l.contact_name ? ' · ' + l.contact_name : ''),
+    name: l.contact_name || '', email: l.email || ''
+  }));
+  PARTNERS.forEach(p => out.push({
+    type:'partner', id:p.id, label:p.name || 'Untitled',
+    sub:'Partner' + (p.contact_name ? ' · ' + p.contact_name : ''),
+    name: p.contact_name || p.name || '', email: p.email || ''
+  }));
+  COLD_LEADS.forEach(c => out.push({
+    type:'cold_lead', id:c.id, label:c.business_name || 'Untitled',
+    sub:'Cold lead' + (c.contact_name ? ' · ' + c.contact_name : ''),
+    name: c.contact_name || '', email: c.email || ''
+  }));
+  LENDING_LEADS.forEach(c => out.push({
+    type:'lending_lead', id:c.id, label:c.business_name || 'Untitled',
+    sub:'Lending lead' + (c.contact_name ? ' · ' + c.contact_name : ''),
+    name: c.contact_name || '', email: c.email || ''
+  }));
+  return out;
+}
+
+function findSignableRecord(type, id){
+  return signableRecords().find(r => r.id === id && (r.type === type || (type === 'lead' && r.type === 'account') || (type === 'account' && r.type === 'lead')));
+}
+
+function openSendSignatureDrawer(recordType, recordId, templateId){
+  const usable = AGREEMENT_TEMPLATES.filter(t => t.active !== false);
+  if(usable.length === 0){
+    showToast('No active templates yet — create one in Agreements → Templates first.', 'error');
+    showView('esigntemplates');
+    return;
+  }
+  sendSignState = { recordType: recordType || null, recordId: recordId || null, templateId: templateId || usable[0].id };
+  document.getElementById('sendSignOverlay').classList.add('open');
+  renderSendSignatureDrawer();
+}
+
+function closeSendSignDrawer(){ document.getElementById('sendSignOverlay').classList.remove('open'); }
+
+function renderSendSignatureDrawer(){
+  const usable = AGREEMENT_TEMPLATES.filter(t => t.active !== false);
+  const tpl = usable.find(t => t.id === sendSignState.templateId) || usable[0];
+  sendSignState.templateId = tpl.id;
+
+  const rec = sendSignState.recordId ? findSignableRecord(sendSignState.recordType, sendSignState.recordId) : null;
+  const ctx = mergeContextFor(sendSignState.recordType, sendSignState.recordId);
+  const missing = unresolvedMergeFields(tpl.body, ctx);
+  const preview = applyMerge(tpl.body, ctx);
+
+  const defaultSubject = applyMerge(tpl.email_subject || `Please sign: ${tpl.name}`, ctx);
+  const defaultMessage = applyMerge(tpl.email_message ||
+    `Here is the ${tpl.name.toLowerCase()} for your review. Click the button below to read it and sign — it only takes a minute, and you can do it from your phone.`, ctx);
+
+  document.getElementById('sendSignDrawer').innerHTML = `
+    <div class="drawer-head">
+      <div><h2>Send for signature</h2>
+        <span style="font-size:12px;color:var(--slate-300);">The client gets an email with a secure link. Nothing to install, no account to create.</span></div>
+      <button class="drawer-close" onclick="closeSendSignDrawer()">&times;</button>
+    </div>
+    <div class="drawer-body">
+      <div id="sendSignError" style="display:none;margin-bottom:12px;padding:10px 12px;background:var(--err-bg);border:1px solid var(--err-border);border-radius:8px;color:var(--err-text);font-size:12.5px;"></div>
+
+      <div class="field"><label>Document</label>
+        <select id="ssTemplate" onchange="sendSignState.templateId = this.value; renderSendSignatureDrawer();">
+          ${usable.map(t => `<option value="${t.id}" ${t.id===tpl.id?'selected':''}>${escAttr(t.name)}</option>`).join('')}
+        </select></div>
+
+      <div class="field"><label>Attach to</label>
+        ${rec ? `
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;background:var(--hover);border-radius:9px;">
+            <div><b style="font-size:13px;">${escAttr(rec.label)}</b>
+              <div style="font-size:11.5px;color:var(--slate-500);">${escAttr(rec.sub)}</div></div>
+            <button class="btn btn-xs" onclick="sendSignState.recordType=null; sendSignState.recordId=null; renderSendSignatureDrawer();">Change</button>
+          </div>`
+        : `
+          <input id="ssRecordSearch" placeholder="Search leads, accounts, partners…" oninput="renderSendRecordMatches()" autocomplete="off">
+          <div id="ssRecordMatches" style="max-height:190px;overflow-y:auto;margin-top:6px;"></div>
+          <p style="font-size:10.5px;color:var(--slate-300);margin:6px 0 0;">Optional, but this is what makes the signed copy show up on the record afterwards.</p>`}
+      </div>
+
+      <h3 style="font-size:14px;margin:22px 0 10px;">Signer</h3>
+      <div class="ai-search-grid">
+        <div class="field"><label>Full name</label>
+          <input id="ssSignerName" value="${escAttr(rec ? rec.name : '')}" placeholder="Who is signing"></div>
+        <div class="field"><label>Title <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
+          <input id="ssSignerTitle" placeholder="e.g. Owner"></div>
+      </div>
+      <div class="field"><label>Email</label>
+        <input id="ssSignerEmail" type="email" value="${escAttr(rec ? rec.email : '')}" placeholder="where the link goes"></div>
+
+      <h3 style="font-size:14px;margin:22px 0 10px;">Email</h3>
+      <div class="field"><label>Subject</label>
+        <input id="ssSubject" value="${escAttr(defaultSubject)}"></div>
+      <div class="field"><label>Message</label>
+        <textarea id="ssMessage" rows="4">${escAttr(defaultMessage)}</textarea></div>
+      <div class="field"><label>Link expires after</label>
+        <select id="ssExpiry">
+          <option value="14">14 days</option>
+          <option value="30" selected>30 days</option>
+          <option value="60">60 days</option>
+          <option value="">Never</option>
+        </select></div>
+
+      ${missing.length ? `
+        <div style="margin:16px 0;padding:11px 13px;background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:9px;font-size:12px;color:var(--warn-text);">
+          <b>${missing.length} field${missing.length===1?'':'s'} will go out blank:</b> ${missing.map(m => '{{'+m+'}}').join(', ')}.
+          ${rec ? 'Fill them in on the record first if the contract needs them.' : 'Attach a record above and they fill themselves in.'}
+        </div>` : ''}
+
+      <h3 style="font-size:14px;margin:22px 0 10px;">What they will see</h3>
+      <div class="sign-paper" style="max-height:300px;">
+        ${renderAgreementText(preview)}
+        ${signatureBlockHtml({ brand: tpl.brand, require_countersign: tpl.require_countersign })}
+      </div>
+    </div>
+    <div class="drawer-footer">
+      <button class="btn" style="flex:1;" onclick="closeSendSignDrawer()">Cancel</button>
+      <button class="btn btn-accent" style="flex:1;" id="ssSendBtn" onclick="sendSignatureRequest()">Send for signature</button>
+    </div>`;
+
+  if(!rec) renderSendRecordMatches();
+}
+
+function renderSendRecordMatches(){
+  const box = document.getElementById('ssRecordMatches');
+  if(!box) return;
+  const q = ((document.getElementById('ssRecordSearch') || {}).value || '').trim().toLowerCase();
+  const matches = signableRecords()
+    .filter(r => !q || r.label.toLowerCase().includes(q) || (r.sub || '').toLowerCase().includes(q))
+    .slice(0, 40);
+  if(!matches.length){
+    box.innerHTML = `<p style="font-size:12px;color:var(--slate-300);padding:6px 2px;">${q ? 'Nothing matches that.' : 'Start typing to find a record.'}</p>`;
+    return;
+  }
+  box.innerHTML = matches.map(r => `
+    <button type="button" class="btn btn-sm" style="width:100%;text-align:left;margin-bottom:5px;justify-content:flex-start;"
+      onclick="pickSignRecord('${r.type}','${r.id}')">
+      <span><b>${escAttr(r.label)}</b> <span style="color:var(--slate-500);font-weight:400;">— ${escAttr(r.sub)}</span></span>
+    </button>`).join('');
+}
+
+function pickSignRecord(type, id){
+  sendSignState.recordType = type;
+  sendSignState.recordId = id;
+  renderSendSignatureDrawer();
+}
+
+async function sendSignatureRequest(){
+  const val = id => ((document.getElementById(id) || {}).value || '').trim();
+  const err = document.getElementById('sendSignError');
+  const btn = document.getElementById('ssSendBtn');
+  err.style.display = 'none';
+
+  const tpl = AGREEMENT_TEMPLATES.find(t => t.id === sendSignState.templateId);
+  if(!tpl){ err.textContent = 'Pick a document to send.'; err.style.display = 'block'; return; }
+
+  const signerName = val('ssSignerName');
+  const signerEmail = val('ssSignerEmail');
+  if(!signerName){ err.textContent = "The signer's name is required."; err.style.display = 'block'; return; }
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(signerEmail)){
+    err.textContent = 'A valid email address is required — that is where the link goes.';
+    err.style.display = 'block'; return;
+  }
+  if(!outboundEmailReady()){
+    err.textContent = 'Outbound email is not switched on yet (Settings → Integrations), so the link could not be delivered.';
+    err.style.display = 'block'; return;
+  }
+
+  const rec = sendSignState.recordId ? findSignableRecord(sendSignState.recordType, sendSignState.recordId) : null;
+  const ctx = mergeContextFor(sendSignState.recordType, sendSignState.recordId);
+  ctx.signer_name = signerName;
+  ctx.signer_title = val('ssSignerTitle');
+  if(!ctx.contact_name) ctx.contact_name = signerName;
+
+  const days = val('ssExpiry');
+  const expires = days ? new Date(Date.now() + Number(days) * 86400000).toISOString() : null;
+
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.textContent = 'Sending…';
+
+  // The envelope is created first and only then emailed. If the mail fails,
+  // the document still exists with its link — resend is one click, and the
+  // alternative (email first) would mean a client holding a link to a row
+  // that was never written.
+  const row = {
+    template_id: tpl.id,
+    title: tpl.name,
+    document_text: applyMerge(tpl.body, ctx),
+    signer_fields: Array.isArray(tpl.signer_fields) ? tpl.signer_fields : [],
+    require_initials: !!tpl.require_initials,
+    require_countersign: !!tpl.require_countersign,
+    brand: tpl.brand === 'both' ? currentBrand : tpl.brand,
+    record_type: rec ? rec.type : null,
+    record_id: rec ? rec.id : null,
+    record_label: rec ? rec.label : null,
+    signer_name: signerName,
+    signer_email: signerEmail,
+    signer_title: val('ssSignerTitle') || null,
+    message: val('ssMessage') || null,
+    status: 'sent',
+    sent_at: new Date().toISOString(),
+    expires_at: expires,
+    sent_by: currentUser.id,
+    sent_by_name: currentUser.name || null,
+    sent_by_email: currentUser.email || null,
+  };
+
+  const { data, error } = await supa.from('signature_requests').insert(row).select().single();
+  if(error){
+    btn.disabled = false; btn.textContent = original;
+    err.textContent = error.message; err.style.display = 'block';
+    return;
+  }
+
+  await supa.from('signature_events').insert({
+    request_id: data.id, event: 'created',
+    detail: 'Sent to ' + signerEmail, actor: currentUser.email || currentUser.name || null
+  });
+
+  const sent = await sendOutboundEmail({
+    kind: 'signature_request',
+    to: signerEmail,
+    subject: val('ssSubject') || ('Please sign: ' + tpl.name),
+    heading: tpl.name,
+    body: (val('ssMessage') || '') + '\n\nThis link is unique to you' +
+          (expires ? ' and expires ' + esignDayOnly(expires) : '') + '.',
+    buttonLabel: 'Review & Sign',
+    buttonUrl: signingUrl(data.token),
+    leadId: (rec && (rec.type === 'lead' || rec.type === 'account')) ? rec.id : null,
+  });
+
+  await supa.from('signature_events').insert({
+    request_id: data.id,
+    event: sent ? 'sent' : 'send_failed',
+    detail: sent ? ('Email delivered to ' + signerEmail) : 'The email could not be sent — the link is still valid and can be resent.',
+    actor: currentUser.email || currentUser.name || null
+  });
+
+  // Keep the in-memory row the same shape the list query returns.
+  delete data.document_text; delete data.signature_image; delete data.countersign_image;
+  SIGNATURE_REQUESTS.unshift(data);
+
+  btn.disabled = false; btn.textContent = original;
+  closeSendSignDrawer();
+  renderEsignTable();
+  refreshRecordAfterSignature(row.record_type, row.record_id);
+  if(sent) showToast('Sent to ' + signerEmail, 'success');
+}
+
+/* -------------------------------------------------------------------------
+   ONE DOCUMENT
+   The full row (document text and signature images) and its audit trail are
+   fetched here rather than kept in memory for every envelope.
+   ------------------------------------------------------------------------- */
+async function openSignRequestDetail(id){
+  const overlay = document.getElementById('signRequestOverlay');
+  const drawer = document.getElementById('signRequestDrawer');
+  drawer.innerHTML = `
+    <div class="drawer-head"><div><h2>Loading…</h2></div>
+      <button class="drawer-close" onclick="closeSignRequestDrawer()">&times;</button></div>
+    <div class="drawer-body"><p style="color:var(--slate-500);font-size:13px;">Fetching the document.</p></div>`;
+  overlay.classList.add('open');
+
+  const [reqRes, evRes] = await Promise.all([
+    supa.from('signature_requests').select('*').eq('id', id).single(),
+    supa.from('signature_events').select('*').eq('request_id', id).order('at', { ascending: true }),
+  ]);
+
+  if(reqRes.error || !reqRes.data){
+    drawer.innerHTML = `
+      <div class="drawer-head"><div><h2>Could not open</h2></div>
+        <button class="drawer-close" onclick="closeSignRequestDrawer()">&times;</button></div>
+      <div class="drawer-body"><p style="color:var(--red);font-size:13px;">${escAttr((reqRes.error && reqRes.error.message) || 'This document is no longer there.')}</p></div>`;
+    return;
+  }
+  renderSignRequestDetail(reqRes.data, evRes.data || []);
+}
+
+function closeSignRequestDrawer(){ document.getElementById('signRequestOverlay').classList.remove('open'); }
+
+function renderSignRequestDetail(r, events){
+  const open = ['sent','viewed'].includes(r.status);
+  const canManage = roleOf(currentUser).perms.fullDashboard;
+  const needsCountersign = r.status === 'signed' && r.require_countersign && !r.countersigned_at;
+
+  const eventLabels = {
+    created:'Document created', sent:'Email sent', send_failed:'Email failed to send',
+    viewed:'Opened by signer', signed:'Signed', declined:'Declined', voided:'Cancelled by sender',
+    expired:'Link expired', reminded:'Reminder sent', countersigned:'Countersigned', downloaded:'Copy downloaded'
+  };
+
+  const auditHtml = events.length ? events.map(e => `
+    <div class="audit-row">
+      <div class="audit-dot"></div>
+      <div style="flex:1;">
+        <div><b>${escAttr(eventLabels[e.event] || e.event)}</b>${e.detail ? ' — ' + escAttr(e.detail) : ''}</div>
+        <div class="audit-meta">${esignWhen(e.at)}${e.ip ? ' · IP ' + escAttr(e.ip) : ''}${e.actor ? ' · ' + escAttr(e.actor) : ''}</div>
+      </div>
+    </div>`).join('') : '<p style="font-size:12.5px;color:var(--slate-500);">Nothing recorded yet.</p>';
+
+  document.getElementById('signRequestDrawer').innerHTML = `
+    <div class="drawer-head">
+      <div><h2>${escAttr(r.title)}</h2>
+        <div style="margin-top:5px;">${esignStatusPill(r.status)}
+          ${r.countersigned_at ? '<span class="esign-status signed" style="margin-left:5px;">Countersigned</span>' : ''}</div></div>
+      <button class="drawer-close" onclick="closeSignRequestDrawer()">&times;</button>
+    </div>
+    <div class="drawer-body">
+      ${needsCountersign ? `
+        <div style="padding:12px 14px;background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:9px;margin-bottom:16px;">
+          <b style="font-size:13px;color:var(--warn-text);">${escAttr(r.signer_name)} has signed — this needs your signature to be complete.</b>
+          <div class="ai-search-grid" style="margin-top:10px;">
+            <div class="field" style="margin:0;"><label>Your name</label>
+              <input id="csName" value="${escAttr(currentUser.name || '')}"></div>
+            <div class="field" style="margin:0;"><label>Title</label>
+              <input id="csTitle" placeholder="e.g. Operations Manager"></div>
+          </div>
+          <button class="btn btn-accent btn-sm" style="width:100%;margin-top:10px;" id="csBtn" onclick="countersignRequest('${r.id}')">Countersign this document</button>
+        </div>` : ''}
+
+      <div class="detail-row"><span class="k">Signer</span><span class="v">${escAttr(r.signer_name)}${r.signer_title ? ' · ' + escAttr(r.signer_title) : ''}<br><span style="color:var(--slate-500);">${escAttr(r.signer_email)}</span></span></div>
+      <div class="detail-row"><span class="k">Attached to</span><span class="v">${
+        r.record_label
+          ? `<a href="#" onclick="event.preventDefault(); closeSignRequestDrawer(); openSignedRecord('${r.record_type}','${r.record_id}');">${escAttr(r.record_label)}</a>`
+          : 'Not attached to a record'}</span></div>
+      <div class="detail-row"><span class="k">Sent</span><span class="v">${esignWhen(r.sent_at)}${r.sent_by_name ? ' by ' + escAttr(r.sent_by_name) : ''}</span></div>
+      ${r.first_viewed_at ? `<div class="detail-row"><span class="k">First opened</span><span class="v">${esignWhen(r.first_viewed_at)} · opened ${r.view_count}&times;</span></div>` : ''}
+      ${r.signed_at ? `<div class="detail-row"><span class="k">Signed</span><span class="v">${esignWhen(r.signed_at)}${r.signed_ip ? '<br><span style="color:var(--slate-500);">from IP ' + escAttr(r.signed_ip) + '</span>' : ''}</span></div>` : ''}
+      ${r.declined_at ? `<div class="detail-row"><span class="k">Declined</span><span class="v">${esignWhen(r.declined_at)}${r.decline_reason ? '<br><span style="color:var(--slate-500);">"' + escAttr(r.decline_reason) + '"</span>' : ''}</span></div>` : ''}
+      ${r.expires_at && open ? `<div class="detail-row"><span class="k">Link expires</span><span class="v">${esignDayOnly(r.expires_at)}</span></div>` : ''}
+
+      ${open ? `
+        <div style="margin:16px 0;padding:12px 14px;background:var(--hover);border-radius:9px;">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--slate-500);margin-bottom:6px;">Signing link</div>
+          <div class="mono" style="font-size:11.5px;word-break:break-all;color:var(--navy-500);">${escAttr(signingUrl(r.token))}</div>
+          <div style="display:flex;gap:8px;margin-top:10px;">
+            <button class="btn btn-xs" style="flex:1;" onclick="copySigningLink('${r.token}')">Copy link</button>
+            <button class="btn btn-xs" style="flex:1;" onclick="resendSignatureRequest('${r.id}')">Resend email</button>
+          </div>
+          <p style="font-size:10.5px;color:var(--slate-300);margin:8px 0 0;">Anyone with this link can sign, so treat it like the document itself. Cancel it below if it went to the wrong person.</p>
+        </div>` : ''}
+
+      ${drawerSection('sec-esign-doc-'+r.id, 'The document', `
+        <div class="sign-paper" style="max-height:420px;">
+          ${renderAgreementText(r.document_text)}
+          ${(r.status === 'signed' || r.countersigned_at) ? signatureBlockHtml(r) : ''}
+        </div>
+        ${(r.signer_field_values && Object.keys(r.signer_field_values).length) ? `
+          <div style="margin-top:12px;">
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--slate-500);margin-bottom:6px;">Filled in by the signer</div>
+            ${Object.keys(r.signer_field_values).map(k => {
+              const def = (Array.isArray(r.signer_fields) ? r.signer_fields : []).find(f => f.key === k);
+              return `<div class="detail-row"><span class="k">${escAttr(def ? def.label : k)}</span><span class="v">${escAttr(r.signer_field_values[k])}</span></div>`;
+            }).join('')}
+          </div>` : ''}
+        ${r.status === 'signed' ? `<button class="btn btn-sm" style="width:100%;margin-top:12px;" onclick="printSignedCopy('${r.id}')">Print / save as PDF</button>` : ''}
+      `, r.status === 'signed')}
+
+      ${drawerSection('sec-esign-audit-'+r.id, 'Audit trail', `
+        <p style="font-size:11.5px;color:var(--slate-500);margin:0 0 10px;">Every event, with the IP address it came from. This is what proves who signed and when — it prints with the signed copy.</p>
+        ${auditHtml}`, false)}
+
+      <hr style="border:none;border-top:1px solid var(--line);margin:20px 0;">
+      ${open ? `<button class="btn" style="width:100%;margin-bottom:8px;" onclick="voidSignatureRequest('${r.id}')">Cancel this document</button>
+        <p style="font-size:11px;color:var(--slate-400);margin:0 0 14px;text-align:center;">The link stops working immediately. The record stays here with its history.</p>` : ''}
+      ${canManage ? `<button class="btn" style="width:100%;color:var(--red);" onclick="deleteSignatureRequest('${r.id}')">Delete this document</button>` : ''}
+    </div>`;
+}
+
+function openSignedRecord(recordType, recordId){
+  if(recordType === 'lead' || recordType === 'account') openLeadDetail(recordId);
+  else if(recordType === 'cold_lead') openColdLeadDetail(recordId);
+  else if(recordType === 'partner') openReferralDetail(recordId);
+  else if(recordType === 'lending_lead') openLendingLeadDetail(recordId);
+  else showToast('That record type does not have a detail view.', 'error');
+}
+
+function copySigningLink(token){
+  const url = signingUrl(token);
+  navigator.clipboard.writeText(url)
+    .then(() => showToast('Signing link copied', 'success'))
+    .catch(() => showToast('Could not copy — the link is shown above.', 'error'));
+}
+
+async function resendSignatureRequest(id){
+  const r = SIGNATURE_REQUESTS.find(x => x.id === id);
+  if(!r) return;
+  const { data, error } = await supa.from('signature_requests').select('token, message, title').eq('id', id).single();
+  if(error){ showToast('Could not resend: ' + error.message, 'error'); return; }
+
+  const sent = await sendOutboundEmail({
+    kind: 'signature_request',
+    to: r.signer_email,
+    subject: 'Reminder — please sign: ' + r.title,
+    heading: r.title,
+    body: (data.message || 'A quick reminder that this document is still waiting for your signature.') +
+          '\n\nThis link is unique to you.',
+    buttonLabel: 'Review & Sign',
+    buttonUrl: signingUrl(data.token),
+  });
+  if(!sent) return;
+
+  const now = new Date().toISOString();
+  await supa.from('signature_requests').update({ reminder_sent_at: now }).eq('id', id);
+  await supa.from('signature_events').insert({
+    request_id: id, event:'reminded', detail:'Reminder sent to ' + r.signer_email,
+    actor: currentUser.email || currentUser.name || null
+  });
+  r.reminder_sent_at = now;
+  openSignRequestDetail(id);
+}
+
+async function voidSignatureRequest(id){
+  const r = SIGNATURE_REQUESTS.find(x => x.id === id);
+  if(!r) return;
+  if(!confirm(`Cancel "${r.title}"?\n\nThe link stops working straight away and ${r.signer_name} will not be able to sign it. Send a fresh one if you need to.`)) return;
+
+  const now = new Date().toISOString();
+  const { error } = await supa.from('signature_requests')
+    .update({ status:'voided', voided_at: now }).eq('id', id);
+  if(error){ showToast('Could not cancel: ' + error.message, 'error'); return; }
+
+  await supa.from('signature_events').insert({
+    request_id: id, event:'voided', detail:'Cancelled by ' + (currentUser.name || 'a user'),
+    actor: currentUser.email || currentUser.name || null
+  });
+  r.status = 'voided'; r.voided_at = now;
+  renderEsignTable();
+  refreshRecordAfterSignature(r.record_type, r.record_id);
+  openSignRequestDetail(id);
+  showToast('Document cancelled', 'success');
+}
+
+async function countersignRequest(id){
+  const name = ((document.getElementById('csName') || {}).value || '').trim();
+  const title = ((document.getElementById('csTitle') || {}).value || '').trim();
+  const btn = document.getElementById('csBtn');
+  if(!name){ showToast('Your name is required to countersign.', 'error'); return; }
+
+  btn.disabled = true; btn.textContent = 'Signing…';
+  const { data, error } = await supa.rpc('countersign_signature_request', {
+    p_request_id: id, p_name: name, p_title: title || null, p_image: null
+  });
+  btn.disabled = false; btn.textContent = 'Countersign this document';
+
+  if(error){ showToast('Could not countersign: ' + error.message, 'error'); return; }
+  if(!data || data.ok !== true){ showToast((data && data.error) || 'Could not countersign.', 'error'); return; }
+
+  const r = SIGNATURE_REQUESTS.find(x => x.id === id);
+  if(r){ r.countersigned_at = new Date().toISOString(); r.countersign_name = name; }
+  renderEsignTable();
+  openSignRequestDetail(id);
+  showToast('Countersigned', 'success');
+}
+
+async function deleteSignatureRequest(id){
+  const r = SIGNATURE_REQUESTS.find(x => x.id === id);
+  if(!r) return;
+  const extra = r.status === 'signed'
+    ? '\n\nThis one has been SIGNED. Deleting it destroys the signed copy and its audit trail — there is no other copy.'
+    : '';
+  if(!confirm(`Delete "${r.title}" for ${r.signer_name}?${extra}\n\nThis cannot be undone.`)) return;
+
+  const { error } = await supa.from('signature_requests').delete().eq('id', id);
+  if(error){ showToast('Could not delete: ' + error.message, 'error'); return; }
+  SIGNATURE_REQUESTS = SIGNATURE_REQUESTS.filter(x => x.id !== id);
+  closeSignRequestDrawer();
+  renderEsignTable();
+  refreshRecordAfterSignature(r.record_type, r.record_id);
+  showToast('Document deleted', 'success');
+}
+
+// Printing goes through a hidden iframe rather than window.open(): a popup
+// blocker silently eating the signed copy is exactly the sort of failure
+// that gets discovered in front of a merchant.
+async function printSignedCopy(id){
+  const [reqRes, evRes] = await Promise.all([
+    supa.from('signature_requests').select('*').eq('id', id).single(),
+    supa.from('signature_events').select('*').eq('request_id', id).order('at', { ascending: true }),
+  ]);
+  if(reqRes.error || !reqRes.data){ showToast('Could not load the document.', 'error'); return; }
+  const r = reqRes.data;
+  const events = evRes.data || [];
+
+  const certRows = events.map(e => `
+    <tr><td>${escAttr(esignWhen(e.at))}</td><td>${escAttr(e.event)}</td>
+        <td>${escAttr(e.detail || '')}</td><td>${escAttr(e.ip || '')}</td></tr>`).join('');
+
+  const doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escAttr(r.title)}</title>
+    <style>
+      body{font-family:Georgia,'Times New Roman',serif;color:#15213a;line-height:1.65;font-size:12pt;margin:0;padding:38px 44px;}
+      h1{font-size:17pt;margin:0 0 4px;}
+      h2{font-size:14pt;margin:20px 0 7px;}
+      h3{font-size:12.5pt;margin:15px 0 5px;}
+      p{margin:0 0 10px;} ul{margin:0 0 10px 18px;} hr{border:none;border-top:1px solid #ccd3e0;margin:16px 0;}
+      .head-meta{font-size:9.5pt;color:#5B6B8C;border-bottom:1px solid #ccd3e0;padding-bottom:12px;margin-bottom:22px;}
+      .sig-block{display:flex;gap:40px;margin-top:30px;padding-top:18px;border-top:1px solid #ccd3e0;}
+      .sig-slot{flex:1;}
+      .sig-line{border-bottom:1px solid #15213a;min-height:48px;display:flex;align-items:flex-end;padding-bottom:3px;}
+      .sig-line img{max-height:46px;}
+      .sig-script{font-family:'Brush Script MT','Segoe Script',cursive;font-size:24pt;}
+      .sig-meta{font-size:9pt;color:#5B6B8C;margin-top:4px;}
+      .cert{page-break-before:always;font-family:Arial,Helvetica,sans-serif;font-size:9.5pt;}
+      .cert table{width:100%;border-collapse:collapse;margin-top:10px;}
+      .cert th,.cert td{border:1px solid #ccd3e0;padding:5px 7px;text-align:left;vertical-align:top;}
+      .cert th{background:#f2f5fa;font-size:9pt;}
+    </style></head><body>
+    <h1>${escAttr(r.title)}</h1>
+    <div class="head-meta">
+      ${escAttr(currentBrandLabelForReq(r))} &middot; Signed electronically by ${escAttr(r.signature_name || r.signer_name)}
+      on ${escAttr(esignWhen(r.signed_at))}${r.signed_ip ? ' from IP ' + escAttr(r.signed_ip) : ''}
+    </div>
+    ${renderAgreementText(r.document_text)}
+    <div class="sig-block">
+      <div class="sig-slot">
+        <div class="sig-meta">CLIENT SIGNATURE</div>
+        <div class="sig-line">${r.signature_image
+          ? `<img src="${escAttr(r.signature_image)}">`
+          : `<span class="sig-script">${escAttr(r.signature_name || '')}</span>`}</div>
+        <div class="sig-meta"><b>${escAttr(r.signature_name || '')}</b>${r.signer_title ? '<br>' + escAttr(r.signer_title) : ''}<br>${escAttr(esignWhen(r.signed_at))}</div>
+      </div>
+      ${(r.require_countersign || r.countersigned_at) ? `
+      <div class="sig-slot">
+        <div class="sig-meta">${escAttr(currentBrandLabelForReq(r)).toUpperCase()} SIGNATURE</div>
+        <div class="sig-line">${r.countersign_name ? `<span class="sig-script">${escAttr(r.countersign_name)}</span>` : ''}</div>
+        <div class="sig-meta"><b>${escAttr(r.countersign_name || '')}</b>${r.countersign_title ? '<br>' + escAttr(r.countersign_title) : ''}${r.countersigned_at ? '<br>' + escAttr(esignWhen(r.countersigned_at)) : ''}</div>
+      </div>` : ''}
+    </div>
+    <div class="cert">
+      <h2>Certificate of completion</h2>
+      <p>Document: <b>${escAttr(r.title)}</b><br>
+         Signer: ${escAttr(r.signer_name)} &lt;${escAttr(r.signer_email)}&gt;<br>
+         Sent by: ${escAttr(r.sent_by_name || '')} ${r.sent_by_email ? '&lt;' + escAttr(r.sent_by_email) + '&gt;' : ''}<br>
+         Document ID: ${escAttr(r.id)}</p>
+      <table><thead><tr><th>Timestamp</th><th>Event</th><th>Detail</th><th>IP address</th></tr></thead>
+        <tbody>${certRows}</tbody></table>
+      <p style="margin-top:12px;color:#5B6B8C;">Timestamps are recorded by the server at the moment each event occurred. IP addresses are taken from the request itself, not supplied by the signer.</p>
+    </div>
+    </body></html>`;
+
+  const frame = document.createElement('iframe');
+  frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
+  document.body.appendChild(frame);
+  frame.contentDocument.open();
+  frame.contentDocument.write(doc);
+  frame.contentDocument.close();
+  frame.onload = () => {
+    frame.contentWindow.focus();
+    frame.contentWindow.print();
+    setTimeout(() => frame.remove(), 60000);
+  };
+  // Some browsers fire load before the write when the document is inline.
+  setTimeout(() => { try { frame.contentWindow.focus(); frame.contentWindow.print(); } catch(e){} }, 300);
+
+  supa.from('signature_events').insert({
+    request_id: id, event:'downloaded', detail:'Signed copy printed',
+    actor: currentUser.email || currentUser.name || null
+  });
+}
+
+/* -------------------------------------------------------------------------
+   ON THE RECORD
+   The Agreements section inside a lead/account/partner drawer. This is the
+   "attached to the account" half of the feature: the signed contract lives
+   with the record it belongs to, not only in a list of everything ever sent.
+   ------------------------------------------------------------------------- */
+function signaturesForRecord(recordType, recordId){
+  const types = (recordType === 'lead' || recordType === 'account') ? ['lead','account'] : [recordType];
+  return SIGNATURE_REQUESTS
+    .filter(r => r.record_id === recordId && types.includes(r.record_type))
+    .sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+}
+
+function agreementsSectionHtml(recordType, recordId){
+  const rows = signaturesForRecord(recordType, recordId);
+  const body = `
+    <button class="btn btn-accent btn-sm" style="width:100%;" onclick="openSendSignatureDrawer('${recordType}','${recordId}')">Send a document for signature</button>
+    <div style="margin-top:12px;">
+      ${rows.length ? rows.map(r => `
+        <div class="note-item" style="cursor:pointer;" onclick="openSignRequestDetail('${r.id}')">
+          <div class="meta">${esignStatusPill(r.status)} &middot; ${r.signed_at ? 'signed ' + esignDayOnly(r.signed_at) : 'sent ' + esignDayOnly(r.sent_at)}</div>
+          <div class="txt"><b>${escAttr(r.title)}</b><br>
+            <span style="font-size:11.5px;color:var(--slate-500);">${escAttr(r.signer_name)} &middot; ${escAttr(r.signer_email)}</span></div>
+        </div>`).join('')
+      : '<p style="color:var(--slate-500);font-size:13px;">Nothing sent for signature yet.</p>'}
+    </div>`;
+  return drawerSection('sec-agreements-' + recordId, 'Agreements' + (rows.length ? ` (${rows.length})` : ''), body, false);
+}
+
+// Re-opens whichever record drawer is showing so its Agreements section is
+// current after a send, cancel or delete.
+function refreshRecordAfterSignature(recordType, recordId){
+  if(!recordType || !recordId) { refreshActiveView(); return; }
+  const isOpen = id => { const el = document.getElementById(id); return el && el.classList.contains('open'); };
+  if((recordType === 'lead' || recordType === 'account') && isOpen('leadOverlay')) openLeadDetail(recordId);
+  else if(recordType === 'cold_lead' && isOpen('coldLeadOverlay')) openColdLeadDetail(recordId);
+  else if(recordType === 'partner' && isOpen('referralOverlay')) openReferralDetail(recordId);
+  else refreshActiveView();
+}
+
+/* =========================================================================
+   THE PUBLIC SIGNING PAGE  (go.epaypos.net/sign/<token>)
+
+   What the client sees when they click "Review & Sign" in their email. They
+   are not logged in and never will be — this talks to the three anon
+   SECURITY DEFINER functions in database/69_esignature.sql and nothing else.
+
+   A note on what was asked for versus what is possible: the client cannot
+   literally sign inside the email itself — no mail client will run that, and
+   any that did would strip it. What DocuSign and Adobe Sign actually do is
+   exactly this: a button in the email that opens a signing page. This page
+   is built so that it works on a phone, in one screen, with no account to
+   create — which is the part that matters.
+   ========================================================================= */
+let signPageState = null;
+
+async function renderSignaturePage(token){
+  document.getElementById('app-screen').style.display = 'none';
+  document.getElementById('landing-screen').style.display = 'flex';
+  document.querySelector('.landing-wrap').classList.add('wide');
+
+  const { data, error } = await supa.rpc('public_open_signature_request', { p_token: token });
+  const doc = (!error && data) ? data : null;
+
+  const logoB64 = (doc && doc.brand === 'atm') ? ATM_LOGO_B64 : EPAY_LOGO_B64;
+  document.getElementById('landingLogo').innerHTML = `<img src="data:image/png;base64,${logoB64}" alt="Logo">`;
+
+  if(!doc || doc.found !== true){
+    document.getElementById('landingContent').innerHTML = `
+      <div class="landing-404">
+        <h1 class="landing-h1">This link is not valid</h1>
+        <p style="text-align:center;color:var(--slate-500);font-size:13.5px;">
+          It may have been cancelled or replaced with a newer one. Reply to the email you received and we will send a fresh link.
+        </p>
+      </div>`;
+    return;
+  }
+
+  signPageState = { token, doc, mode:'type', drawn:false };
+
+  if(doc.status === 'signed'){ renderSignedConfirmation(doc); return; }
+
+  if(['declined','voided','expired'].includes(doc.status)){
+    const why = {
+      declined: 'This document was declined' + (doc.decline_reason ? ': "' + doc.decline_reason + '"' : '.'),
+      voided:   'This document was cancelled by the sender.',
+      expired:  'This signing link has expired.',
+    }[doc.status];
+    document.getElementById('landingContent').innerHTML = `
+      <h1 class="landing-h1">No longer open for signature</h1>
+      <p class="landing-sub">${escAttr(why)} Reply to the email you received if you need a new copy.</p>`;
+    return;
+  }
+
+  const fields = Array.isArray(doc.signer_fields) ? doc.signer_fields : [];
+
+  document.getElementById('landingContent').innerHTML = `
+    <h1 class="landing-h1">${escAttr(doc.title)}</h1>
+    <p class="landing-sub">
+      ${doc.sent_by_name ? escAttr(doc.sent_by_name) + ' at ' : ''}${escAttr(doc.brand === 'atm' ? 'Envision ATM' : 'EPAY POS')}
+      sent this to ${escAttr(doc.signer_email)} for signature.
+      ${doc.expires_at ? 'It can be signed until ' + escAttr(esignDayOnly(doc.expires_at)) + '.' : ''}
+    </p>
+
+    ${doc.message ? `<div style="background:var(--hover);border-radius:10px;padding:13px 15px;font-size:13px;color:var(--navy-500);margin-bottom:18px;white-space:pre-wrap;">${escAttr(doc.message)}</div>` : ''}
+
+    <div class="sign-paper" id="signPaper">${renderAgreementText(doc.document_text)}</div>
+    <p class="sign-scroll-note" id="signScrollNote">Scroll to the end of the document to sign.</p>
+
+    <div id="signError" style="display:none;margin:14px 0 0;padding:10px 12px;background:var(--err-bg);border:1px solid var(--err-border);border-radius:8px;color:var(--err-text);font-size:12.5px;"></div>
+
+    <div id="signFormWrap" style="opacity:.45;pointer-events:none;transition:opacity .25s;margin-top:22px;">
+      <h3 style="font-family:'Space Grotesk';font-size:15px;color:var(--navy-700);margin:0 0 14px;">Sign here</h3>
+
+      <div class="landing-field">
+        <label>Full legal name</label>
+        <input id="signName" value="${escAttr(doc.signer_name || '')}" oninput="updateTypedSignature()" autocomplete="name">
+      </div>
+      <div class="landing-field">
+        <label>Title <span style="text-transform:none;font-weight:400;color:var(--slate-300);">(optional)</span></label>
+        <input id="signTitle" value="${escAttr(doc.signer_title || '')}" placeholder="e.g. Owner">
+      </div>
+      ${fields.map(f => `
+        <div class="landing-field">
+          <label>${escAttr(f.label)}${f.required ? '' : ' <span style="text-transform:none;font-weight:400;color:var(--slate-300);">(optional)</span>'}</label>
+          <input id="signField_${escAttr(f.key)}" data-signer-field="${escAttr(f.key)}" data-required="${f.required ? '1' : ''}">
+        </div>`).join('')}
+
+      <div class="sign-tabs" style="margin-top:16px;">
+        <button type="button" class="sign-tab active" id="signTabType" onclick="setSignMode('type')">Type it</button>
+        <button type="button" class="sign-tab" id="signTabDraw" onclick="setSignMode('draw')">Draw it</button>
+      </div>
+
+      <div id="signTypeBox">
+        <div class="sign-typed-preview" id="signTypedPreview" style="font-family:'Brush Script MT','Segoe Script',cursive;"></div>
+        <div style="display:flex;gap:6px;margin-top:8px;">
+          <button type="button" class="btn btn-xs" style="flex:1;" onclick="setSignFont('script')">Script</button>
+          <button type="button" class="btn btn-xs" style="flex:1;" onclick="setSignFont('print')">Print</button>
+        </div>
+      </div>
+
+      <div id="signDrawBox" style="display:none;">
+        <div class="sign-pad" id="signPadWrap">
+          <canvas id="signPad"></canvas>
+          <div class="sign-pad-line"></div>
+          <div class="sign-pad-hint" id="signPadHint">Draw your signature above — finger, stylus or mouse</div>
+        </div>
+        <button type="button" class="btn btn-xs" style="width:100%;margin-top:8px;" onclick="clearSignPad()">Clear</button>
+      </div>
+
+      <label class="sign-consent">
+        <input type="checkbox" id="signConsent">
+        <span>I agree to sign this document electronically. I understand my electronic signature, the date and time,
+        and the IP address it is sent from are recorded, and that this has the same legal effect as signing on paper.</span>
+      </label>
+
+      <button class="landing-submit" id="signSubmitBtn" onclick="submitSignature()">Sign &amp; complete</button>
+      <button type="button" class="btn btn-sm" style="width:100%;margin-top:10px;" onclick="openDeclineBox()">I can't sign this</button>
+
+      <div id="signDeclineBox" style="display:none;margin-top:12px;">
+        <div class="landing-field">
+          <label>What is the problem? <span style="text-transform:none;font-weight:400;color:var(--slate-300);">(optional)</span></label>
+          <textarea id="signDeclineReason" rows="2" placeholder="So we know what to fix before sending it again"></textarea>
+        </div>
+        <button class="btn btn-sm" style="width:100%;color:var(--red);" onclick="submitDecline()">Decline to sign</button>
+      </div>
+
+      <p style="font-size:10.5px;color:var(--slate-300);text-align:center;margin:16px 0 0;line-height:1.5;">
+        Questions? Reply to the email that brought you here${doc.sent_by_email ? ' or write to ' + escAttr(doc.sent_by_email) : ''}.
+      </p>
+    </div>`;
+
+  updateTypedSignature();
+  watchSignScroll();
+  setupSignPad();
+}
+
+/* The form stays disabled until the document has actually been scrolled
+   through. Not a legal requirement, but "I never saw that clause" is a worse
+   conversation than an extra two seconds of scrolling. A document short
+   enough not to scroll unlocks immediately. */
+function watchSignScroll(){
+  const paper = document.getElementById('signPaper');
+  const wrap = document.getElementById('signFormWrap');
+  const note = document.getElementById('signScrollNote');
+  if(!paper || !wrap) return;
+
+  let unlocked = false;
+  const unlock = () => {
+    if(unlocked) return;
+    unlocked = true;
+    wrap.style.opacity = '1';
+    wrap.style.pointerEvents = 'auto';
+    note.textContent = 'You have reached the end of the document.';
+    note.style.color = 'var(--ok-text)';
+    paper.removeEventListener('scroll', maybeUnlock);
+    window.removeEventListener('resize', maybeUnlock);
+  };
+  // Checked again on resize, not only at first render: a phone rotated into
+  // landscape can stop the document being scrollable at all, and a signer who
+  // physically cannot reach the bottom must not be locked out of signing.
+  function maybeUnlock(){
+    const fits = paper.scrollHeight <= paper.clientHeight + 8;
+    const atEnd = paper.scrollTop + paper.clientHeight >= paper.scrollHeight - 24;
+    if(fits || atEnd) unlock();
+  }
+  paper.addEventListener('scroll', maybeUnlock);
+  window.addEventListener('resize', maybeUnlock);
+  maybeUnlock();
+}
+
+function setSignMode(mode){
+  signPageState.mode = mode;
+  document.getElementById('signTabType').classList.toggle('active', mode === 'type');
+  document.getElementById('signTabDraw').classList.toggle('active', mode === 'draw');
+  document.getElementById('signTypeBox').style.display = mode === 'type' ? 'block' : 'none';
+  document.getElementById('signDrawBox').style.display = mode === 'draw' ? 'block' : 'none';
+  if(mode === 'draw') setupSignPad();
+}
+
+function setSignFont(kind){
+  signPageState.font = kind;
+  const box = document.getElementById('signTypedPreview');
+  box.style.fontFamily = kind === 'print' ? "'Inter', sans-serif" : "'Brush Script MT','Segoe Script',cursive";
+  box.style.fontSize = kind === 'print' ? '22px' : '30px';
+}
+
+function updateTypedSignature(){
+  const name = ((document.getElementById('signName') || {}).value || '').trim();
+  const box = document.getElementById('signTypedPreview');
+  if(box) box.textContent = name || 'Your signature';
+}
+
+// Canvas sized to its own box in device pixels — a signature drawn on a
+// blurry upscaled canvas looks like a fax of a fax on the signed copy.
+function setupSignPad(){
+  const canvas = document.getElementById('signPad');
+  const wrap = document.getElementById('signPadWrap');
+  if(!canvas || !wrap || canvas.dataset.ready === '1') return;
+
+  const ratio = window.devicePixelRatio || 1;
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  if(!w || !h) return;
+  canvas.width = w * ratio; canvas.height = h * ratio;
+  canvas.style.cssText = 'width:100%;height:100%;display:block;border-radius:10px;';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(ratio, ratio);
+  ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#16233E';
+  canvas.dataset.ready = '1';
+
+  let drawing = false;
+  const pos = e => {
+    const r = canvas.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  };
+  canvas.addEventListener('pointerdown', e => {
+    drawing = true;
+    canvas.setPointerCapture(e.pointerId);
+    const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y);
+    signPageState.drawn = true;
+    const hint = document.getElementById('signPadHint');
+    if(hint) hint.style.display = 'none';
+  });
+  canvas.addEventListener('pointermove', e => {
+    if(!drawing) return;
+    const p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke();
+  });
+  const stop = () => { drawing = false; };
+  canvas.addEventListener('pointerup', stop);
+  canvas.addEventListener('pointerleave', stop);
+  canvas.addEventListener('pointercancel', stop);
+}
+
+function clearSignPad(){
+  const canvas = document.getElementById('signPad');
+  if(!canvas) return;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  signPageState.drawn = false;
+  const hint = document.getElementById('signPadHint');
+  if(hint) hint.style.display = '';
+}
+
+function openDeclineBox(){
+  const box = document.getElementById('signDeclineBox');
+  box.style.display = box.style.display === 'none' ? 'block' : 'none';
+}
+
+async function submitSignature(){
+  const err = document.getElementById('signError');
+  const btn = document.getElementById('signSubmitBtn');
+  err.style.display = 'none';
+
+  const name = ((document.getElementById('signName') || {}).value || '').trim();
+  const title = ((document.getElementById('signTitle') || {}).value || '').trim();
+  const consent = !!(document.getElementById('signConsent') || {}).checked;
+
+  const fail = msg => { err.textContent = msg; err.style.display = 'block'; err.scrollIntoView({ behavior:'smooth', block:'center' }); };
+
+  if(!name) return fail('Please type your full legal name.');
+  if(signPageState.mode === 'draw' && !signPageState.drawn) return fail('Please draw your signature, or switch to "Type it".');
+  if(!consent) return fail('Please tick the box to agree to sign electronically.');
+
+  const values = {};
+  let missing = null;
+  document.querySelectorAll('[data-signer-field]').forEach(el => {
+    const v = (el.value || '').trim();
+    if(el.dataset.required && !v && !missing) missing = el.previousElementSibling ? el.previousElementSibling.textContent : 'A required field';
+    if(v) values[el.dataset.signerField] = v;
+  });
+  if(missing) return fail(missing.replace(/\s*\(optional\)\s*/,'').trim() + ' is required.');
+
+  let image = null;
+  if(signPageState.mode === 'draw' && signPageState.drawn){
+    try { image = document.getElementById('signPad').toDataURL('image/png'); } catch(e){ image = null; }
+  }
+
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.textContent = 'Signing…';
+
+  const { data, error } = await supa.rpc('public_sign_signature_request', {
+    p_token: signPageState.token,
+    p_signature_name: name,
+    p_signature_image: image,
+    p_signature_style: signPageState.mode === 'draw' ? 'drawn' : (signPageState.font || 'script'),
+    p_signer_title: title || null,
+    p_field_values: values,
+    p_initials_image: null,
+    p_consent: consent,
+  });
+
+  btn.disabled = false; btn.textContent = original;
+
+  if(error) return fail('Something went wrong saving your signature: ' + error.message);
+  if(!data || data.ok !== true) return fail((data && data.error) || 'Your signature could not be saved.');
+
+  const doc = Object.assign({}, signPageState.doc, {
+    status:'signed', signed_at: data.signed_at || new Date().toISOString(),
+    signature_name: name, signature_image: image, signer_title: title,
+    signature_style: signPageState.mode === 'draw' ? 'drawn' : (signPageState.font || 'script'),
+  });
+  signPageState.doc = doc;
+  renderSignedConfirmation(doc);
+}
+
+async function submitDecline(){
+  const reason = ((document.getElementById('signDeclineReason') || {}).value || '').trim();
+  if(!confirm('Decline to sign this document? The sender will be told.')) return;
+
+  const { data, error } = await supa.rpc('public_decline_signature_request', {
+    p_token: signPageState.token, p_reason: reason || null
+  });
+  if(error || !data || data.ok !== true){
+    const err = document.getElementById('signError');
+    err.textContent = (error && error.message) || (data && data.error) || 'Could not record that.';
+    err.style.display = 'block';
+    return;
+  }
+  document.getElementById('landingContent').innerHTML = `
+    <h1 class="landing-h1">Thanks — we've let them know</h1>
+    <p class="landing-sub">You have declined to sign this document. Whoever sent it will be in touch.${reason ? ' Your note has been passed on.' : ''}</p>`;
+}
+
+function renderSignedConfirmation(doc){
+  document.getElementById('landingContent').innerHTML = `
+    <div style="text-align:center;margin-bottom:18px;">
+      <div style="width:56px;height:56px;border-radius:50%;background:var(--ok-bg);color:var(--ok-text);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="width:26px;height:26px;"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <h1 class="landing-h1">Signed — thank you</h1>
+      <p class="landing-sub" style="margin-bottom:0;">
+        ${escAttr(doc.title)} was signed by ${escAttr(doc.signature_name || doc.signer_name)} on ${escAttr(esignWhen(doc.signed_at))}.
+        A copy has been sent back to ${escAttr(doc.brand === 'atm' ? 'Envision ATM' : 'EPAY POS')} and attached to your file.
+        Keep a copy for your records using the button below.
+      </p>
+    </div>
+    <div class="sign-paper" style="max-height:44vh;">
+      ${renderAgreementText(doc.document_text)}
+      ${signatureBlockHtml({
+        brand: doc.brand,
+        signature_name: doc.signature_name, signer_title: doc.signer_title,
+        signature_image: doc.signature_image, signature_style: doc.signature_style,
+        signed_at: doc.signed_at,
+        require_countersign: false,
+        countersigned_at: doc.countersigned_at, countersign_name: doc.countersign_name,
+        countersign_image: doc.countersign_image,
+      })}
+    </div>
+    <button class="landing-submit" style="margin-top:16px;" onclick="window.print()">Print / save a copy</button>`;
+}
+
 const MENU_DOTS_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>';
 const MENU_TRASH_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
 
@@ -14207,7 +15991,9 @@ const RECORD_TYPES = {
   contact:     { find: id => CONTACTS.find(r => r.id === id),     name: r => r.name || r.business_name, del: 'deleteContact' },
   loader:      { find: id => LOADERS.find(r => r.id === id),      name: r => r.business_name, del: 'deleteLoader' },
   isoLead:     { find: id => ISO_LEADS.find(r => r.id === id),    name: r => r.business_name, del: 'deleteIsoLead' },
-  lendingLead: { find: id => LENDING_LEADS.find(r => r.id === id),name: r => r.business_name, del: 'deleteLendingLead' }
+  lendingLead: { find: id => LENDING_LEADS.find(r => r.id === id),name: r => r.business_name, del: 'deleteLendingLead' },
+  agreementTemplate: { find: id => AGREEMENT_TEMPLATES.find(r => r.id === id), name: r => r.name, del: 'deleteAgreementTemplate' },
+  signatureRequest:  { find: id => SIGNATURE_REQUESTS.find(r => r.id === id),  name: r => r.title, del: 'deleteSignatureRequest' }
 };
 
 function recordMenuBtn(kind, id, label){
@@ -17607,6 +19393,9 @@ async function openNotification(id){
       const ev = CALENDAR_EVENTS.find(e => e.id === n.link_id);
       if(ev) openDayDrawer(ev.date);
     }
+    // A signed/declined notification points straight at the document itself,
+    // which is what you actually want to look at.
+    if(n.link_view === 'esign' && n.link_id) openSignRequestDetail(n.link_id);
   }
 }
 
@@ -18253,6 +20042,21 @@ document.getElementById('loadersActiveFilter').addEventListener('change', functi
 });
 document.getElementById('loadersSearch').addEventListener('input', function(){
   loaderSearch = this.value; renderLoaders();
+});
+
+document.getElementById('newTemplateBtn').addEventListener('click', function(){ openTemplateDrawer(null); });
+document.getElementById('newSignatureBtn').addEventListener('click', function(){ openSendSignatureDrawer(null, null, null); });
+document.getElementById('templatesSearch').addEventListener('input', function(){
+  templateSearch = this.value; renderTemplatesTable();
+});
+document.getElementById('templatesActiveFilter').addEventListener('change', function(){
+  templateActiveFilter = this.value; renderTemplatesTable();
+});
+document.getElementById('esignSearch').addEventListener('input', function(){
+  esignSearch = this.value; renderEsignTable();
+});
+document.getElementById('esignStatusFilter').addEventListener('change', function(){
+  esignStatusFilter = this.value; renderEsignTable();
 });
 
 document.getElementById('addContactBtn').addEventListener('click', function(){ openContactDrawer(null); });
