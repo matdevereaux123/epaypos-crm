@@ -489,6 +489,25 @@
   .topbar .subtext{color:var(--slate-500);font-size:13.5px;margin:0;}
   .btn{padding:10px 16px;border-radius:8px;border:1px solid var(--line);background:var(--card);font-size:13.5px;font-weight:600;color:var(--navy-700);}
   .btn:hover{border-color:var(--brand-accent-2);}
+  /* Press feedback. A button that looks identical mid-click reads as one
+     that did not register, which is what makes people click twice. The
+     transition is asymmetric on purpose: instant down so the press is felt,
+     slower back up so it is still visible after a quick tap. */
+  .btn, .btn-accent, .lc-advance, .row-edit-btn, .nav-item, .phase-toggle button, .card-menu button{
+    transition:transform .06s ease, filter .12s ease, box-shadow .12s ease, background .12s ease, border-color .12s ease;
+  }
+  .btn:active, .btn-accent:active, .lc-advance:active, .row-edit-btn:active,
+  .phase-toggle button:active, .card-menu button:active{
+    transform:scale(.96);
+    filter:brightness(.94);
+    box-shadow:inset 0 2px 5px rgba(20,40,80,.16);
+  }
+  .nav-item:active{ transform:scale(.985); }
+  /* Keyboard users get the same confirmation a mouse press gives. */
+  .btn:focus-visible, .btn-accent:focus-visible, .nav-item:focus-visible{
+    outline:2px solid var(--brand-accent-2); outline-offset:2px;
+  }
+  .btn[disabled], .btn-accent[disabled]{ opacity:.55; transform:none !important; filter:none; }
   .btn-accent{background:linear-gradient(90deg,var(--brand-accent-2),var(--brand-accent));color:#fff;border:none;}
   .btn-accent:hover{filter:brightness(1.06);}
   .topbar-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
@@ -1582,6 +1601,25 @@
           </button>
         </div>
 
+        <button class="nav-section-toggle" id="marketingSectionToggle" type="button">
+          <span>Marketing</span>
+          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="nav-collapsible" id="marketingSectionItems">
+          <button class="nav-item" data-view="aiscraper" id="navAiScraperItem">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 1 4 4c0 1.5-.8 2.8-2 3.5V12h2a4 4 0 0 1 4 4v1"/><path d="M12 2a4 4 0 0 0-4 4c0 1.5.8 2.8 2 3.5V12H8a4 4 0 0 0-4 4v1"/><circle cx="12" cy="19" r="3"/><line x1="12" y1="12" x2="12" y2="16"/></svg>
+            AI Lead Scraper <span class="soon">admin only</span>
+          </button>
+          <button class="nav-item" data-view="coldemail" id="navColdEmailItem">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 6c0-1.1-.9-2-2-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6z"/><polyline points="22 6 12 13 2 6"/></svg>
+            Cold Email <span class="soon">admin only</span>
+          </button>
+          <button class="nav-item" data-view="newsletter" id="navNewsletterItem">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7 13.03 12.7a2 2 0 0 1-2.06 0L2 7"/></svg>
+            Newsletter <span class="soon">admin only</span>
+          </button>
+        </div>
+
         <button class="nav-section-toggle" id="lendingSectionToggle" type="button">
           <span>Lending</span>
           <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
@@ -1604,24 +1642,7 @@
           </button>
         </div>
 
-        <button class="nav-section-toggle" id="marketingSectionToggle" type="button">
-          <span>Marketing</span>
-          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-        </button>
-        <div class="nav-collapsible" id="marketingSectionItems">
-          <button class="nav-item" data-view="aiscraper" id="navAiScraperItem">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 1 4 4c0 1.5-.8 2.8-2 3.5V12h2a4 4 0 0 1 4 4v1"/><path d="M12 2a4 4 0 0 0-4 4c0 1.5.8 2.8 2 3.5V12H8a4 4 0 0 0-4 4v1"/><circle cx="12" cy="19" r="3"/><line x1="12" y1="12" x2="12" y2="16"/></svg>
-            AI Lead Scraper <span class="soon">admin only</span>
-          </button>
-          <button class="nav-item" data-view="coldemail" id="navColdEmailItem">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 6c0-1.1-.9-2-2-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6z"/><polyline points="22 6 12 13 2 6"/></svg>
-            Cold Email <span class="soon">admin only</span>
-          </button>
-          <button class="nav-item" data-view="newsletter" id="navNewsletterItem">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7 13.03 12.7a2 2 0 0 1-2.06 0L2 7"/></svg>
-            Newsletter <span class="soon">admin only</span>
-          </button>
-        </div>
+        
 
         <button class="nav-section-toggle" id="resourcesSectionToggle" type="button">
           <span>Resources</span>
@@ -3655,8 +3676,8 @@ function emptyAccountFields(){
 
     // Application
     // 'portal' is the only choice that actually lands in this CRM — the
-    // Wix marketing links (e.g. 'free_processing') have no backend wired
-    // up (see the Wix integration card in Settings), so a submission there
+    // The old marketing-site links (e.g. 'free_processing') have no backend
+    // wired up — nothing receives a submission made there —
     // vanishes with nothing to show for it. Defaulting to a link that
     // doesn't work meant every "send an application link" was broken
     // unless staff remembered to flip this dropdown first.
@@ -3957,14 +3978,11 @@ const INTEGRATION_DEFS = [
     icon:'<path d="M22 6c0-1.1-.9-2-2-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6z"/><polyline points="22 6 12 13 2 6"/>',
     fields:[{key:'api_key', label:'Instantly API key', type:'password'}],
     webhookNote:'On Instantly (Hypergrowth plan or higher): Integrations → Webhooks → add reply_received and lead_meeting_booked pointed at your backend endpoint.' },
-  // Named for the product it connects to, like every other integration here.
-  // "Wix" is removed from the rest of the portal's wording, but this card
-  // configures Wix specifically and a generic label would make its API key
-  // and site ID fields meaningless.
-  { key:'wix', name:'Wix Applications', desc:'Feeds Free Processing form submissions into the Applications tab.',
-    icon:'<rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/>',
-    fields:[{key:'api_key', label:'Wix API key', type:'password'}, {key:'site_id', label:'Wix Site ID', type:'text'}],
-    webhookNote:'On Wix: connect via Wix Automations or the Wix Forms API, targeting your backend endpoint for each new submission.' },
+  // The Wix Applications card was removed. It was never connected to
+  // anything, and applications now arrive through this system's own tracked
+  // /apply/<slug> links. The `source = 'wix'` label on applications already
+  // submitted that way is left alone — it is a record of where those came
+  // from, not a connection.
   { key:'ai_backend', name:'AI Lead Scraper backend', desc:'Holds the Claude API key server-side for live scraping and enrichment.',
     icon:'<path d="M12 2a4 4 0 0 1 4 4c0 1.5-.8 2.8-2 3.5V12h2a4 4 0 0 1 4 4v1"/><path d="M12 2a4 4 0 0 0-4 4c0 1.5.8 2.8 2 3.5V12H8a4 4 0 0 0-4 4v1"/><circle cx="12" cy="19" r="3"/><line x1="12" y1="12" x2="12" y2="16"/>',
     fields:[{key:'endpoint_url', label:'Backend endpoint URL', type:'text'}, {key:'api_key', label:'Backend auth token', type:'password'}],
@@ -5291,6 +5309,9 @@ document.getElementById('logoutBtn').addEventListener('click', async function(){
   await supa.auth.signOut();
   showLoginScreen();
 });
+
+// Overlays are all static markup, so one pass at startup covers them.
+wireOverlayDismiss();
 
 initAuth();
 async function initAuth(){
@@ -7902,6 +7923,43 @@ async function refreshPublicSubmissions(view){
   }
 }
 
+/* -------------------------------------------------------------------------
+   Re-render whatever view is on screen.
+
+   Saving in a right-hand drawer updated the record and reopened the drawer,
+   but never redrew the board or table behind it — so the card still showed
+   the old stage, name or amount until the page was reloaded. Nineteen save
+   functions had the same gap. This is what they all call now.
+
+   Reads the visible section rather than tracking a "current view" variable,
+   so it cannot drift out of step with what is actually displayed.
+   ------------------------------------------------------------------------- */
+function refreshActiveView(){
+  const shown = [...document.querySelectorAll('section.view')].find(v => v.style.display !== 'none');
+  if(!shown) return;
+  const view = shown.id.replace(/^view-/, '');
+  try {
+    if(view === 'leads')            renderLeadsBoard();
+    else if(view === 'accounts')    renderAccountsTable();
+    else if(view === 'coldleads')   renderColdLeadsTable();
+    else if(view === 'applications')renderApplicationsTable();
+    else if(view === 'referrals')   renderReferralTable();
+    else if(view === 'agents')      renderAgentsTable();
+    else if(view === 'contacts')    renderContacts();
+    else if(view === 'loaders')     renderLoaders();
+    else if(view === 'followups')   renderFollowups();
+    else if(view === 'dashboard')   renderDashboard();
+    else if(view === 'calendar')    renderCalendar();
+    else if(view === 'residuals')   renderResidualsReport();
+    else if(view === 'isoleads')    renderIsoLeadsBoard();
+    else if(view === 'lendingleads')renderLendingLeadsBoard();
+    else if(view === 'liverecall')  renderLiveRecall();
+  } catch(e){
+    // A save must never fail because the screen behind it could not redraw.
+    console.error('Could not refresh ' + view, e);
+  }
+}
+
 function showView(view, fromHistory){
   // Hard gate, checked on every navigation (not just at login/role-switch) —
   // this is what actually stops a non-admin from landing on these views if
@@ -9621,6 +9679,7 @@ async function savePartnerParent(id, parentId){
   const { error } = await supa.from('partners').update({ parent_partner_id }).eq('id', id);
   if(error){ alert('Could not save: ' + error.message); return; }
   p.parent_partner_id = parent_partner_id;
+  refreshActiveView();
   openReferralDetail(id);
 }
 
@@ -9674,6 +9733,7 @@ async function saveBankingInfo(partnerId){
   p.banking = newBanking;
   ['routing_number','account_number'].forEach(f => { unlockedSensitiveFields.delete(partnerId+':'+f); revealedSensitiveFields.delete(partnerId+':'+f); });
   delete decryptedPartnerBankingCache[partnerId]; // just saved new values — force a fresh decrypt on next render
+  refreshActiveView();
   openReferralDetail(partnerId);
 }
 
@@ -9683,6 +9743,7 @@ async function saveGeneralNotes(partnerId){
   const { error } = await supa.from('partners').update({ general_notes }).eq('id', partnerId);
   if(error){ alert('Could not save: ' + error.message); return; }
   p.general_notes = general_notes;
+  refreshActiveView();
   openReferralDetail(partnerId);
 }
 
@@ -9696,6 +9757,7 @@ async function saveResidualEquipment(partnerId){
   const { error } = await supa.from('partners').update(fields).eq('id', partnerId);
   if(error){ alert('Could not save: ' + error.message); return; }
   Object.assign(p, fields);
+  refreshActiveView();
   openReferralDetail(partnerId);
 }
 
@@ -12125,6 +12187,7 @@ async function saveAccountCollectionsNote(id){
   const { error } = await supa.from('leads').update({ collections_note: note }).eq('id', id);
   if(error){ alert('Could not save collections note: ' + error.message); return; }
   l.collections_note = note;
+  refreshActiveView();
   openLeadDetail(id);
 }
 
@@ -12246,6 +12309,7 @@ async function saveAccountDetails(id){
   ['dob','drivers_license','ssn'].forEach(f => { unlockedSensitiveFields.delete(id+':'+f); revealedSensitiveFields.delete(id+':'+f); });
   delete decryptedLeadCache[id]; // just saved new values — force a fresh decrypt on next render
   openLeadDetail(id);
+  refreshActiveView();
 }
 
 async function saveAccountBanking(id){
@@ -12265,6 +12329,7 @@ async function saveAccountBanking(id){
   l.banking = newBanking;
   ['routing_number','account_number'].forEach(f => { unlockedSensitiveFields.delete(id+':'+f); revealedSensitiveFields.delete(id+':'+f); });
   delete decryptedLeadCache[id]; // just saved new values — force a fresh decrypt on next render
+  refreshActiveView();
   openLeadDetail(id);
 }
 
@@ -12837,6 +12902,7 @@ async function saveLeadPartnerLink(id, partnerId){
   const { error } = await supa.from('leads').update({ linked_partner_id }).eq('id', id);
   if(error){ alert('Could not save: ' + error.message); return; }
   l.linked_partner_id = linked_partner_id;
+  refreshActiveView();
 }
 /* -------------------------------------------------------------------------
    Moving a lead between brands after the fact.
@@ -12921,6 +12987,7 @@ async function saveInboundLeadFields(id){
   if(error){ alert('Could not save: ' + error.message); return; }
   l.lead_source = lead_source;
   unlockedLeadSourceIds.delete(id);
+  refreshActiveView();
   openLeadDetail(id);
 }
 function unlockLeadSource(id){
@@ -12939,6 +13006,7 @@ async function saveOutreachFields(id){
     integrations_note: l.integrations_note, epay_apps_selected: l.epay_apps_selected,
   }).eq('id', id);
   if(error){ alert('Could not save: ' + error.message); return; }
+  refreshActiveView();
   openLeadDetail(id);
 }
 async function saveFollowupFields(id, n){
@@ -12950,6 +13018,7 @@ async function saveFollowupFields(id, n){
   if(error){ alert('Could not save: ' + error.message); return; }
   l[dateField] = dateVal;
   l[ideaField] = ideaVal;
+  refreshActiveView();
   openLeadDetail(id);
 }
 function generateFollowupIdea(id, n){
@@ -12976,6 +13045,7 @@ async function savePendingCadence(id){
   if(error){ alert('Could not save: ' + error.message); return; }
   l.pending_cadence_days = pending_cadence_days;
   l.pending_next_reminder = pending_next_reminder;
+  refreshActiveView();
   openLeadDetail(id);
 }
 async function saveEquipmentConfirm(id){
@@ -12995,6 +13065,7 @@ async function saveEquipmentConfirm(id){
   if(error){ alert('Could not save: ' + error.message); return; }
   l.equipment_pricing_confirmed = equipment_pricing_confirmed;
   l.equipment_pricing_confirmed_at = equipment_pricing_confirmed_at;
+  refreshActiveView();
   openLeadDetail(id);
 }
 async function saveApplicationLinkChoice(id){
@@ -13005,6 +13076,7 @@ async function saveApplicationLinkChoice(id){
   if(error){ alert('Could not save: ' + error.message); return; }
   l.application_link_choice = application_link_choice;
   l.application_link_custom = application_link_custom;
+  refreshActiveView();
   openLeadDetail(id);
 }
 async function saveAppId(id){
@@ -13013,6 +13085,7 @@ async function saveAppId(id){
   const { error } = await supa.from('leads').update({ app_id }).eq('id', id);
   if(error){ alert('Could not save: ' + error.message); return; }
   l.app_id = app_id;
+  refreshActiveView();
   openLeadDetail(id);
 }
 async function convertToPostBoarding(id){
@@ -13024,6 +13097,7 @@ async function saveMid(id){
   const { error } = await supa.from('leads').update({ mid }).eq('id', id);
   if(error){ alert('Could not save: ' + error.message); return; }
   l.mid = mid;
+  refreshActiveView();
   openLeadDetail(id);
 }
 
@@ -13039,6 +13113,7 @@ async function saveEquipmentShipment(id){
   const { error } = await supa.from('leads').update(fields).eq('id', id);
   if(error){ alert('Could not save: ' + error.message); return; }
   Object.assign(l, fields);
+  refreshActiveView();
   openLeadDetail(id);
 }
 
@@ -13641,6 +13716,51 @@ async function openLeadDetail(id){
    the last card in a column would otherwise open a menu its own container
    cuts in half.
    ------------------------------------------------------------------------- */
+/* -------------------------------------------------------------------------
+   Clicking the dimmed area behind a drawer closes it.
+
+   Every drawer already has its own close function — some do more than hide
+   the panel (the meeting drawer forgets which day you were on, the cold lead
+   drawer returns to Live Recall's inline mode). So rather than stripping the
+   .open class directly, this clicks that drawer's own close button and lets
+   it do whatever it does. Only if a drawer has no close button does it fall
+   back to hiding the panel.
+
+   The listener is on the overlay itself and checks the target IS the overlay:
+   a click inside the drawer bubbles up through it, and closing on that would
+   dismiss the panel every time someone clicked a field.
+   ------------------------------------------------------------------------- */
+function wireOverlayDismiss(){
+  document.querySelectorAll('.overlay, .modal-overlay').forEach(ov => {
+    if(ov.dataset.dismissWired) return;
+    ov.dataset.dismissWired = '1';
+    ov.addEventListener('mousedown', function(e){
+      if(e.target !== ov) return;         // started inside the drawer
+      // Guard against a drag that began in the drawer and ended out here —
+      // selecting text in a field and releasing over the backdrop should not
+      // close anything.
+      ov.dataset.pressedBackdrop = '1';
+    });
+    ov.addEventListener('click', function(e){
+      if(e.target !== ov || ov.dataset.pressedBackdrop !== '1') return;
+      ov.dataset.pressedBackdrop = '';
+      const closeBtn = ov.querySelector('.drawer-close, .modal-close');
+      if(closeBtn) closeBtn.click(); else ov.classList.remove('open');
+    });
+  });
+}
+
+// Escape closes the topmost open drawer, for the same reason.
+document.addEventListener('keydown', function(e){
+  if(e.key !== 'Escape') return;
+  // Not while an inline editor or the card menu is handling its own Escape.
+  if(document.querySelector('.row-editing') || document.getElementById('leadCardMenu')) return;
+  const open = [...document.querySelectorAll('.overlay.open, .modal-overlay.open')].pop();
+  if(!open) return;
+  const closeBtn = open.querySelector('.drawer-close, .modal-close');
+  if(closeBtn) closeBtn.click(); else open.classList.remove('open');
+});
+
 function closeLeadCardMenu(){
   const existing = document.getElementById('leadCardMenu');
   if(existing) existing.remove();
@@ -13741,6 +13861,89 @@ function openRecordMenu(ev, kind, id){
       ${MENU_TRASH_SVG}
       Delete
     </button>`);
+}
+
+/* -------------------------------------------------------------------------
+   Turning a visit into something real.
+
+   A visit already holds the business name, address and whatever contact
+   details were taken at the door. Retyping that into Cold Leads or the
+   pipeline is both tedious and how details get lost between the two.
+
+   The visit is kept and marked rather than consumed: it is a record of
+   somewhere a person actually went, which stays true regardless of what came
+   of it. Marking it is also what stops one visit becoming two cold leads.
+   ------------------------------------------------------------------------- */
+function openConvertVisitMenu(ev, id){
+  const v = COLD_OUTREACH.find(x => x.id === id);
+  if(!v) return;
+  openMiniMenu(ev, id, `
+    <button onclick="convertVisit('${id}', 'cold_lead')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18"/><path d="M12 3v18"/></svg>
+      To a cold lead
+    </button>
+    <button onclick="convertVisit('${id}', 'lead')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><polyline points="12 5 19 12 12 19"/></svg>
+      Straight into the pipeline
+    </button>`);
+}
+
+async function convertVisit(id, target){
+  closeLeadCardMenu();
+  const v = COLD_OUTREACH.find(x => x.id === id);
+  if(!v) return;
+  if(v.converted_to){ showToast('That visit has already been converted.', 'info'); return; }
+
+  const asLead = target === 'lead';
+  const where = asLead ? 'the ' + brandLabel(currentBrand) + ' pipeline' : 'Cold Leads';
+  if(!confirm(`Convert “${v.business_name}” into ${where}?\n\nThe visit stays in the log, marked as converted.`)) return;
+
+  // Everything the visit knows, carried across. The address goes into the
+  // field each table actually uses for one, which is not the same column.
+  const common = {
+    business_name: v.business_name,
+    contact_name:  v.contact_name || '—',
+    phone:         v.contact_phone || '—',
+    email:         v.contact_email || '—',
+    brand:         currentBrand,
+    assigned_to:   v.assigned_to || currentUser.id
+  };
+
+  let created, error;
+  if(asLead){
+    ({ data: created, error } = await supa.from('leads').insert(Object.assign({}, common, {
+      stage: defaultStageFor(currentBrand),
+      atm_stage: 'inbound_placement',
+      business_address: v.address || null,
+      lead_source: 'In-person visit',
+      est_volume: '',
+      converted_to_account: false
+    })).select().single());
+  } else {
+    ({ data: created, error } = await supa.from('cold_leads').insert(Object.assign({}, common, {
+      address: v.address || null,
+      temperature: 'warm',          // someone has already stood in front of them
+      source_category: 'hand_entered',
+      source: 'In-person visit',
+      notes: v.notes || null,
+      promoted: false
+    })).select().single());
+  }
+  if(error){ showToast('Could not convert: ' + error.message, 'error'); return; }
+
+  // Marked only after the new record exists. The other order would leave a
+  // visit claiming a conversion that never happened, and no way to retry it.
+  const stamp = { converted_to: target, converted_record_id: created.id, converted_at: new Date().toISOString() };
+  const { error: markErr } = await supa.from('cold_outreach').update(stamp).eq('id', id);
+  if(markErr){
+    showToast(`Created, but the visit still shows as unconverted: ${markErr.message}`, 'error');
+  } else {
+    Object.assign(v, stamp);
+  }
+
+  if(asLead) LEADS.unshift(created); else COLD_LEADS.unshift(created);
+  renderColdOutreachTable();
+  showToast(`“${v.business_name}” added to ${where}.`, 'success');
 }
 
 function openApplicationMenu(ev, id){
@@ -14867,7 +15070,10 @@ function renderColdOutreachTable(filterText){
       <td>${c.address || '—'}</td>
       <td>${c.contact_name ? `${c.contact_name}<div class="sub">${[c.contact_phone, c.contact_email].filter(Boolean).join(' &middot; ')}</div>` : '—'}</td>
       <td>${formatDate(c.created_at)}</td>
-      <td style="text-align:right;">
+      <td style="text-align:right;white-space:nowrap;">
+        ${c.converted_to
+          ? `<span class="pill pill-status-active" title="Converted ${c.converted_at ? formatDate(c.converted_at) : ''}">Converted &rarr; ${c.converted_to === 'lead' ? 'Lead' : 'Cold Lead'}</span>`
+          : `<button class="btn btn-xs btn-accent" onclick="event.stopPropagation(); openConvertVisitMenu(event, '${c.id}');">Convert &rarr;</button>`}
         <button class="btn btn-xs" onclick="event.stopPropagation(); deleteColdOutreach('${c.id}');" style="color:var(--red);">Delete</button>
       </td>
     </tr>`).join('');
@@ -16864,6 +17070,7 @@ async function saveNewBookingLink(){
   if(error){ showToast('Could not create the link: ' + error.message, 'error'); return; }
   BOOKING_LINKS.unshift(data);
   showToast('Booking link created.', 'success');
+  refreshActiveView();
   openBookingLinksDrawer();
 }
 
