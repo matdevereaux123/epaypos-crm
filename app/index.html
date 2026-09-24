@@ -4175,8 +4175,9 @@ async function emailApplicationLink(leadId){
     subject: 'Your ' + brandName + ' application',
     heading: 'Your application is ready',
     body: 'Hi ' + (l.contact_name || 'there') + ',\n\n'
-        + 'Here is the application for ' + (l.business_name || 'your business') + '. '
-        + 'It takes a couple of minutes and there is no obligation \u2014 we will come back to you with pricing once we have it.',
+        + 'Here is the application for ' + (l.business_name || 'your business') + '.\n\n'
+        + 'It asks for your business details, your bank details for deposits, and a photo of your '
+        + 'licence. Have those to hand and it takes about five minutes.',
     buttonLabel: 'Open my application',
     buttonUrl: url
   });
@@ -5774,8 +5775,9 @@ async function createAndEmailLeadForm(){
     to: email,
     subject: 'A few quick questions from ' + brandName,
     heading: 'Tell us about your business',
-    body: 'It takes about a minute and costs nothing to ask \u2014 once we know roughly what you '
-        + 'process we can come back to you with real numbers.',
+    body: 'A few questions about how you take payments today \u2014 roughly what you process, '
+        + 'and what you are using now. It takes about a minute, and it is what we need before '
+        + 'we can quote you anything accurate.',
     buttonLabel: 'Answer a few questions',
     buttonUrl: applicationShareUrl(data.slug)
   });
@@ -5921,8 +5923,9 @@ async function createAndEmailApplicationLink(){
     to: email,
     subject: 'Your ' + brandName + ' application',
     heading: 'Your application is ready',
-    body: 'Here is the application for ' + label + '. It takes a couple of minutes and there is no '
-        + 'obligation \u2014 we will come back to you with pricing once we have it.',
+    body: 'Here is the application for ' + label + '.\n\n'
+        + 'It asks for your business details, your bank details for deposits, and a photo of your '
+        + 'licence. Have those to hand and it takes about five minutes.',
     buttonLabel: 'Open my application',
     buttonUrl: applicationShareUrl(data.slug)
   });
@@ -13357,19 +13360,19 @@ function openAccountWelcomeEmailPreview(id){
       <div class="email-preview">
         <div class="email-preview-header" style="background-color:#ffffff;border-bottom:1px solid var(--line);"><img src="data:image/png;base64,${logoB64}" alt="${brandName}"></div>
         <div class="email-preview-body">
-          <h2>Welcome aboard, ${firstName} — ${l.business_name} is officially set up with ${brandName}</h2>
-          <p>You're all set. Your account is active and our team is behind you if you ever need anything — equipment questions, statements, or just a quick check-in.</p>
-          <p>Here's what to expect next: if you haven't already, keep an eye out for any installation or training details, and don't hesitate to reach out with questions any time.</p>
-          <p>Questions? Just reply to this email or call us at (947) 228-7226 EXT 3.</p>
+          <h2>${l.business_name} is set up with ${brandName}</h2>
+          <p>Hi ${firstName}, your account is active.</p>
+          <p>Keep this email. It has the number to call if anything comes up with your equipment, your statements, or a transaction you want to query.</p>
+          <p>Call us on (947) 228-7226 EXT 3, or reply to this email. We answer both.</p>
           <p style="margin-bottom:0;">— The ${brandName} Team</p>
         </div>
         <div class="email-preview-footer">${footerAddr}</div>
       </div>
-      <p style="font-size:10.5px;color:var(--slate-300);margin-top:14px;">Actual delivery needs the Outbound Email integration connected to a real provider on a backend.</p>
+      <p style="font-size:10.5px;color:var(--slate-300);margin-top:14px;">Sends through Resend and is recorded in the email log.</p>
     </div>
     <div class="drawer-footer">
       <button class="btn" style="flex:1;" onclick="closeEmailPreviewDrawer()">Cancel</button>
-      <button class="btn btn-accent" style="flex:1;" onclick="sendAccountWelcomeEmail('${l.id}')">${l.welcome_email_sent ? 'Resend' : 'Mark as sent'}</button>
+      <button class="btn btn-accent" style="flex:1;" onclick="sendAccountWelcomeEmail('${l.id}')">${l.welcome_email_sent ? 'Send again' : 'Send'}</button>
     </div>
   `;
   document.getElementById('emailPreviewOverlay').classList.add('open');
@@ -13377,6 +13380,25 @@ function openAccountWelcomeEmailPreview(id){
 async function sendAccountWelcomeEmail(id){
   const l = LEADS.find(x => x.id === id);
   if(!l) return;
+
+  // This used to mark the record and send nothing: the button said "Mark as
+  // sent", the lead showed a tick, and the customer never heard from us.
+  // Marking only happens now if the send actually succeeded.
+  const brandName = (l.brand === 'atm') ? 'Envision ATM' : 'EPAY POS';
+  const firstName = (l.contact_name || '').split(' ')[0] || 'there';
+  const ok = await sendOutboundEmail({
+    kind: 'welcome',
+    to: l.email,
+    leadId: l.id,
+    subject: `${l.business_name || 'Your account'} is set up with ${brandName}`,
+    heading: `${l.business_name || 'Your account'} is set up with ${brandName}`,
+    body: `Hi ${firstName}, your account is active.\n\n`
+        + 'Keep this email. It has the number to call if anything comes up with your equipment, '
+        + 'your statements, or a transaction you want to query.\n\n'
+        + 'Call us on (947) 228-7226 EXT 3, or reply to this email. We answer both.'
+  });
+  if(!ok) return;   // sendOutboundEmail has already said why
+
   const welcome_email_sent = true;
   const welcome_email_sent_at = new Date().toISOString().slice(0,10);
   const { error } = await supa.from('leads').update({ welcome_email_sent, welcome_email_sent_at }).eq('id', id);
@@ -13461,7 +13483,7 @@ function emailShipment(id, shipmentId){
         </div>
         <div class="email-preview-footer">EPAY POS · 185 E Big Beaver Rd, Troy, MI 48083 · epaypos.net</div>
       </div>
-      <p style="font-size:10.5px;color:var(--slate-300);margin-top:14px;">Actual delivery needs the Outbound Email integration connected to a real provider on a backend.</p>
+      <p style="font-size:10.5px;color:var(--slate-300);margin-top:14px;">Sends through Resend and is recorded in the email log.</p>
     </div>
     <div class="drawer-footer">
       <button class="btn" style="flex:1;" onclick="closeEmailPreviewDrawer()">Cancel</button>
