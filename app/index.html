@@ -489,6 +489,43 @@
   .topbar .subtext{color:var(--slate-500);font-size:13.5px;margin:0;}
   .btn{padding:10px 16px;border-radius:8px;border:1px solid var(--line);background:var(--card);font-size:13.5px;font-weight:600;color:var(--navy-700);}
   .btn:hover{border-color:var(--brand-accent-2);}
+
+  /* Application document uploads */
+  .doc-drop{
+    display:flex;align-items:center;gap:12px;padding:13px 14px;cursor:pointer;
+    border:1.5px dashed var(--line-strong);border-radius:10px;background:var(--surface-2);
+    transition:border-color .14s ease, background .14s ease;
+  }
+  .doc-drop:hover{border-color:var(--brand-accent-2);background:var(--hover);}
+  .doc-drop-mark{
+    flex:none;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    background:var(--line);color:var(--slate-500);font-size:16px;font-weight:700;line-height:1;
+    transition:background .16s ease, color .16s ease, transform .16s ease;
+  }
+  .doc-drop-text{display:flex;flex-direction:column;gap:2px;min-width:0;}
+  /* The drop zone is a <label>, and the landing form uppercases its labels —
+     which turned the filename and hint into shouting. */
+  .doc-drop, .doc-drop-title, .doc-drop-hint{text-transform:none;letter-spacing:normal;}
+  .doc-drop-title{font-size:13px;font-weight:600;color:var(--navy-700);}
+  .doc-drop-hint{font-size:11.5px;color:var(--slate-500);line-height:1.4;}
+  .doc-upload.has-file .doc-drop{border-style:solid;border-color:var(--ok-text);background:var(--ok-bg);}
+  .doc-upload.has-file .doc-drop-mark{background:var(--ok-text);color:#fff;transform:scale(1.06);}
+  .doc-upload.too-big .doc-drop{border-style:solid;border-color:var(--danger-border);background:var(--danger-bg);}
+  .doc-upload.too-big .doc-drop-mark{background:var(--red);color:#fff;}
+
+  /* What we got, and what we still need, on the confirmation */
+  .doc-summary{margin-top:18px;display:flex;flex-direction:column;gap:9px;}
+  .doc-summary-row{display:flex;align-items:flex-start;gap:11px;padding:11px 13px;border-radius:9px;border:1px solid var(--line);}
+  .doc-summary-row.got{border-color:var(--ok-border,var(--ok-text));background:var(--ok-bg);}
+  .doc-summary-row.missing{border-color:var(--warn-border,var(--warn-text));background:var(--warn-bg);}
+  .doc-summary-mark{
+    flex:none;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    font-size:12px;font-weight:700;color:#fff;
+  }
+  .doc-summary-row.got .doc-summary-mark{background:var(--ok-text);}
+  .doc-summary-row.missing .doc-summary-mark{background:var(--warn-text);}
+  .doc-summary-name{font-size:13px;font-weight:600;color:var(--navy-700);}
+  .doc-summary-note{font-size:11.5px;color:var(--slate-500);margin-top:1px;}
   /* Press feedback. A button that looks identical mid-click reads as one
      that did not register, which is what makes people click twice. The
      transition is asymmetric on purpose: instant down so the press is felt,
@@ -3834,7 +3871,8 @@ async function loadApplicationsFromSupabase(){
     dob, drivers_license_state, personal_address, legal_business_name, dba_name,
     business_address, business_email, business_phone, business_start_date,
     business_type_services, highest_sale_amount, average_sale_amount,
-    monthly_sales_average, terms_accepted, paper_application_file_path, assigned_to
+    monthly_sales_average, terms_accepted, paper_application_file_path,
+    voided_check_file_path, drivers_license_file_path, assigned_to
   `).order('submitted_at', { ascending: false });
   if(error){ reportLoadFailure('applications from Supabase', error); return []; }
   return data;
@@ -5437,6 +5475,100 @@ const APPLICATION_LINK_SECTIONS = [
 // One checkbox, used on all three public forms. Required only on the
 // application — a lead form is an enquiry, not an agreement, and gating it
 // behind a contract would cost enquiries for no benefit.
+/* -------------------------------------------------------------------------
+   DOCUMENT UPLOADS ON THE APPLICATION
+
+   Underwriting needs a voided check and the owner's licence. Asking after
+   submission is the slowest possible moment — the applicant has finished and
+   moved on. These take both at the point of submission, and stay optional:
+   refusing an application because someone is not sitting with a chequebook
+   loses the application, not the document.
+   ------------------------------------------------------------------------- */
+function docUploadFieldHtml(id, label, hint){
+  return `
+    <div class="field doc-upload" id="${id}_wrap">
+      <label for="${id}">${label} <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
+      <label class="doc-drop" for="${id}" id="${id}_drop">
+        <span class="doc-drop-mark" id="${id}_mark">+</span>
+        <span class="doc-drop-text">
+          <span class="doc-drop-title" id="${id}_title">Add a photo or PDF</span>
+          <span class="doc-drop-hint" id="${id}_hint">${hint}</span>
+        </span>
+      </label>
+      <input id="${id}" type="file" accept="image/*,application/pdf" style="display:none;"
+             onchange="onDocChosen('${id}')">
+    </div>`;
+}
+
+// 10MB: a phone photo is 2-5MB, and anything far beyond that is a scan
+// nobody meant to attach. Caught here so it fails immediately rather than
+// after a long upload.
+const DOC_MAX_BYTES = 10 * 1024 * 1024;
+
+function onDocChosen(id){
+  const input = document.getElementById(id);
+  const wrap  = document.getElementById(id + '_wrap');
+  const mark  = document.getElementById(id + '_mark');
+  const title = document.getElementById(id + '_title');
+  const hint  = document.getElementById(id + '_hint');
+  const file  = input.files && input.files[0];
+
+  if(!file){
+    wrap.classList.remove('has-file','too-big');
+    mark.innerHTML = '+'; title.textContent = 'Add a photo or PDF';
+    return;
+  }
+  if(file.size > DOC_MAX_BYTES){
+    input.value = '';
+    wrap.classList.remove('has-file');
+    wrap.classList.add('too-big');
+    mark.innerHTML = '&#33;';
+    title.textContent = 'That file is too large';
+    hint.textContent = `${(file.size/1024/1024).toFixed(1)}MB — the limit is 10MB. A phone photo is usually fine.`;
+    return;
+  }
+  wrap.classList.remove('too-big');
+  wrap.classList.add('has-file');
+  mark.innerHTML = '&#10003;';
+  title.textContent = file.name.length > 42 ? file.name.slice(0, 39) + '…' : file.name;
+  hint.textContent = `${(file.size/1024/1024).toFixed(1)}MB — tap to choose a different file`;
+}
+
+// Uploads whatever was chosen and tells the caller what actually landed, so
+// the confirmation can name what is still outstanding rather than assuming.
+async function uploadApplicationDocuments(applicationId, fields){
+  const results = [];
+  for(const f of fields){
+    const input = document.getElementById(f.id);
+    const file = input && input.files && input.files[0];
+    if(!file){ results.push({ kind:f.kind, label:f.label, ok:false }); continue; }
+    if(!applicationId){ results.push({ kind:f.kind, label:f.label, ok:false, error:'the application id was not returned' }); continue; }
+
+    // public/<application id>/... is the only prefix anon may write to, and
+    // the RPC checks the path is inside this application's own folder.
+    const ext = (file.name.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const path = `public/${applicationId}/${f.kind}.${ext}`;
+
+    try {
+      const { error: upErr } = await supa.storage.from('applications')
+        .upload(path, file, { upsert: false, contentType: file.type || 'application/octet-stream' });
+      if(upErr){ results.push({ kind:f.kind, label:f.label, ok:false, error:upErr.message }); continue; }
+
+      const { data: attached, error: rpcErr } = await supa.rpc('public_attach_application_file', {
+        p_application_id: applicationId, p_kind: f.kind, p_path: path
+      });
+      if(rpcErr){ results.push({ kind:f.kind, label:f.label, ok:false, error:rpcErr.message }); continue; }
+      // The file is in storage but nothing points at it, which is the same
+      // as missing from anyone's point of view — so it is reported that way.
+      results.push({ kind:f.kind, label:f.label, ok: attached === true,
+                     error: attached === true ? undefined : 'could not be linked to your application' });
+    } catch(e){
+      results.push({ kind:f.kind, label:f.label, ok:false, error: e.message || 'upload failed' });
+    }
+  }
+  return results;
+}
+
 function termsCheckboxHtml(id, required){
   return `
     <label class="terms-row">
@@ -5894,6 +6026,14 @@ async function renderApplicationLandingPage(slug){
         </select>
       </div>
 
+      <h3 class="landing-section">Documents</h3>
+      <p style="font-size:12px;color:var(--slate-500);margin:-6px 0 12px;">
+        Underwriting needs both of these. Adding them now saves us chasing you later
+        &mdash; but you can submit without them and send them on afterwards.
+      </p>
+      ${docUploadFieldHtml('alVoidedCheck', 'Voided check', 'A photo or scan showing the account and routing numbers.')}
+      ${docUploadFieldHtml('alDriversLicense', "Driver's licence", 'A clear photo of the front, for the owner named above.')}
+
       ${termsCheckboxHtml('alTerms', true)}
 
       <button type="submit" class="btn btn-accent" id="alSubmitBtn" style="width:100%;margin-top:16px;">Submit application</button>
@@ -6131,7 +6271,7 @@ async function submitApplicationLink(slug){
   const original = btn.textContent;
   btn.textContent = 'Submitting\u2026';
 
-  const { error } = await supa.rpc('public_submit_application', {
+  const { data: newApplicationId, error } = await supa.rpc('public_submit_application', {
     p_slug: slug,
     p_first_name: v('alFirstName'),
     p_last_name: v('alLastName'),
@@ -6174,6 +6314,15 @@ async function submitApplicationLink(slug){
     return;
   }
 
+  // Files go up after the application exists, because each is stored under
+  // that application's own id. The application is already saved by this
+  // point, so an upload that fails costs a document, never the submission.
+  btn.textContent = 'Uploading documents\u2026';
+  const docs = await uploadApplicationDocuments(newApplicationId, [
+    { id:'alVoidedCheck',    kind:'voided_check',    label:'Voided check' },
+    { id:'alDriversLicense', kind:'drivers_license', label:"Driver's licence" }
+  ]);
+
   document.getElementById('landingContent').innerHTML = `
     <div class="sent-mark" aria-hidden="true">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -6182,8 +6331,24 @@ async function submitApplicationLink(slug){
     </div>
     <h1 class="landing-h1" style="text-align:center;">Thank you \u2014 we have it</h1>
     <p class="landing-sub" style="text-align:center;">
-      Someone will be in touch shortly. There is nothing else you need to do.
-    </p>`;
+      Someone will be in touch shortly.
+    </p>
+    <div class="doc-summary">
+      ${docs.map(d => `
+        <div class="doc-summary-row ${d.ok ? 'got' : 'missing'}">
+          <span class="doc-summary-mark">${d.ok ? '&#10003;' : '&#33;'}</span>
+          <div>
+            <div class="doc-summary-name">${d.label}</div>
+            <div class="doc-summary-note">${d.ok
+              ? 'Received.'
+              : (d.error ? 'Did not upload: ' + d.error + '. We will ask you for this.'
+                         : 'Not provided \u2014 we will need to collect this from you.')}</div>
+          </div>
+        </div>`).join('')}
+    </div>
+    ${docs.every(d => d.ok) ? '' : `<p class="landing-sub" style="text-align:center;font-size:12.5px;margin-top:14px;">
+      Nothing else to do right now &mdash; we will be in touch about the outstanding item${docs.filter(d=>!d.ok).length > 1 ? 's' : ''}.
+    </p>`}`;
   window.scrollTo(0, 0);
 }
 
@@ -14653,6 +14818,8 @@ async function openApplicationDetail(id){
       }).join('')}
       <div class="detail-row"><span class="k">Submitted</span><span class="v">${formatDate(a.submitted_at)}</span></div>
 
+      ${applicationDocsHtml(a)}
+
       ${a.paper_application_file_path ? `
         <h3 style="font-size:14px;margin:20px 0 12px;">Paper application</h3>
         <button class="btn btn-sm" onclick="viewPaperApplicationFile('${a.id}')">View uploaded file</button>
@@ -14660,6 +14827,56 @@ async function openApplicationDetail(id){
     </div>
   `;
   document.getElementById('applicationOverlay').classList.add('open');
+}
+
+/* -------------------------------------------------------------------------
+   The two underwriting documents, as a checklist.
+
+   Whoever opens an application needs to know in one glance what is still
+   outstanding, because chasing it is their job. A tick and a cross say that
+   faster than two buttons that may or may not be there.
+   ------------------------------------------------------------------------- */
+const APPLICATION_DOCS = [
+  { kind:'voided_check',    column:'voided_check_file_path',    label:'Voided check',
+    chase:'Ask for a photo showing the account and routing numbers.' },
+  { kind:'drivers_license', column:'drivers_license_file_path', label:"Driver's licence",
+    chase:'Ask for a clear photo of the front.' }
+];
+
+function applicationDocsHtml(a){
+  const rows = APPLICATION_DOCS.map(d => {
+    const have = !!a[d.column];
+    return `
+      <div class="doc-summary-row ${have ? 'got' : 'missing'}">
+        <span class="doc-summary-mark">${have ? '&#10003;' : '&#33;'}</span>
+        <div style="flex:1;min-width:0;">
+          <div class="doc-summary-name">${d.label}</div>
+          <div class="doc-summary-note">${have ? 'Supplied with the application.' : 'Not received — ' + d.chase}</div>
+        </div>
+        ${have
+          ? `<button class="btn btn-xs" onclick="viewApplicationDoc('${a.id}','${d.column}')">View</button>`
+          : ''}
+      </div>`;
+  }).join('');
+
+  const missing = APPLICATION_DOCS.filter(d => !a[d.column]);
+  return `
+    <h3 style="font-size:14px;margin:20px 0 10px;">Underwriting documents</h3>
+    <div class="doc-summary" style="margin-top:0;">${rows}</div>
+    ${missing.length ? `<p style="font-size:11.5px;color:var(--warn-text);margin:9px 0 0;">
+      ${missing.length === 2 ? 'Both are' : 'This is'} still needed before underwriting can proceed.
+    </p>` : ''}`;
+}
+
+async function viewApplicationDoc(id, column){
+  const a = APPLICATIONS.find(x => x.id === id);
+  if(!a || !a[column]) return;
+  // Signed for a minute: the bucket is private, and these are bank details
+  // and a photo ID. A link that keeps working after the tab is closed is a
+  // copy of that document loose in someone's history.
+  const { data, error } = await supa.storage.from('applications').createSignedUrl(a[column], 60);
+  if(error){ showToast('Could not open that file: ' + error.message, 'error'); return; }
+  window.open(data.signedUrl, '_blank', 'noopener');
 }
 
 async function viewPaperApplicationFile(id){
