@@ -1549,7 +1549,13 @@
      app. The triangle mirrors the EPAY wordmark's angular brand shape —
      there's no exported vector logo to reuse, so this is a simple inline
      SVG built to match the brand accent gradient rather than a real asset. */
-  #quickAddFab{ position:fixed; right:26px; bottom:26px; z-index:900; display:flex; flex-direction:column; align-items:flex-end; gap:10px; }
+  /* The container is as tall as the (invisible) menu it holds, so left
+     clickable it sat over a 126x278px patch of the bottom-right of every page
+     and swallowed clicks on whatever was underneath — table action buttons on
+     the right-hand side simply did nothing. Only the button itself, and the
+     menu while it is open, take clicks. */
+  #quickAddFab{ position:fixed; right:26px; bottom:26px; z-index:900; display:flex; flex-direction:column; align-items:flex-end; gap:10px; pointer-events:none; }
+  #quickAddFabBtn{ pointer-events:auto; }
   #quickAddFabBtn{
     width:56px; height:56px; border-radius:50%; border:none; cursor:pointer;
     background:linear-gradient(135deg, var(--brand-accent), var(--brand-accent-2));
@@ -1758,6 +1764,10 @@
         </button>
 
         <div class="nav-section-label">Partners</div>
+        <button class="nav-item" data-view="recruiting" id="navRecruitingItem">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></svg>
+          Recruiting
+        </button>
         <button class="nav-item active" data-view="referrals">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           Referral Partners
@@ -1773,10 +1783,6 @@
         <button class="nav-item" data-view="internalsales" id="navInternalSalesItem">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11h-6"/><path d="M19 8v6"/></svg>
           Internal Sales
-        </button>
-        <button class="nav-item" data-view="recruiting" id="navRecruitingItem">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></svg>
-          Recruiting
         </button>
 
         <button class="nav-section-toggle" id="prospectingSectionToggle" type="button">
