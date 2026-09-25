@@ -24,58 +24,20 @@
 --      for each of them (so the bell picks it up too), and stamps
 --      reminder_sent_at so it never fires twice.
 --
--- SETUP THIS FILE NEEDS BEFORE YOU RUN IT
---   Find your project's service_role key: Supabase Dashboard -> Project
---   Settings -> API -> service_role (the "secret" one, not anon). Paste it
---   over <YOUR_SERVICE_ROLE_KEY> below, in the cron.schedule call near the
---   bottom, before running this. It goes into cron.job, a table only the
---   project owner (you, via the SQL Editor) can query — nothing to do with
---   anon/authenticated access, same as any other server-side secret in this
---   project.
---
---   This also needs pg_cron and pg_net switched on: Dashboard -> Database ->
---   Extensions -> enable both, or the two `create extension` lines below do
---   the same thing (they may already be on).
+-- The scheduled job that actually fires reminders is a separate file,
+-- 73_meeting_reminders_cron.sql. It used to live here; when pg_cron could not
+-- be switched on the whole script failed and the columns below never got
+-- added, which broke saving ANY meeting.
 -- =============================================================================
 
-create extension if not exists pg_cron;
-create extension if not exists pg_net;
-
 alter table calendar_events
-  add column if not exists remind_before        boolean not null default false,
+  add column if not exists attendee_user_ids     uuid[] not null default '{}'::uuid[],
+  add column if not exists remind_before         boolean not null default false,
   add column if not exists reminder_sent_at      timestamptz,
   add column if not exists notified_attendee_ids uuid[] not null default '{}'::uuid[];
 
--- Re-running this file (e.g. after editing the key below) should replace the
--- job, not stack a second copy of it.
-select cron.unschedule(jobid) from cron.job where jobname = 'epay-meeting-reminders';
-
-select cron.schedule(
-  'epay-meeting-reminders',
-  '* * * * *',  -- once a minute; reminder_sent_at keeps a slow tick from ever double-sending
-  $$
-  select net.http_post(
-    url     := 'https://gfnodfqkidtqjoofvwzr.supabase.co/functions/v1/meeting-reminders',
-    headers := jsonb_build_object(
-      'Content-Type',  'application/json',
-      'Authorization', 'Bearer <YOUR_SERVICE_ROLE_KEY>'
-    ),
-    body := '{}'::jsonb
-  );
-  $$
-);
-
 -- =============================================================================
 -- AFTER RUNNING THIS
---   1. Deploy the two edge function changes this migration goes with:
---      google-calendar (adds the notify_attendees action) and the brand new
---      meeting-reminders function — both from the Supabase Dashboard, since
---      this project has no CLI installed.
---   2. select * from cron.job where jobname = 'epay-meeting-reminders'; —
---      confirm it's there and active.
---   3. Schedule a meeting a few minutes out with "Remind me 30 min before"
---      on (or edit reminder_sent_at/the time by hand to force it due sooner
---      for a real test) and confirm both the notification bell and an email
---      arrive. Separately, add a teammate under "Also invite" on any meeting
---      and confirm they get the "you've been added" email.
+--   Saving a meeting works again. Reminders only actually fire once
+--   73_meeting_reminders_cron.sql is run too.
 -- =============================================================================
