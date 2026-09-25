@@ -1774,6 +1774,10 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11h-6"/><path d="M19 8v6"/></svg>
           Internal Sales
         </button>
+        <button class="nav-item" data-view="recruiting" id="navRecruitingItem">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></svg>
+          Recruiting
+        </button>
 
         <button class="nav-section-toggle" id="prospectingSectionToggle" type="button">
           <span>Prospecting</span>
@@ -2515,6 +2519,35 @@
             <tbody id="internalSalesTableBody"></tbody>
           </table>
           <div id="internalSalesEmptyState" class="empty-state" style="display:none;"></div>
+        </div>
+      </section>
+
+      <!-- RECRUITING -->
+      <section id="view-recruiting" class="view" style="display:none;">
+        <div class="topbar">
+          <div>
+            <h1>Recruiting</h1>
+            <p class="subtext">People we might bring on &mdash; not merchants. Choose a category, press Convert, and they land under Internal Sales, Agents/ISOs or Referral Partners.</p>
+          </div>
+          <button class="btn btn-accent" id="addRecruitBtn">+ Add Recruit</button>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <h2 id="recruitCount">Recruits</h2>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <select id="recruitStatusFilter" style="width:auto;min-width:120px;">
+                <option value="open">Open</option>
+                <option value="converted">Converted</option>
+                <option value="all">All</option>
+              </select>
+              <input class="search-input" placeholder="Search name, company or email..." id="recruitSearch">
+            </div>
+          </div>
+          <table>
+            <thead><tr><th>Name</th><th>Contact</th><th>Category</th><th>Added</th><th></th></tr></thead>
+            <tbody id="recruitTableBody"></tbody>
+          </table>
+          <div id="recruitEmptyState" class="empty-state" style="display:none;"></div>
         </div>
       </section>
 
@@ -3270,6 +3303,11 @@
 
 <div class="overlay" id="loaderOverlay">
   <div class="drawer" id="loaderDrawer"></div>
+</div>
+
+<!-- ================= DRAWER: RECRUIT ================= -->
+<div class="overlay" id="recruitOverlay">
+  <div class="drawer" id="recruitDrawer"></div>
 </div>
 
 <!-- ================= DRAWER: INTERNAL SALES PERSON ================= -->
@@ -4745,7 +4783,7 @@ let calFilter = 'all';
 let currentUser = { id:null, name:'', email:'', brands:['epay'], role:'in_house_sales' };
 // internalsales shows salaries, so it follows the same rule the
 // internal_sales_comp policies enforce: whoever manages users.
-const ADMIN_ONLY_VIEWS = ['aiscraper', 'coldemail', 'newsletter', 'internalsales', 'invoicing', 'billing'];
+const ADMIN_ONLY_VIEWS = ['aiscraper', 'coldemail', 'newsletter', 'internalsales', 'recruiting', 'invoicing', 'billing'];
 // 'applications' is deliberately NOT in here. Application links can be
 // created for either brand — most of the ones in use are Envision ATM — and
 // the submissions all land in the same table. Hiding the tab on ATM meant an
@@ -5001,6 +5039,8 @@ function applyRolePermissions(){
   // Salaries: same audience as the internal_sales_comp policies allow.
   const navInternalSales = document.getElementById('navInternalSalesItem');
   if(navInternalSales) navInternalSales.style.display = perms.manageUsers ? 'flex' : 'none';
+  const navRecruiting = document.getElementById('navRecruitingItem');
+  if(navRecruiting) navRecruiting.style.display = perms.manageUsers ? 'flex' : 'none';
 
   // Agreements is staff-only for now: sending a contract goes through the
   // send-email function, which refuses anyone without fullDashboard, so an
@@ -8698,6 +8738,7 @@ function refreshActiveView(){
     else if(view === 'contacts')    renderContacts();
     else if(view === 'loaders')     renderLoaders();
     else if(view === 'internalsales')renderInternalSales();
+    else if(view === 'recruiting')  renderRecruiting();
     else if(view === 'followups')   renderFollowups();
     else if(view === 'dashboard')   renderDashboard();
     else if(view === 'calendar')    renderCalendar();
@@ -8750,6 +8791,7 @@ function showView(view, fromHistory){
   if(view === 'agents') renderAgentsTable();
   if(view === 'loaders') renderLoaders();
   if(view === 'internalsales') renderInternalSales();
+  if(view === 'recruiting') renderRecruiting();
   if(view === 'contacts') renderContacts();
   if(view === 'authresellers') renderResellersTable();
   if(view === 'coldleads') renderColdLeadsTable();
@@ -20668,6 +20710,203 @@ function openInternalSalesDrawerImpl(userId){
 }
 
 function closeInternalSalesDrawer(){ document.getElementById('internalSalesOverlay').classList.remove('open'); }
+
+/* =========================================================================
+   RECRUITING (database/72_recruit_leads.sql)
+   A lead for our own sales side. The category picked in the drawer decides
+   where Convert sends them: a CRM login for Internal Sales, or a partner
+   record (+ portal login) for Agent / ISO / Referral Partner.
+   ========================================================================= */
+let RECRUITS = [];
+let recruitStatusFilter = 'open';
+let recruitSearch = '';
+const RECRUIT_CATEGORIES = {
+  internal_sales:   'Internal Sales',
+  agent:            'Agent',
+  iso:              'ISO',
+  referral_partner: 'Referral Partner'
+};
+
+async function renderRecruiting(){
+  // Loaded on open rather than at login: admin-only and small, so a fresh
+  // read each visit is cheaper than another slot in the login batch.
+  const { data, error } = await supa.from('recruit_leads').select('*').order('created_at', { ascending:false });
+  if(error){ reportLoadFailure('recruiting leads', error); }
+  else RECRUITS = data || [];
+  drawRecruitTable();
+}
+
+function drawRecruitTable(){
+  const q = recruitSearch.trim().toLowerCase();
+  const rows = RECRUITS.filter(r => {
+    if(recruitStatusFilter === 'open' && r.converted) return false;
+    if(recruitStatusFilter === 'converted' && !r.converted) return false;
+    if(!q) return true;
+    return [r.name, r.company, r.email].some(v => (v || '').toLowerCase().includes(q));
+  });
+  const body = document.getElementById('recruitTableBody');
+  const empty = document.getElementById('recruitEmptyState');
+  if(!body) return;
+  document.getElementById('recruitCount').textContent = rows.length === 1 ? '1 recruit' : `Recruits (${rows.length})`;
+  if(!rows.length){
+    body.innerHTML = '';
+    empty.style.display = 'block';
+    empty.textContent = q ? 'Nobody matches that search.' : (recruitStatusFilter === 'converted' ? 'Nobody converted yet.' : 'No recruits yet. Add someone you want to bring on.');
+    return;
+  }
+  empty.style.display = 'none';
+  body.innerHTML = rows.map(r => `
+    <tr style="cursor:pointer;${r.converted ? 'opacity:.65;' : ''}" onclick="openRecruitDrawer('${r.id}')">
+      <td class="name-cell"><b>${escAttr(r.name)}</b>${r.company ? `<div class="sub">${escAttr(r.company)}</div>` : ''}</td>
+      <td>${escAttr(r.email || '—')}<div class="sub">${escAttr(r.phone || '')}</div></td>
+      <td>${r.converted
+        ? `<span class="pill pill-status-active">Converted &rarr; ${RECRUIT_CATEGORIES[r.converted_kind] || '—'}</span>`
+        : (r.category ? `<span class="pill pill-agent-basic">${RECRUIT_CATEGORIES[r.category]}</span>` : '<span style="color:var(--slate-300);">Not chosen</span>')}</td>
+      <td>${formatDate(r.created_at)}</td>
+      <td style="text-align:right;white-space:nowrap;">
+        ${r.converted ? '' : `<button class="btn btn-xs btn-accent" onclick="event.stopPropagation(); convertRecruit('${r.id}')">Convert</button>`}
+        <button class="btn btn-xs" style="color:var(--red);" onclick="event.stopPropagation(); deleteRecruit('${r.id}')">Delete</button>
+      </td>
+    </tr>`).join('');
+}
+
+function openRecruitDrawer(id){
+  const r = id ? RECRUITS.find(x => x.id === id) : null;
+  const v = k => escAttr(r && r[k] != null ? String(r[k]) : '');
+  document.getElementById('recruitDrawer').innerHTML = `
+    <div class="drawer-head">
+      <div><h2>${r ? escAttr(r.name) : 'Add recruit'}</h2></div>
+      <button class="drawer-close" onclick="closeRecruitDrawer()">&times;</button>
+    </div>
+    <div class="drawer-body">
+      ${r && r.converted ? `<div style="margin-bottom:14px;padding:10px 12px;background:var(--info-bg);border-radius:8px;font-size:12.5px;">Converted to <b>${RECRUIT_CATEGORIES[r.converted_kind] || '—'}</b> on ${formatDate(r.converted_at)}.</div>` : ''}
+      <div class="field"><label>Name</label><input id="rcName" value="${v('name')}" placeholder="e.g. Jordan Reyes"></div>
+      <div class="field"><label>Company <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label><input id="rcCompany" value="${v('company')}"></div>
+      <div class="field"><label>Email</label><input id="rcEmail" type="email" value="${v('email')}"></div>
+      <div class="field"><label>Phone</label><input id="rcPhone" type="tel" value="${v('phone')}"></div>
+      <div class="ai-search-grid">
+        <div class="field"><label>City</label><input id="rcCity" value="${v('city')}"></div>
+        <div class="field"><label>State</label><input id="rcState" maxlength="2" value="${v('state')}"></div>
+      </div>
+      <div class="field">
+        <label>Category &mdash; where they go when converted</label>
+        <select id="rcCategory" ${r && r.converted ? 'disabled' : ''}>
+          <option value="">Not chosen yet</option>
+          ${Object.keys(RECRUIT_CATEGORIES).map(k => `<option value="${k}" ${(r && (r.converted ? r.converted_kind : r.category)) === k ? 'selected' : ''}>${RECRUIT_CATEGORIES[k]}</option>`).join('')}
+        </select>
+        <p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">Internal Sales creates a CRM login. Agent, ISO and Referral Partner create a partner record with a portal login.</p>
+      </div>
+      <div class="field"><label>Notes</label><textarea id="rcNotes" rows="4">${v('notes')}</textarea></div>
+    </div>
+    <div class="drawer-footer">
+      <button class="btn" style="flex:1;" onclick="closeRecruitDrawer()">Cancel</button>
+      <button class="btn ${r && r.converted ? 'btn-accent' : ''}" style="flex:1;" onclick="saveRecruit(${r ? `'${r.id}'` : 'null'}, false)">${r ? 'Save' : 'Save recruit'}</button>
+      ${r && r.converted ? '' : `<button class="btn btn-accent" style="flex:1;" onclick="saveRecruit(${r ? `'${r.id}'` : 'null'}, true)">Save &amp; convert</button>`}
+    </div>`;
+  document.getElementById('recruitOverlay').classList.add('open');
+}
+function closeRecruitDrawer(){ document.getElementById('recruitOverlay').classList.remove('open'); }
+
+async function saveRecruit(id, thenConvert){
+  const val = k => (document.getElementById(k).value || '').trim();
+  const name = val('rcName');
+  if(!name){ showToast('A name is required.', 'error'); return; }
+  const category = document.getElementById('rcCategory').value || null;
+  if(thenConvert && !category){ showToast('Choose a category first — it decides where they go.', 'error'); return; }
+  if(thenConvert && !val('rcEmail')){ showToast('An email is required to convert — it becomes their login.', 'error'); return; }
+
+  const fields = {
+    name, company: val('rcCompany') || null, email: val('rcEmail') || null,
+    phone: val('rcPhone') || null, city: val('rcCity') || null,
+    state: val('rcState').toUpperCase() || null, notes: val('rcNotes') || null,
+  };
+  const existing = id ? RECRUITS.find(x => x.id === id) : null;
+  if(!(existing && existing.converted)) fields.category = category;
+
+  let row;
+  if(id){
+    const res = await supa.from('recruit_leads').update(fields).eq('id', id).select().single();
+    if(res.error){ showToast('Could not save: ' + res.error.message, 'error'); return; }
+    row = res.data;
+    RECRUITS[RECRUITS.findIndex(x => x.id === id)] = row;
+  } else {
+    const res = await supa.from('recruit_leads').insert(Object.assign({ created_by: currentUser.id }, fields)).select().single();
+    if(res.error){ showToast('Could not save: ' + res.error.message, 'error'); return; }
+    row = res.data;
+    RECRUITS.unshift(row);
+  }
+  closeRecruitDrawer();
+  drawRecruitTable();
+  if(thenConvert) await convertRecruit(row.id); else showToast('Saved.', 'success');
+}
+
+async function deleteRecruit(id){
+  const r = RECRUITS.find(x => x.id === id);
+  if(!r || !confirm(`Delete ${r.name} from Recruiting?${r.converted ? '\n\nThe record they were converted into is not affected.' : ''}`)) return;
+  const { error } = await supa.from('recruit_leads').delete().eq('id', id);
+  if(error){ showToast('Could not delete: ' + error.message, 'error'); return; }
+  RECRUITS = RECRUITS.filter(x => x.id !== id);
+  drawRecruitTable();
+}
+
+async function convertRecruit(id){
+  const r = RECRUITS.find(x => x.id === id);
+  if(!r || r.converted) return;
+  if(!r.category){ showToast('Choose a category first — open them and pick where they go.', 'error'); openRecruitDrawer(id); return; }
+  if(!r.email){ showToast('Add their email first — it becomes their login.', 'error'); openRecruitDrawer(id); return; }
+  if(USERS.some(u => (u.email || '').toLowerCase() === r.email.toLowerCase()) && r.category === 'internal_sales'){
+    showToast(`${r.email} already has a CRM login.`, 'error'); return;
+  }
+
+  let refId;
+  if(r.category === 'internal_sales'){
+    const { data, error } = await supa.from('users').insert({
+      name: r.name, email: r.email, brands: ['epay','atm'], role: 'in_house_sales'
+    }).select().single();
+    if(error){ showToast('Could not create their login: ' + error.message, 'error'); return; }
+    USERS.push(data);
+    refId = data.id;
+  } else {
+    // Same record saveNewReferral() builds from the Add Partner form.
+    const { data, error } = await supa.from('partners').insert({
+      name: r.company || r.name,
+      contact: r.name,
+      email: r.email,
+      phone: r.phone || '—',
+      type: r.category,
+      reseller_type: r.category === 'agent' ? 'basic_payments' : null,
+      city: r.city || 'Unknown', state: (r.state || '—').toUpperCase(),
+      address: '', zip: '', website: '',
+      lat: 39.5 + (Math.random()-0.5)*6, lng: -85 + (Math.random()-0.5)*10,
+      link_slug: slugify(r.company || r.name) + '-' + Math.floor(Math.random()*900+100),
+      brand: currentBrand,
+      leads_submitted: 0, deals_closed: 0, link_clicks: 0,
+      last_deal_date: null, status: 'active', next_follow_up: null,
+      auto_followup_days: null, general_notes: r.notes || '', parent_partner_id: null,
+    }).select().single();
+    if(error){ showToast('Could not create the partner: ' + error.message, 'error'); return; }
+    PARTNERS.unshift(data);
+    refId = data.id;
+    await ensurePartnerPortalUser(data);
+  }
+
+  const stamp = { converted: true, converted_kind: r.category, converted_ref: refId, converted_at: new Date().toISOString() };
+  const res = await supa.from('recruit_leads').update(stamp).eq('id', id).select().single();
+  if(res.error){
+    // The real record exists; only the marker failed. Say so rather than
+    // letting a retry create a second copy.
+    showToast('Created, but could not mark the recruit as converted: ' + res.error.message, 'error');
+  } else {
+    RECRUITS[RECRUITS.findIndex(x => x.id === id)] = res.data;
+  }
+  drawRecruitTable();
+  const where = r.category === 'internal_sales' ? 'Internal Sales' : r.category === 'referral_partner' ? 'Referral Partners' : 'Agents/ISOs';
+  showToast(`${r.name} converted — they're now under ${where}.`, 'success');
+}
+
+document.getElementById('addRecruitBtn').addEventListener('click', () => openRecruitDrawer(null));
+document.getElementById('recruitStatusFilter').addEventListener('change', function(){ recruitStatusFilter = this.value; drawRecruitTable(); });
+document.getElementById('recruitSearch').addEventListener('input', function(){ recruitSearch = this.value; drawRecruitTable(); });
 
 async function saveInternalSalesPerson(userId){
   const val = id => ((document.getElementById(id) || {}).value || '').trim();
