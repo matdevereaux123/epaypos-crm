@@ -20524,9 +20524,14 @@ function openInternalSalesDrawer(userId){
   const c = userId ? compFor(userId) : null;
   const v = (o, k) => (o && o[k] != null ? String(o[k]) : '');
   const others = USERS.filter(x => !u || x.id !== u.id).sort((a, b) => a.name.localeCompare(b.name));
-  // Internal classifications only — this page is for our own people, and an
-  // Agent or Referral Partner login belongs on Agents/ISOs instead.
+  // Every classification is offered, not just internal ones. This page lists
+  // whoever currently holds an internal role, and that includes people who
+  // were never actually sales (the default for a new login is In House
+  // Sales) — with only internal roles in this list there was no way to move
+  // them anywhere else from here. Saving one that lands on a non-internal
+  // role simply drops them off this page.
   const internalRoles = Object.keys(ROLES).filter(k => ROLES[k].portal_scope === 'internal');
+  const otherRoles = Object.keys(ROLES).filter(k => ROLES[k].portal_scope !== 'internal');
   const roleKey = u ? u.role : 'in_house_sales';
 
   document.getElementById('internalSalesDrawer').innerHTML = `
@@ -20552,7 +20557,8 @@ function openInternalSalesDrawer(userId){
       <div class="field">
         <label>Classification</label>
         <select id="isRole" onchange="document.getElementById('isRoleDesc').textContent = ROLES[this.value].description;">
-          ${internalRoles.map(k => `<option value="${k}" ${k===roleKey?'selected':''}>${escAttr(ROLES[k].label)}</option>`).join('')}
+          <optgroup label="Internal">${internalRoles.map(k => `<option value="${k}" ${k===roleKey?'selected':''}>${escAttr(ROLES[k].label)}</option>`).join('')}</optgroup>
+          <optgroup label="Agents &amp; partners (moves them off this page)">${otherRoles.map(k => `<option value="${k}" ${k===roleKey?'selected':''}>${escAttr(ROLES[k].label)}</option>`).join('')}</optgroup>
         </select>
         <p id="isRoleDesc" style="font-size:11.5px;color:var(--slate-500);margin:6px 0 0;">${escAttr((ROLES[roleKey] || {}).description || '')}</p>
       </div>
@@ -20638,7 +20644,16 @@ async function saveInternalSalesPerson(userId){
   const err = document.getElementById('internalSalesError');
   const btn = document.getElementById('isSaveBtn');
   err.style.display = 'none';
-  const fail = msg => { err.textContent = msg; err.style.display = 'block'; btn.disabled = false; btn.textContent = original; };
+  // The error box sits at the top of a long, scrolling drawer while Save is
+  // pinned to the footer — a failure used to land off-screen, which read as
+  // "the button does nothing". Scroll it into view and toast it as well.
+  const fail = msg => {
+    err.textContent = msg; err.style.display = 'block';
+    btn.disabled = false; btn.textContent = original;
+    err.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    showToast(msg, 'error');
+    return false;
+  };
 
   const name = val('isName');
   const email = val('isEmail');
@@ -20709,8 +20724,7 @@ async function saveInternalSalesPerson(userId){
   // The login saved even if this half did not, so say which half failed
   // rather than letting "could not save" imply nothing happened.
   if(compRes.error){
-    err.textContent = 'Their login saved, but the pay details did not: ' + compRes.error.message;
-    err.style.display = 'block';
+    fail('Their login saved, but the pay details did not: ' + compRes.error.message);
     renderInternalSales();
     return;
   }
@@ -20725,7 +20739,9 @@ async function saveInternalSalesPerson(userId){
   closeInternalSalesDrawer();
   renderInternalSales();
   renderUsersTable();
-  showToast(userId ? 'Saved' : `${name} added — send them an invite when you're ready.`, 'success');
+  const leftPage = roleOf(user).portal_scope !== 'internal';
+  showToast(leftPage ? `${name} is now ${roleOf(user).label}, so they no longer show on this page. They're still in Settings → Users.`
+                     : (userId ? 'Saved' : `${name} added — send them an invite when you're ready.`), 'success');
 }
 
 function openTaskDrawer(linkedKind, linkedId){
