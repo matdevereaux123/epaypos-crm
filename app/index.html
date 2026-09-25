@@ -20514,12 +20514,44 @@ function renderInternalSales(){
       <td style="text-align:right;white-space:nowrap;">
         <button class="btn btn-xs" onclick="event.stopPropagation(); openPartnerInviteEmailPreview('${u.id}')">${u.invite_sent ? 'Resend invite' : 'Send invite'}</button>
         <button class="btn btn-sm" onclick="event.stopPropagation(); openInternalSalesDrawer('${u.id}')">Edit</button>
+        <button class="btn btn-xs" style="color:var(--red);" title="Take them off this list — their login is not touched" onclick="event.stopPropagation(); removeFromInternalSales('${u.id}')">Remove</button>
       </td>
     </tr>`;
   }).join('');
 }
 
 function openInternalSalesDrawer(userId){
+  // A throw inside an inline onclick only reaches the console, which from
+  // the outside looks exactly like a button that does nothing.
+  try { openInternalSalesDrawerImpl(userId); }
+  catch(e){
+    console.error('openInternalSalesDrawer failed', e);
+    showToast('Could not open that person: ' + (e && e.message ? e.message : e), 'error');
+  }
+}
+
+async function removeFromInternalSales(userId){
+  const u = USERS.find(x => x.id === userId);
+  if(!u) return;
+  if(!confirm(`Take ${u.name} off the Internal Sales list?\n\nTheir login and everything assigned to them stays exactly as it is — they just stop being listed here. You can bring them back from the "Inactive" filter.`)) return;
+
+  const existing = compFor(userId);
+  const res = existing
+    ? await supa.from('internal_sales_comp').update({ active:false, updated_at:new Date().toISOString() }).eq('user_id', userId).select().single()
+    : await supa.from('internal_sales_comp').insert({ user_id:userId, active:false, created_by:currentUser.id }).select().single();
+  if(res.error){ showToast('Could not remove them: ' + res.error.message, 'error'); return; }
+
+  if(existing){
+    const i = INTERNAL_SALES_COMP.findIndex(x => x.user_id === userId);
+    INTERNAL_SALES_COMP[i] = res.data;
+  } else {
+    INTERNAL_SALES_COMP.push(res.data);
+  }
+  renderInternalSales();
+  showToast(`${u.name} is off the Internal Sales list.`, 'success');
+}
+
+function openInternalSalesDrawerImpl(userId){
   const u = userId ? USERS.find(x => x.id === userId) : null;
   const c = userId ? compFor(userId) : null;
   const v = (o, k) => (o && o[k] != null ? String(o[k]) : '');
