@@ -1799,6 +1799,21 @@
           </button>
         </div>
 
+        <button class="nav-section-toggle" id="paymentsSectionToggle" type="button">
+          <span>Payments</span>
+          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="nav-collapsible" id="paymentsSectionItems">
+          <button class="nav-item" data-view="invoicing">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
+            Invoicing <span class="soon">soon</span>
+          </button>
+          <button class="nav-item" data-view="billing">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+            Billing <span class="soon">soon</span>
+          </button>
+        </div>
+
         <button class="nav-section-toggle" id="isoSectionToggle" type="button" style="display:none;">
           <span>Envision ISO</span>
           <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
@@ -2400,6 +2415,42 @@
             <tbody id="loadersTableBody"></tbody>
           </table>
           <div id="loadersEmptyState" class="empty-state" style="display:none;"></div>
+        </div>
+      </section>
+
+      <!-- PAYMENTS: INVOICING (placeholder) -->
+      <section id="view-invoicing" class="view" style="display:none;">
+        <div class="topbar">
+          <div>
+            <h1>Invoicing</h1>
+            <p class="subtext">Bills you send out &mdash; to merchants, agents and partners &mdash; and what has been paid.</p>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="stub-panel">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:42px;height:42px;opacity:.35;margin-bottom:14px;">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
+            <h3>Coming soon</h3>
+            <p style="max-width:440px;margin:0 auto;font-size:13px;line-height:1.6;">Nothing to do here yet. This is where invoices will be raised, sent and tracked once it is built.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- PAYMENTS: BILLING (placeholder) -->
+      <section id="view-billing" class="view" style="display:none;">
+        <div class="topbar">
+          <div>
+            <h1>Billing</h1>
+            <p class="subtext">What we charge on an ongoing basis, and the cards and accounts behind it.</p>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="stub-panel">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:42px;height:42px;opacity:.35;margin-bottom:14px;">
+              <rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+            <h3>Coming soon</h3>
+            <p style="max-width:440px;margin:0 auto;font-size:13px;line-height:1.6;">Nothing to do here yet. Recurring charges, payment methods and billing history will live here once it is built.</p>
+          </div>
         </div>
       </section>
 
@@ -4656,7 +4707,7 @@ let calFilter = 'all';
 let currentUser = { id:null, name:'', email:'', brands:['epay'], role:'in_house_sales' };
 // internalsales shows salaries, so it follows the same rule the
 // internal_sales_comp policies enforce: whoever manages users.
-const ADMIN_ONLY_VIEWS = ['aiscraper', 'coldemail', 'newsletter', 'internalsales'];
+const ADMIN_ONLY_VIEWS = ['aiscraper', 'coldemail', 'newsletter', 'internalsales', 'invoicing', 'billing'];
 // 'applications' is deliberately NOT in here. Application links can be
 // created for either brand — most of the ones in use are Envision ATM — and
 // the submissions all land in the same table. Hiding the tab on ATM meant an
@@ -4901,6 +4952,14 @@ function applyRolePermissions(){
   if(teamStructureNav) teamStructureNav.style.display = perms.viewAllPartners ? 'flex' : 'none';
 
   // AI Lead Scraper and Cold Email are admin-only (further gated to EPAY POS brand in setBrand)
+  // Payments is admin-only, and the two pages inside it are placeholders —
+  // the gate is in ADMIN_ONLY_VIEWS too, so hiding the nav is not the only
+  // thing keeping anyone out of them.
+  const paymentsToggle = document.getElementById('paymentsSectionToggle');
+  const paymentsItems = document.getElementById('paymentsSectionItems');
+  if(paymentsToggle) paymentsToggle.style.display = perms.manageUsers ? 'flex' : 'none';
+  if(paymentsItems)  paymentsItems.style.display  = perms.manageUsers ? 'block' : 'none';
+
   // Salaries: same audience as the internal_sales_comp policies allow.
   const navInternalSales = document.getElementById('navInternalSalesItem');
   if(navInternalSales) navInternalSales.style.display = perms.manageUsers ? 'flex' : 'none';
