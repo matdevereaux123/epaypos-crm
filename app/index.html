@@ -8222,8 +8222,7 @@ function openLoaderDrawer(loaderId){
       <div class="field"><label>ZIP <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
         <input id="ldZip" value="${v('zip')}"></div>
 
-      <div class="field"><label>Notes <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
-        <textarea id="ldNotes" rows="3">${v('notes')}</textarea></div>
+      ${recordNotesFieldHtml('loader', l && l.id, { label:'Notes', textareaId:'ldNotes' })}
 
       <div class="field"><label>Status</label>
         <select id="ldActive">
@@ -8259,9 +8258,10 @@ async function saveLoader(loaderId){
     city:          val('ldCity')    || null,
     state:         val('ldState')   || null,
     zip:           val('ldZip')     || null,
-    notes:         val('ldNotes')   || null,
     active:        val('ldActive') === 'true'
   };
+  // Only the Add form has a plain box; an existing loader keeps a dated log.
+  const firstNote = val('ldNotes');
 
   btn.disabled = true;
   const original = btn.textContent;
@@ -8275,7 +8275,7 @@ async function saveLoader(loaderId){
     const res = await supa.from('atm_loaders')
       .insert(Object.assign({ created_by: currentUser.id }, fields)).select().single();
     error = res.error;
-    if(!error) LOADERS.push(res.data);
+    if(!error){ LOADERS.push(res.data); await noteOnCreate('loader', res.data.id, firstNote); }
   }
 
   btn.disabled = false;
@@ -8464,8 +8464,7 @@ function openContactDrawer(contactId){
         </select>
       </div>
 
-      <div class="field"><label>Notes <span style="color:var(--slate-300);font-weight:400;">(who they are, how you know them...)</span></label>
-        <textarea id="cnNotes" rows="3">${v('notes')}</textarea></div>
+      ${recordNotesFieldHtml('contact', c && c.id, { label:'Notes', textareaId:'cnNotes', placeholder:'Who they are, how you know them...' })}
     </div>
     <div class="drawer-footer">
       ${c ? `<button class="btn" style="flex:1;" onclick="deleteContact('${c.id}')">Delete</button>`
@@ -8492,8 +8491,8 @@ async function saveContact(contactId){
     phone:         val('cnPhone')    || null,
     email:         val('cnEmail')    || null,
     category:      val('cnCategory'),
-    notes:         val('cnNotes')    || null,
   };
+  const firstNote = val('cnNotes');
 
   btn.disabled = true;
   const original = btn.textContent;
@@ -8507,7 +8506,7 @@ async function saveContact(contactId){
     const res = await supa.from('contacts')
       .insert(Object.assign({ created_by: currentUser.id }, fields)).select().single();
     error = res.error;
-    if(!error) CONTACTS.push(res.data);
+    if(!error){ CONTACTS.push(res.data); await noteOnCreate('contact', res.data.id, firstNote); }
   }
 
   btn.disabled = false;
@@ -18216,7 +18215,7 @@ function coldOutreachFormHtml(c){
       <div class="field"><label>Contact name <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label><input id="coContactName" value="${c ? escAttr(c.contact_name||'') : ''}"></div>
       <div class="field"><label>Contact phone <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label><input id="coContactPhone" type="tel" value="${c ? escAttr(c.contact_phone||'') : ''}"></div>
       <div class="field"><label>Contact email <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label><input id="coContactEmail" type="email" value="${c ? escAttr(c.contact_email||'') : ''}"></div>
-      <div class="field"><label>Notes <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label><textarea id="coNotes" rows="3">${c ? (c.notes||'') : ''}</textarea></div>
+      ${recordNotesFieldHtml('cold_outreach', c && c.id, { label:'Notes', textareaId:'coNotes' })}
     </div>
     <div class="drawer-footer">
       ${c ? `<button class="btn" style="flex:1;color:var(--red);" onclick="deleteColdOutreach('${c.id}')">Delete</button>` : `<button class="btn" style="flex:1;" onclick="closeColdOutreachDrawer()">Cancel</button>`}
@@ -18234,8 +18233,9 @@ async function saveColdOutreach(id){
     contact_name: document.getElementById('coContactName').value.trim() || null,
     contact_phone: document.getElementById('coContactPhone').value.trim() || null,
     contact_email: document.getElementById('coContactEmail').value.trim() || null,
-    notes: document.getElementById('coNotes').value.trim() || null,
   };
+  const coNotesBox = document.getElementById('coNotes');
+  if(coNotesBox && !id) fields.notes = coNotesBox.value.trim() || null;
   if(id){
     const { error } = await supa.from('cold_outreach').update(fields).eq('id', id);
     if(error){ showToast('Could not save: ' + error.message, 'error'); return; }
@@ -18354,12 +18354,8 @@ function openColdLeadDetail(id){
             ${TEMPERATURES.map(t=>`<option value="${t.key}" ${c.temperature===t.key?'selected':''}>${t.label}</option>`).join('')}
           </select>
         </div>
-        <div class="field">
-          <label>Notes</label>
-          <textarea id="clDetailNotes">${c.notes || ''}</textarea>
-        </div>
-        ${noteTaskOptionHtml('clNote', 'clDetailNotes', 'last')}
         <button class="btn btn-accent" style="width:100%;" onclick="saveColdLeadNotes('${c.id}')">Save</button>
+        <div style="margin-top:20px;">${recordNotesFieldHtml('cold_lead', c.id, { label:'Notes / activity log' })}</div>
       </div>
 
       <div class="lr-group">
@@ -18384,7 +18380,6 @@ async function saveColdLeadNotes(id){
   const brand = (document.getElementById('clDetailBrand') || {}).value || previousBrand;
   const fields = {
     brand,
-    notes: document.getElementById('clDetailNotes').value.trim(),
     temperature: document.getElementById('clDetailTemp').value,
     follow_up_date: document.getElementById('clFollowupDate').value || null,
     follow_up_method: document.getElementById('clFollowupMethod').value,
@@ -18393,7 +18388,6 @@ async function saveColdLeadNotes(id){
   const { error } = await supa.from('cold_leads').update(fields).eq('id', id);
   if(error){ alert('Could not save: ' + error.message); return; }
   Object.assign(c, fields);
-  await createTaskFromNote('clNote', 'cold_lead', id, fields.notes, 'last');
   renderColdLeadsTable();
 
   // Re-opening the detail for a record that just left this board would show
@@ -18476,6 +18470,7 @@ async function saveNewColdLead(){
   const { data: coldLead, error } = await supa.from('cold_leads').insert(fields).select().single();
   if(error){ alert('Could not add cold lead: ' + error.message); return; }
   COLD_LEADS.unshift(coldLead);
+  await noteOnCreate('cold_lead', coldLead.id, fields.notes);
   closeColdLeadDrawer();
   renderColdLeadsTable();
 }
@@ -20473,6 +20468,134 @@ async function createTaskFromNote(prefix, kind, recordId, noteText, mode){
 
 
 /* =========================================================================
+   RECORD NOTES  (database/75_record_notes.sql)
+
+   Notes as a log — one entry per note, stamped with who wrote it and when,
+   deletable but never editable — for every record that used to have a single
+   free-text box (cold leads, loaders, contacts, cold outreach, recruits).
+   Same behaviour as the notes on leads, one implementation for all of them.
+
+   A record that does not exist yet has nothing to attach a log to, so the
+   Add forms keep a plain box for the first note and noteOnCreate() turns it
+   into the first log entry once the record has an id.
+   ========================================================================= */
+const RECORD_NOTES = {};   // 'type:id' -> entries, newest first
+
+function formatDateTime(ts){
+  const d = new Date(ts);
+  if(isNaN(d)) return '';
+  return d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' })
+       + ' · ' + d.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+}
+
+function recordNotesFieldHtml(type, id, o){
+  o = o || {};
+  const label = o.label || 'Notes';
+  if(id){
+    return `<div class="field"><label>${label} <span style="color:var(--slate-300);font-weight:400;">(dated log)</span></label>${recordNotesWidgetHtml(type, id)}</div>`;
+  }
+  return `<div class="field"><label>${label}</label><textarea id="${o.textareaId}" rows="${o.rows || 3}" placeholder="${escAttr(o.placeholder || '')}"></textarea></div>`;
+}
+
+function recordNotesWidgetHtml(type, id){
+  const dom = type + '-' + id;
+  loadRecordNotes(type, id);
+  return `
+    <div class="record-notes">
+      <textarea id="rn-text-${dom}" rows="3" placeholder="What happened, what's next..."></textarea>
+      ${type === 'cold_lead' ? noteTaskOptionHtml('clNote', 'rn-text-' + dom, 'first') : ''}
+      <button type="button" class="btn btn-accent" style="width:100%;margin-top:8px;" onclick="addRecordNote('${type}','${id}')">Save note</button>
+      <div id="rn-list-${dom}" style="margin-top:14px;"><p style="color:var(--slate-500);font-size:13px;">Loading notes…</p></div>
+    </div>`;
+}
+
+async function loadRecordNotes(type, id){
+  const key = type + ':' + id;
+  const { data, error } = await supa.from('record_notes').select('*')
+    .eq('entity_type', type).eq('entity_id', id).order('created_at', { ascending:false });
+  if(error){
+    RECORD_NOTES[key] = [];
+    drawRecordNotes(type, id, 'Could not load notes: ' + error.message);
+    return;
+  }
+  RECORD_NOTES[key] = data || [];
+  drawRecordNotes(type, id);
+}
+
+// Called while the drawer's HTML is still being assembled, so the list box
+// does not exist yet on the first attempts — wait for it rather than assume.
+function drawRecordNotes(type, id, errorText, attempt){
+  const el = document.getElementById('rn-list-' + type + '-' + id);
+  if(!el){
+    if((attempt || 0) < 20) setTimeout(() => drawRecordNotes(type, id, errorText, (attempt || 0) + 1), 50);
+    return;
+  }
+  if(errorText){ el.innerHTML = `<p style="color:var(--red);font-size:13px;">${escAttr(errorText)}</p>`; return; }
+  const rows = RECORD_NOTES[type + ':' + id] || [];
+  const isAdmin = !!roleOf(currentUser).perms.manageUsers;
+  el.innerHTML = rows.length ? rows.map(n => `
+    <div class="note-item">
+      ${(isAdmin || n.created_by_id === currentUser.id) ? `<button class="note-del" onclick="deleteRecordNote('${n.id}','${type}','${id}')" title="Delete">Delete</button>` : ''}
+      <div class="meta">${formatDateTime(n.created_at)} · ${escAttr(n.created_by || 'Unknown')}</div>
+      <div class="txt">${escAttr(n.text).replace(/\n/g, '<br>')}</div>
+    </div>`).join('')
+    : '<p style="color:var(--slate-500);font-size:13px;">No notes yet. Every note is dated and shows who wrote it; entries can be deleted but never edited.</p>';
+}
+
+async function addRecordNote(type, id){
+  const dom = type + '-' + id;
+  const box = document.getElementById('rn-text-' + dom);
+  const text = (box.value || '').trim();
+  if(!text){
+    // A task ticked on an empty note still means something.
+    if(type === 'cold_lead' && noteTaskIsOn('clNote')) await createTaskFromNote('clNote', 'cold_lead', id, '', 'first');
+    else showToast('Write the note first.', 'error');
+    return;
+  }
+  const { data, error } = await supa.from('record_notes')
+    .insert({ entity_type: type, entity_id: id, text }).select().single();
+  if(error){ showToast('Could not save note: ' + error.message, 'error'); return; }
+
+  const key = type + ':' + id;
+  RECORD_NOTES[key] = [data].concat(RECORD_NOTES[key] || []);
+  box.value = '';
+  drawRecordNotes(type, id);
+
+  if(type === 'cold_lead'){
+    // The cold lead list previews the latest note from the notes column.
+    const c = COLD_LEADS.find(x => x.id === id);
+    if(c){
+      c.notes = text;
+      supa.from('cold_leads').update({ notes: text }).eq('id', id).then(() => {});
+      renderColdLeadsTable();
+    }
+    if(await createTaskFromNote('clNote', 'cold_lead', id, text, 'first')){
+      const on = document.getElementById('clNoteTaskOn');
+      if(on){ on.checked = false; toggleNoteTask('clNote', 'rn-text-' + dom, 'first'); }
+    }
+  }
+  showToast('Note saved.', 'success');
+}
+
+async function deleteRecordNote(noteId, type, id){
+  if(!confirm('Delete this note? This can\'t be undone.')) return;
+  const { error } = await supa.from('record_notes').delete().eq('id', noteId);
+  if(error){ showToast('Could not delete: ' + error.message, 'error'); return; }
+  const key = type + ':' + id;
+  RECORD_NOTES[key] = (RECORD_NOTES[key] || []).filter(n => n.id !== noteId);
+  drawRecordNotes(type, id);
+}
+
+// First note typed into an Add form, filed as the first log entry once the
+// record exists. Failing to file it must not look like the record failed.
+async function noteOnCreate(type, id, text){
+  text = (text || '').trim();
+  if(!text || !id) return;
+  const { error } = await supa.from('record_notes').insert({ entity_type: type, entity_id: id, text });
+  if(error) showToast('Saved, but the note did not: ' + error.message, 'error');
+}
+
+/* =========================================================================
    INTERNAL SALES TEAM  (database/70_internal_management_and_grants.sql)
 
    The Agents page, for our own people. The difference that matters: an
@@ -20792,7 +20915,7 @@ function drawRecruitTable(){
         ? `<span class="pill pill-status-active">Converted &rarr; ${RECRUIT_CATEGORIES[r.converted_kind] || '—'}</span>`
         : (r.category ? `<span class="pill pill-agent-basic">${RECRUIT_CATEGORIES[r.category]}</span>` : '<span style="color:var(--slate-300);">Not chosen</span>')}</td>
       <td>${r.assigned_to ? escAttr((USERS.find(u => u.id === r.assigned_to) || {}).name || '—') : '<span style="color:var(--slate-300);">—</span>'}</td>
-      <td>${formatDate(r.created_at)}</td>
+      <td>${formatDate(String(r.created_at).slice(0, 10))}</td>
       <td style="text-align:right;white-space:nowrap;">
         ${r.converted ? '' : `<button class="btn btn-xs btn-accent" onclick="event.stopPropagation(); convertRecruit('${r.id}')">Convert</button>`}
         <button class="btn btn-xs" style="color:var(--red);" onclick="event.stopPropagation(); deleteRecruit('${r.id}')">Delete</button>
@@ -20819,7 +20942,7 @@ function openRecruitDrawer(id){
       <button class="drawer-close" onclick="closeRecruitDrawer()">&times;</button>
     </div>
     <div class="drawer-body">
-      ${r && r.converted ? `<div style="margin-bottom:14px;padding:10px 12px;background:var(--info-bg);border-radius:8px;font-size:12.5px;">Converted to <b>${RECRUIT_CATEGORIES[r.converted_kind] || '—'}</b> on ${formatDate(r.converted_at)}.</div>` : ''}
+      ${r && r.converted ? `<div style="margin-bottom:14px;padding:10px 12px;background:var(--info-bg);border-radius:8px;font-size:12.5px;">Converted to <b>${RECRUIT_CATEGORIES[r.converted_kind] || '—'}</b> on ${formatDate(String(r.converted_at).slice(0, 10))}.</div>` : ''}
       <div class="field"><label>Name</label><input id="rcName" value="${v('name')}" placeholder="e.g. Jordan Reyes"></div>
       <div class="field"><label>Company <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label><input id="rcCompany" value="${v('company')}"></div>
       <div class="field"><label>Email</label><input id="rcEmail" type="email" value="${v('email')}"></div>
@@ -20844,7 +20967,7 @@ function openRecruitDrawer(id){
         </select>
         <p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">Who is working this recruit — an internal sales person, agent, ISO or referral partner.</p>
       </div>
-      <div class="field"><label>Notes</label><textarea id="rcNotes" rows="4">${v('notes')}</textarea></div>
+      ${recordNotesFieldHtml('recruit', r && r.id, { label:'Notes', textareaId:'rcNotes', rows:4 })}
     </div>
     <div class="drawer-footer">
       <button class="btn" style="flex:1;" onclick="closeRecruitDrawer()">Cancel</button>
@@ -20869,9 +20992,10 @@ async function saveRecruit(id, thenConvert){
   const fields = {
     name, company: val('rcCompany') || null, email: val('rcEmail') || null,
     phone: val('rcPhone') || null, city: val('rcCity') || null,
-    state: val('rcState').toUpperCase() || null, notes: val('rcNotes') || null,
+    state: val('rcState').toUpperCase() || null,
     assigned_to: document.getElementById('rcAssignedTo').value || null,
   };
+  const firstNote = id ? '' : ((document.getElementById('rcNotes') || {}).value || '');
   const existing = id ? RECRUITS.find(x => x.id === id) : null;
   if(!(existing && existing.converted)) fields.category = category;
 
@@ -20886,6 +21010,7 @@ async function saveRecruit(id, thenConvert){
     if(res.error){ showToast('Could not save: ' + res.error.message, 'error'); return; }
     row = res.data;
     RECRUITS.unshift(row);
+    await noteOnCreate('recruit', row.id, firstNote);
   }
   closeRecruitDrawer();
   drawRecruitTable();
@@ -20919,6 +21044,10 @@ async function convertRecruit(id){
     USERS.push(data);
     refId = data.id;
   } else {
+    // The recruit's notes live in the dated log now; carry them across.
+    const { data: rnotes } = await supa.from('record_notes').select('text, created_at')
+      .eq('entity_type', 'recruit').eq('entity_id', r.id).order('created_at', { ascending:true });
+    const carriedNotes = (rnotes || []).map(n => n.text).join('\n\n') || r.notes || '';
     // Same record saveNewReferral() builds from the Add Partner form.
     const { data, error } = await supa.from('partners').insert({
       name: r.company || r.name,
@@ -20934,7 +21063,7 @@ async function convertRecruit(id){
       brand: currentBrand,
       leads_submitted: 0, deals_closed: 0, link_clicks: 0,
       last_deal_date: null, status: 'active', next_follow_up: null,
-      auto_followup_days: null, general_notes: r.notes || '', parent_partner_id: null,
+      auto_followup_days: null, general_notes: carriedNotes, parent_partner_id: null,
     }).select().single();
     if(error){ showToast('Could not create the partner: ' + error.message, 'error'); return; }
     PARTNERS.unshift(data);
