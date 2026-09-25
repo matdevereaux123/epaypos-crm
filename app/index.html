@@ -1606,6 +1606,30 @@
      edge to edge against the panel border, cut titles off mid-word, and gave
      every card a different width. Titles wrap to two lines, and the due date
      is a pill in the same place on every card. */
+  /* Tasks page */
+  .task-summary{ display:grid; grid-template-columns:repeat(5, 1fr); gap:10px; margin-bottom:14px; }
+  .task-stat{ background:var(--surface-2); border:1px solid var(--line); border-radius:10px; padding:10px 14px; cursor:pointer; display:flex; flex-direction:column; gap:2px; }
+  .task-stat .n{ font-size:22px; font-weight:700; line-height:1.1; }
+  .task-stat .l{ font-size:11.5px; color:var(--slate-500); }
+  .task-group{ padding:6px 0 10px; }
+  .task-group + .task-group{ border-top:1px solid var(--line); }
+  .task-group-head{ display:flex; align-items:center; gap:8px; padding:10px 18px 4px; font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.8px; color:var(--slate-500); }
+  .task-group-head .bar{ width:3px; height:13px; border-radius:2px; }
+  .task-group-head .count{ margin-left:auto; font-weight:600; background:var(--line); border-radius:20px; padding:1px 8px; }
+  .task-row{ display:flex; align-items:flex-start; gap:10px; padding:10px 18px; cursor:pointer; }
+  .task-row:hover{ background:var(--hover); }
+  .task-row input[type="checkbox"]{ width:16px; height:16px; margin-top:2px; flex:0 0 auto; cursor:pointer; }
+  .task-prio{ width:8px; height:8px; border-radius:50%; margin-top:6px; flex:0 0 auto; }
+  .task-main{ flex:1; min-width:0; }
+  .task-title{ font-size:13.5px; font-weight:600; line-height:1.35; }
+  .task-row.done .task-title{ text-decoration:line-through; }
+  .task-row.done{ opacity:.55; }
+  .task-meta{ display:flex; flex-wrap:wrap; align-items:center; gap:4px 12px; margin-top:3px; font-size:11.5px; color:var(--slate-500); }
+  .task-due.overdue{ color:var(--red); font-weight:600; }
+  .task-tag{ background:var(--line); border-radius:20px; padding:1px 8px; font-size:11px; font-weight:600; }
+  .task-notes{ margin-top:3px; font-size:12px; color:var(--slate-500); white-space:pre-line; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  @media (max-width:760px){ .task-summary{ grid-template-columns:repeat(2, 1fr); } }
+
   .dash-tasks-bar{ display:grid; grid-template-columns:repeat(auto-fill, minmax(230px, 1fr)); gap:10px; padding:14px 18px 18px; }
   .dash-task-chip{
     display:flex; align-items:flex-start; gap:10px; cursor:pointer; min-width:0;
@@ -2080,13 +2104,16 @@
         <div class="topbar">
           <div>
             <h1>Tasks</h1>
-            <p class="subtext">Yours, and anything handed to you. Use the + button to add one from anywhere.</p>
+            <p class="subtext">Grouped by when it is due, filterable by person, priority and category. Click a task to change anything about it.</p>
           </div>
           <button class="btn btn-accent btn-sm" onclick="openTaskDrawer()">+ Add Task</button>
         </div>
 
-        <div class="cal-toolbar">
+        <div class="task-summary" id="taskSummary"></div>
+
+        <div class="cal-toolbar" style="flex-wrap:wrap;gap:10px;">
           <div class="phase-toggle" id="taskFilterToggle"></div>
+          <div id="taskControls" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"></div>
         </div>
 
         <div class="panel">
@@ -20244,49 +20271,172 @@ function taskLinkedRecordHtml(t){
   return '';
 }
 
-function renderTasksList(){
-  document.getElementById('taskFilterToggle').innerHTML = ['open','completed','all'].map(f => `
-    <button class="${taskFilter===f?'active':''}" onclick="setTaskFilter('${f}')">${f[0].toUpperCase()+f.slice(1)}</button>
-  `).join('');
+/* -------------------------------------------------------------------------
+   TASKS PAGE — organised, not just listed.
+   Group by due date (default), person, priority, category or the record a
+   task is about; filter by who it is assigned to, priority and free text;
+   open a task to change anything about it. Defaults to YOUR open tasks so
+   the page opens on what is actually yours, with Everyone one click away.
+   ------------------------------------------------------------------------- */
+let taskGroupBy = 'due';
+let taskPersonFilter = 'mine';
+let taskPriorityFilter = 'all';
+let taskSearch = '';
 
-  let rows = myTasks();
-  if(taskFilter === 'open') rows = rows.filter(t => !t.completed);
-  else if(taskFilter === 'completed') rows = rows.filter(t => t.completed);
-  rows = rows.sort((a, b) => {
+const TASK_PRIORITIES = {
+  high:   { label:'High',   color:'var(--red)' },
+  normal: { label:'Normal', color:'var(--slate-400)' },
+  low:    { label:'Low',    color:'var(--slate-300)' },
+};
+const TASK_PRIORITY_ORDER = ['high', 'normal', 'low'];
+
+function taskCategories(){
+  return Array.from(new Set(TASKS.map(t => (t.category || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+}
+
+function taskDueBucket(t){
+  if(!t.due_date) return 'nodate';
+  const today = todayISO();
+  if(t.due_date < today) return 'overdue';
+  if(t.due_date === today) return 'today';
+  if(t.due_date <= addDays(today, 6)) return 'week';
+  return 'later';
+}
+const TASK_BUCKETS = [
+  { key:'overdue', label:'Overdue',            color:'var(--red)' },
+  { key:'today',   label:'Today',              color:'var(--warn-text)' },
+  { key:'week',    label:'Next 7 days',        color:'var(--brand-accent-2)' },
+  { key:'later',   label:'Later',              color:'var(--slate-400)' },
+  { key:'nodate',  label:'No date',            color:'var(--slate-300)' },
+];
+
+function taskRecordLabel(t){
+  if(t.linked_lead_id){ const l = LEADS.find(x => x.id === t.linked_lead_id); return l ? l.business_name : null; }
+  if(t.linked_cold_lead_id){ const c = COLD_LEADS.find(x => x.id === t.linked_cold_lead_id); return c ? c.business_name : null; }
+  if(t.linked_application_id){
+    const a = APPLICATIONS.find(x => x.id === t.linked_application_id);
+    return a ? (a.legal_business_name || `${a.first_name||''} ${a.last_name||''}`.trim() || 'Application') : null;
+  }
+  return null;
+}
+
+function taskGroups(rows){
+  const sortInGroup = (a, b) => {
     if(!!a.completed !== !!b.completed) return a.completed ? 1 : -1;
-    if(!a.due_date && !b.due_date) return 0;
+    const pa = TASK_PRIORITY_ORDER.indexOf(a.priority || 'normal'), pb = TASK_PRIORITY_ORDER.indexOf(b.priority || 'normal');
+    if(taskGroupBy !== 'priority' && pa !== pb && a.due_date === b.due_date) return pa - pb;
+    if(!a.due_date && !b.due_date) return pa - pb;
     if(!a.due_date) return 1;
     if(!b.due_date) return -1;
-    return a.due_date.localeCompare(b.due_date);
-  });
+    return a.due_date.localeCompare(b.due_date) || (pa - pb);
+  };
+  let groups = [];
+  const push = (key, label, color, items) => { if(items.length) groups.push({ key, label, color, items: items.sort(sortInGroup) }); };
+
+  if(taskGroupBy === 'due'){
+    TASK_BUCKETS.forEach(b => push(b.key, b.label, b.color, rows.filter(t => taskDueBucket(t) === b.key)));
+  } else if(taskGroupBy === 'priority'){
+    TASK_PRIORITY_ORDER.forEach(k => push(k, TASK_PRIORITIES[k].label + ' priority', TASK_PRIORITIES[k].color, rows.filter(t => (t.priority || 'normal') === k)));
+  } else if(taskGroupBy === 'person'){
+    const ids = Array.from(new Set(rows.map(t => t.assigned_to || '')));
+    ids.map(id => ({ id, name: id === currentUser.id ? 'Me' : ((USERS.find(u => u.id === id) || {}).name || 'Unassigned') }))
+       .sort((a, b) => (a.name === 'Me' ? -1 : b.name === 'Me' ? 1 : a.name.localeCompare(b.name)))
+       .forEach(p => push('p' + p.id, p.name, 'var(--brand-accent-2)', rows.filter(t => (t.assigned_to || '') === p.id)));
+  } else if(taskGroupBy === 'category'){
+    taskCategories().forEach(cat => push('c' + cat, cat, 'var(--brand-accent-2)', rows.filter(t => (t.category || '').trim() === cat)));
+    push('cnone', 'No category', 'var(--slate-300)', rows.filter(t => !(t.category || '').trim()));
+  } else if(taskGroupBy === 'record'){
+    const labels = Array.from(new Set(rows.map(taskRecordLabel).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+    labels.forEach(l => push('r' + l, l, 'var(--brand-accent-2)', rows.filter(t => taskRecordLabel(t) === l)));
+    push('rnone', 'Not about a specific record', 'var(--slate-300)', rows.filter(t => !taskRecordLabel(t)));
+  }
+  return groups;
+}
+
+function taskRowHtml(t){
+  const overdue = !t.completed && t.due_date && t.due_date < todayISO();
+  const assignee = t.assigned_to && t.assigned_to !== currentUser.id ? USERS.find(u => u.id === t.assigned_to) : null;
+  const pr = TASK_PRIORITIES[t.priority || 'normal'];
+  const rec = taskLinkedRecordHtml(t);
+  return `
+  <div class="task-row${t.completed ? ' done' : ''}" onclick="openTaskDrawer(null, null, '${t.id}')">
+    <input type="checkbox" ${t.completed ? 'checked' : ''} onclick="event.stopPropagation();" onchange="toggleTaskComplete('${t.id}')">
+    <span class="task-prio" style="background:${pr.color};" title="${pr.label} priority"></span>
+    <div class="task-main">
+      <div class="task-title">${escAttr(t.title)}</div>
+      <div class="task-meta">
+        ${t.due_date ? `<span class="task-due${overdue ? ' overdue' : ''}">${overdue ? 'Overdue · ' : ''}${formatDate(t.due_date)}</span>` : ''}
+        ${t.category ? `<span class="task-tag">${escAttr(t.category)}</span>` : ''}
+        ${rec ? `<span>${rec}</span>` : ''}
+        ${assignee ? `<span>${escAttr(assignee.name)}</span>` : ''}
+      </div>
+      ${t.notes ? `<div class="task-notes">${escAttr(t.notes)}</div>` : ''}
+    </div>
+    <button class="btn btn-xs" style="color:var(--red);flex-shrink:0;" onclick="event.stopPropagation(); deleteTask('${t.id}')">Delete</button>
+  </div>`;
+}
+
+function renderTasksList(){
+  const canSeeOthers = !!roleOf(currentUser).perms.fullDashboard;
+  const visible = myTasks();
+
+  // Person filter: only people who actually have a task in front of you.
+  const people = Array.from(new Set(visible.map(t => t.assigned_to).filter(id => id && id !== currentUser.id)))
+    .map(id => ({ id, name: (USERS.find(u => u.id === id) || {}).name || 'Someone' }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  if(taskPersonFilter !== 'mine' && taskPersonFilter !== 'all' && !people.some(p => p.id === taskPersonFilter)) taskPersonFilter = 'mine';
+
+  document.getElementById('taskFilterToggle').innerHTML = ['open','completed','all'].map(f => `
+    <button class="${taskFilter===f?'active':''}" onclick="setTaskFilter('${f}')">${f[0].toUpperCase()+f.slice(1)}</button>`).join('');
+
+  const sel = (id, opts, cur, onchange) => `<select id="${id}" onchange="${onchange}" style="width:auto;min-width:0;padding:7px 10px;border-radius:7px;border:1px solid var(--line);font-size:12.5px;">
+    ${opts.map(o => `<option value="${o[0]}" ${String(o[0]) === String(cur) ? 'selected' : ''}>${o[1]}</option>`).join('')}</select>`;
+  document.getElementById('taskControls').innerHTML =
+    sel('taskGroupSel', [['due','Group: Due date'],['priority','Group: Priority'],['person','Group: Person'],['category','Group: Category'],['record','Group: Record']], taskGroupBy, "taskGroupBy=this.value;renderTasksList()")
+    + sel('taskPersonSel', [['mine','Assigned to me'],['all', canSeeOthers ? 'Everyone' : 'Everything I can see']].concat(people.map(p => [p.id, p.name])), taskPersonFilter, "taskPersonFilter=this.value;renderTasksList()")
+    + sel('taskPrioSel', [['all','Any priority'],['high','High'],['normal','Normal'],['low','Low']], taskPriorityFilter, "taskPriorityFilter=this.value;renderTasksList()")
+    + `<input class="search-input" id="taskSearchBox" placeholder="Search tasks..." value="${escAttr(taskSearch)}" oninput="taskSearch=this.value;renderTasksList(true)">`;
+
+  let rows = visible.slice();
+  if(taskPersonFilter === 'mine') rows = rows.filter(t => t.assigned_to === currentUser.id || (!t.assigned_to && t.created_by === currentUser.id));
+  else if(taskPersonFilter !== 'all') rows = rows.filter(t => t.assigned_to === taskPersonFilter);
+  if(taskPriorityFilter !== 'all') rows = rows.filter(t => (t.priority || 'normal') === taskPriorityFilter);
+  const q = taskSearch.trim().toLowerCase();
+  if(q) rows = rows.filter(t => [t.title, t.notes, t.category, taskRecordLabel(t)].some(v => (v || '').toLowerCase().includes(q)));
+
+  // Counts reflect the person/priority/search filters but not Open/Completed,
+  // so the summary chips stay meaningful whichever tab you are on.
+  const open = rows.filter(t => !t.completed);
+  const count = k => open.filter(t => taskDueBucket(t) === k).length;
+  document.getElementById('taskSummary').innerHTML = [
+    ['overdue','Overdue','var(--red)'], ['today','Due today','var(--warn-text)'], ['week','Next 7 days','var(--brand-accent-2)'], ['nodate','No date','var(--slate-400)']
+  ].map(([k, l, c]) => `<div class="task-stat" onclick="taskGroupBy='due';renderTasksList()"><span class="n" style="color:${c};">${count(k)}</span><span class="l">${l}</span></div>`).join('')
+   + `<div class="task-stat"><span class="n">${open.length}</span><span class="l">Open</span></div>`;
+
+  if(taskFilter === 'open') rows = open;
+  else if(taskFilter === 'completed') rows = rows.filter(t => t.completed);
 
   const list = document.getElementById('tasksList');
   const empty = document.getElementById('tasksEmptyState');
   if(!rows.length){
     list.innerHTML = '';
     empty.style.display = 'block';
+    empty.textContent = q ? 'No tasks match that search.' : (taskFilter === 'completed' ? 'Nothing completed yet.' : 'No tasks here.');
     return;
   }
   empty.style.display = 'none';
 
-  list.innerHTML = rows.map(t => {
-    const overdue = !t.completed && t.due_date && isPast(t.due_date);
-    const assignee = t.assigned_to !== currentUser.id ? USERS.find(u => u.id === t.assigned_to) : null;
-    return `
-    <div class="note-item" style="display:flex;align-items:flex-start;gap:10px;${t.completed?'opacity:.55;':''}">
-      <input type="checkbox" ${t.completed?'checked':''} onchange="toggleTaskComplete('${t.id}')" style="width:auto;margin-top:3px;flex-shrink:0;">
-      <div style="flex:1;min-width:0;">
-        <div class="txt" style="font-weight:600;${t.completed?'text-decoration:line-through;':''}">${t.title}</div>
-        <div class="meta">
-          ${t.due_date ? `<span style="${overdue?'color:var(--red);font-weight:600;':''}">${formatDate(t.due_date)}</span> &middot; ` : ''}
-          ${taskLinkedRecordHtml(t)}${taskLinkedRecordHtml(t) && assignee ? ' &middot; ' : ''}
-          ${assignee ? `Assigned to ${assignee.name}` : ''}
-        </div>
-        ${t.notes ? `<div class="meta" style="margin-top:2px;">${t.notes}</div>` : ''}
-      </div>
-      <button class="btn btn-xs" style="color:var(--red);flex-shrink:0;" onclick="deleteTask('${t.id}')">Delete</button>
-    </div>`;
-  }).join('');
+  list.innerHTML = taskGroups(rows).map(g => `
+    <div class="task-group">
+      <div class="task-group-head"><span class="bar" style="background:${g.color};"></span>${escAttr(g.label)}<span class="count">${g.items.length}</span></div>
+      ${g.items.map(taskRowHtml).join('')}
+    </div>`).join('');
+
+  // Typing in the search box re-renders the controls; put the caret back.
+  if(arguments[0] === true){
+    const box = document.getElementById('taskSearchBox');
+    if(box){ box.focus(); box.setSelectionRange(box.value.length, box.value.length); }
+  }
 }
 
 function setTaskFilter(f){
@@ -21196,13 +21346,21 @@ async function saveInternalSalesPerson(userId){
                      : (userId ? 'Saved' : `${name} added — send them an invite when you're ready.`), 'success');
 }
 
-function openTaskDrawer(linkedKind, linkedId){
+// linkedKind/linkedId pre-attach a NEW task to a record; taskId opens an
+// existing one for editing (its own links are shown, not re-picked).
+function openTaskDrawer(linkedKind, linkedId, taskId){
+  const t = taskId ? TASKS.find(x => x.id === taskId) : null;
+  if(taskId && !t) return;
   const assignable = assignableUsers().slice().sort((x, y) => x.name.localeCompare(y.name));
-  const internalAssignees = assignable.filter(u => roleOf(u).portal_scope === 'internal');
-  const portalAssignees = assignable.filter(u => roleOf(u).portal_scope === 'own');
+  const internalAssignees = assignable.filter(u => roleOf(u).portal_scope === 'internal' && u.id !== currentUser.id);
+  const portalAssignees = assignable.filter(u => roleOf(u).portal_scope === 'own' && u.id !== currentUser.id);
+  const cur = t ? (t.assigned_to || currentUser.id) : currentUser.id;
 
   let linkedLabel = '';
-  if(linkedKind === 'lead'){
+  if(t){
+    const rl = taskRecordLabel(t);
+    if(rl) linkedLabel = `Attached to: ${rl}`;
+  } else if(linkedKind === 'lead'){
     const l = LEADS.find(x => x.id === linkedId);
     if(l) linkedLabel = `Lead/Account: ${l.business_name}`;
   } else if(linkedKind === 'cold_lead'){
@@ -21213,53 +21371,81 @@ function openTaskDrawer(linkedKind, linkedId){
     if(a) linkedLabel = `Application: ${a.legal_business_name || `${a.first_name||''} ${a.last_name||''}`.trim()}`;
   }
 
+  const prio = t ? (t.priority || 'normal') : 'normal';
   document.getElementById('taskDrawer').innerHTML = `
     <div class="drawer-head">
-      <div><h2>Add task</h2></div>
+      <div><h2>${t ? 'Edit task' : 'Add task'}</h2></div>
       <button class="drawer-close" onclick="closeTaskDrawer()">&times;</button>
     </div>
     <div class="drawer-body">
-      ${linkedLabel ? `<div class="detail-row"><span class="k">Attached to</span><span class="v">${linkedLabel}</span></div>` : ''}
-      <div class="field"><label>Title</label><input id="taskTitle" placeholder="e.g. Follow up on pricing"></div>
-      <div class="field"><label>Due date <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label><input id="taskDueDate" type="date"></div>
+      ${linkedLabel ? `<div class="detail-row"><span class="k">Attached to</span><span class="v">${escAttr(linkedLabel.replace(/^Attached to: /, ''))}</span></div>` : ''}
+      <div class="field"><label>Title</label><input id="taskTitle" value="${t ? escAttr(t.title) : ''}" placeholder="e.g. Follow up on pricing"></div>
+      <div class="ai-search-grid">
+        <div class="field"><label>Due date <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label><input id="taskDueDate" type="date" value="${t && t.due_date ? t.due_date : ''}"></div>
+        <div class="field"><label>Priority</label>
+          <select id="taskPriority">${TASK_PRIORITY_ORDER.map(k => `<option value="${k}" ${prio === k ? 'selected' : ''}>${TASK_PRIORITIES[k].label}</option>`).join('')}</select></div>
+      </div>
+      <div class="field"><label>Category <span style="color:var(--slate-300);font-weight:400;">(optional &mdash; pick one or type a new one)</span></label>
+        <input id="taskCategory" list="taskCategoryList" value="${t ? escAttr(t.category || '') : ''}" placeholder="e.g. Follow-up, Paperwork, Call">
+        <datalist id="taskCategoryList">${taskCategories().map(c => `<option value="${escAttr(c)}">`).join('')}</datalist></div>
       <div class="field"><label>Assign to</label>
         <select id="taskAssignedTo">
-          <option value="${currentUser.id}">Me</option>
-          ${internalAssignees.filter(u=>u.id!==currentUser.id).length ? `<optgroup label="Employees">${internalAssignees.filter(u=>u.id!==currentUser.id).map(u => assigneeOptionHtml(u, null)).join('')}</optgroup>` : ''}
-          ${portalAssignees.filter(u=>u.id!==currentUser.id).length ? `<optgroup label="Agents &amp; partners">${portalAssignees.filter(u=>u.id!==currentUser.id).map(u => assigneeOptionHtml(u, null)).join('')}</optgroup>` : ''}
+          <option value="${currentUser.id}" ${cur === currentUser.id ? 'selected' : ''}>Me</option>
+          ${internalAssignees.length ? `<optgroup label="Employees">${internalAssignees.map(u => assigneeOptionHtml(u, cur)).join('')}</optgroup>` : ''}
+          ${portalAssignees.length ? `<optgroup label="Agents &amp; partners">${portalAssignees.map(u => assigneeOptionHtml(u, cur)).join('')}</optgroup>` : ''}
         </select>
       </div>
-      <div class="field"><label>Notes <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label><textarea id="taskNotes" rows="3"></textarea></div>
+      <div class="field"><label>Notes <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label><textarea id="taskNotes" rows="3">${t ? escAttr(t.notes || '') : ''}</textarea></div>
     </div>
     <div class="drawer-footer">
-      <button class="btn" style="flex:1;" onclick="closeTaskDrawer()">Cancel</button>
-      <button class="btn btn-accent" style="flex:1;" onclick="saveNewTask('${linkedKind||''}', '${linkedId||''}')">Save task</button>
+      ${t ? `<button class="btn" style="flex:1;color:var(--red);" onclick="deleteTask('${t.id}'); closeTaskDrawer();">Delete</button>` : `<button class="btn" style="flex:1;" onclick="closeTaskDrawer()">Cancel</button>`}
+      <button class="btn btn-accent" style="flex:1;" onclick="saveTask('${linkedKind||''}', '${linkedId||''}', ${t ? `'${t.id}'` : 'null'})">${t ? 'Save changes' : 'Save task'}</button>
     </div>
   `;
   document.getElementById('taskOverlay').classList.add('open');
 }
 function closeTaskDrawer(){ document.getElementById('taskOverlay').classList.remove('open'); }
 
-async function saveNewTask(linkedKind, linkedId){
+async function saveTask(linkedKind, linkedId, taskId){
   const title = document.getElementById('taskTitle').value.trim();
   if(!title){ showToast('Give this task a title first.', 'error'); return; }
 
-  const task = {
+  const fields = {
     title,
     due_date: document.getElementById('taskDueDate').value || null,
+    priority: document.getElementById('taskPriority').value || 'normal',
+    category: document.getElementById('taskCategory').value.trim() || null,
     assigned_to: document.getElementById('taskAssignedTo').value || currentUser.id,
     notes: document.getElementById('taskNotes').value.trim() || null,
-    linked_lead_id: linkedKind === 'lead' ? linkedId : null,
-    linked_cold_lead_id: linkedKind === 'cold_lead' ? linkedId : null,
-    linked_application_id: linkedKind === 'application' ? linkedId : null,
   };
 
-  const { data, error } = await supa.from('tasks').insert(task).select().single();
-  if(error){ showToast('Could not save: ' + error.message, 'error'); return; }
-  TASKS.unshift(data);
+  // Until database/76_task_organisation.sql has been run there is no priority
+  // or category column, and a save that names them fails. Saving the task
+  // without them is better than refusing to save at all.
+  const missingCols = e => e && /priority|category/.test(e.message || '') && /column|schema cache/i.test(e.message || '');
+  const dropNew = f => { const c = Object.assign({}, f); delete c.priority; delete c.category; return c; };
+
+  if(taskId){
+    let res = await supa.from('tasks').update(fields).eq('id', taskId);
+    if(missingCols(res.error)){ res = await supa.from('tasks').update(dropNew(fields)).eq('id', taskId); showToast('Saved without priority/category \u2014 run database/76_task_organisation.sql to enable them.', 'info'); }
+    if(res.error){ showToast('Could not save: ' + res.error.message, 'error'); return; }
+    Object.assign(TASKS.find(x => x.id === taskId), fields);
+    showToast('Task updated.', 'success');
+  } else {
+    const task = Object.assign(fields, {
+      linked_lead_id: linkedKind === 'lead' ? linkedId : null,
+      linked_cold_lead_id: linkedKind === 'cold_lead' ? linkedId : null,
+      linked_application_id: linkedKind === 'application' ? linkedId : null,
+    });
+    let res = await supa.from('tasks').insert(task).select().single();
+    if(missingCols(res.error)){ res = await supa.from('tasks').insert(dropNew(task)).select().single(); showToast('Saved without priority/category \u2014 run database/76_task_organisation.sql to enable them.', 'info'); }
+    if(res.error){ showToast('Could not save: ' + res.error.message, 'error'); return; }
+    TASKS.unshift(res.data);
+    showToast('Task added.', 'success');
+  }
   closeTaskDrawer();
-  showToast('Task added.', 'success');
   if(document.getElementById('view-tasks').style.display !== 'none') renderTasksList();
+  renderDashboardTasksBar();
 }
 
 /* =========================================================================
