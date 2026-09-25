@@ -1221,6 +1221,18 @@
     padding:12px 26px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13.5px;margin:6px 0 18px;}
   .email-preview-footer{background:var(--email-bg);padding:16px 24px;font-size:11px;color:var(--email-muted);text-align:center;}
 
+  /* ---------- CREATE A TASK WHILE WRITING A NOTE ---------- */
+  .note-task-toggle{
+    display:flex;align-items:center;gap:8px;cursor:pointer;margin:-4px 0 10px;
+    font-size:12px;color:var(--slate-500);user-select:none;
+  }
+  .note-task-toggle input{width:15px;height:15px;flex:0 0 auto;cursor:pointer;}
+  .note-task-toggle:hover{color:var(--brand-accent-2);}
+  .note-task-fields{
+    background:var(--surface-3);border:1px solid var(--line);border-radius:10px;
+    padding:12px 13px 2px;margin:0 0 12px;
+  }
+
   /* ---------- E-SIGNATURE ---------- */
   /* The signing page is the only public page that has to hold a whole
      contract, so it gets a wider card than the referral/booking ones. */
@@ -14197,6 +14209,7 @@ async function openLeadDetail(id){
     <div class="field">
       <textarea id="newLeadCallNoteText" placeholder="What was discussed on the call..."></textarea>
     </div>
+    ${noteTaskOptionHtml('leadCallNote', 'newLeadCallNoteText', 'first')}
     <button class="btn btn-accent" style="width:100%;" onclick="addLeadCallNote('${l.id}')">Save call note</button>
     <div style="margin-top:14px;">
       ${callNotesForLead.length ? callNotesForLead.map(n => `
@@ -14213,6 +14226,7 @@ async function openLeadDetail(id){
     <div class="field">
       <textarea id="newLeadNoteText" placeholder="What happened, what's next..."></textarea>
     </div>
+    ${noteTaskOptionHtml('leadNote', 'newLeadNoteText', 'first')}
     <button class="btn btn-accent" style="width:100%;" onclick="addLeadNote('${l.id}')">Save note</button>
     <div style="margin-top:14px;">
       ${notesForLead.length ? notesForLead.map(n => `
@@ -16261,7 +16275,12 @@ async function deleteLead(id){
 
 async function addLeadNote(leadId){
   const text = document.getElementById('newLeadNoteText').value.trim();
-  if(!text) return;
+  // An empty box with the task option ticked still means something: the task
+  // was the point, and silently doing nothing would be the wrong answer.
+  if(!text){
+    if(noteTaskIsOn('leadNote') && await createTaskFromNote('leadNote', 'lead', leadId, '', 'first')) openLeadDetail(leadId);
+    return;
+  }
   const { data: note, error } = await supa.from('lead_notes').insert({
     lead_id: leadId,
     text,
@@ -16269,6 +16288,7 @@ async function addLeadNote(leadId){
   }).select().single();
   if(error){ alert('Could not save note: ' + error.message); return; }
   LEAD_NOTES.unshift(note);
+  await createTaskFromNote('leadNote', 'lead', leadId, text, 'first');
   openLeadDetail(leadId);
 }
 async function deleteLeadNote(noteId, leadId){
@@ -16280,7 +16300,10 @@ async function deleteLeadNote(noteId, leadId){
 }
 async function addLeadCallNote(leadId){
   const text = document.getElementById('newLeadCallNoteText').value.trim();
-  if(!text) return;
+  if(!text){
+    if(noteTaskIsOn('leadCallNote') && await createTaskFromNote('leadCallNote', 'lead', leadId, '', 'first')) openLeadDetail(leadId);
+    return;
+  }
   const { data: note, error } = await supa.from('lead_call_notes').insert({
     lead_id: leadId,
     text,
@@ -16288,6 +16311,7 @@ async function addLeadCallNote(leadId){
   }).select().single();
   if(error){ alert('Could not save note: ' + error.message); return; }
   LEAD_CALL_NOTES.unshift(note);
+  await createTaskFromNote('leadCallNote', 'lead', leadId, text, 'first');
   openLeadDetail(leadId);
 }
 async function deleteLeadCallNote(noteId, leadId){
@@ -17570,6 +17594,7 @@ function openColdLeadDetail(id){
           <label>Notes</label>
           <textarea id="clDetailNotes">${c.notes || ''}</textarea>
         </div>
+        ${noteTaskOptionHtml('clNote', 'clDetailNotes', 'last')}
         <button class="btn btn-accent" style="width:100%;" onclick="saveColdLeadNotes('${c.id}')">Save</button>
       </div>
 
@@ -17604,6 +17629,7 @@ async function saveColdLeadNotes(id){
   const { error } = await supa.from('cold_leads').update(fields).eq('id', id);
   if(error){ alert('Could not save: ' + error.message); return; }
   Object.assign(c, fields);
+  await createTaskFromNote('clNote', 'cold_lead', id, fields.notes, 'last');
   renderColdLeadsTable();
 
   // Re-opening the detail for a record that just left this board would show
@@ -19566,6 +19592,112 @@ async function deleteTask(id){
 // linkedKind/linkedId let this open pre-attached to a record — used by the
 // + button's quick-add menu when opened from a Lead/Cold Lead/Application
 // drawer, same idea as openPaperApplicationForLink()'s pendingLink.
+
+/* =========================================================================
+   A TASK, WRITTEN WHILE YOU WRITE THE NOTE
+
+   Notes and tasks were two separate motions: write "he wants a quote by
+   Friday", save, then open Add Task and type it again. This puts the second
+   half inside the first — tick the box and the task title arrives already
+   filled in with what you just wrote.
+
+   Same component in all three places it is needed (a lead/account's notes
+   and call notes, and a cold lead's notes box), so the three cannot drift.
+   Tasks already carry linked_lead_id and linked_cold_lead_id
+   (database/62_tasks.sql), so nothing new is stored — this is the existing
+   task, created from a different doorway.
+   ========================================================================= */
+function noteTaskOptionHtml(prefix, sourceId, mode){
+  const assignable = assignableUsers().slice().sort((a, b) => a.name.localeCompare(b.name));
+  const internal = assignable.filter(u => roleOf(u).portal_scope === 'internal' && u.id !== currentUser.id);
+  const portal   = assignable.filter(u => roleOf(u).portal_scope === 'own' && u.id !== currentUser.id);
+  return `
+    <label class="note-task-toggle">
+      <input type="checkbox" id="${prefix}TaskOn" onchange="toggleNoteTask('${prefix}', '${sourceId}', '${mode || 'first'}')">
+      <span>Also create a task from this</span>
+    </label>
+    <div class="note-task-fields" id="${prefix}TaskFields" style="display:none;">
+      <div class="field"><label>Task</label>
+        <input id="${prefix}TaskTitle" placeholder="What needs doing"></div>
+      <div class="ai-search-grid">
+        <div class="field"><label>Due <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
+          <input type="date" id="${prefix}TaskDue"></div>
+        <div class="field"><label>Assign to</label>
+          <select id="${prefix}TaskAssignee">
+            <option value="${currentUser.id}">Me</option>
+            ${internal.length ? `<optgroup label="Employees">${internal.map(u => `<option value="${u.id}">${escAttr(u.name)}</option>`).join('')}</optgroup>` : ''}
+            ${portal.length ? `<optgroup label="Agents &amp; partners">${portal.map(u => `<option value="${u.id}">${escAttr(u.name)}</option>`).join('')}</optgroup>` : ''}
+          </select></div>
+      </div>
+    </div>`;
+}
+
+// The title is filled from the note the moment the box is ticked, where it
+// can be seen and edited, rather than being derived silently on save.
+// 'first' for a box you just typed a note into; 'last' for the cold lead's
+// notes field, which already holds everything written before today.
+function toggleNoteTask(prefix, sourceId, mode){
+  const on = !!(document.getElementById(prefix + 'TaskOn') || {}).checked;
+  const box = document.getElementById(prefix + 'TaskFields');
+  box.style.display = on ? 'block' : 'none';
+  if(!on) return;
+
+  const title = document.getElementById(prefix + 'TaskTitle');
+  if(!title.value.trim()){
+    title.value = taskTitleFromNote(((document.getElementById(sourceId) || {}).value || ''), mode);
+  }
+  title.focus();
+  title.select();
+}
+
+function taskTitleFromNote(text, mode){
+  const lines = String(text || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if(!lines.length) return '';
+  const line = (mode === 'last' ? lines[lines.length - 1] : lines[0]).replace(/\s+/g, ' ');
+  return line.length > 90 ? line.slice(0, 87).trimEnd() + '…' : line;
+}
+
+function noteTaskIsOn(prefix){
+  return !!(document.getElementById(prefix + 'TaskOn') || {}).checked;
+}
+
+// Returns true if a task was created. Failing to save the task must not be
+// reported as if the note failed, so this toasts its own outcome and the
+// caller carries on either way.
+async function createTaskFromNote(prefix, kind, recordId, noteText, mode){
+  if(!noteTaskIsOn(prefix)) return false;
+
+  const val = id => ((document.getElementById(id) || {}).value || '').trim();
+  const title = val(prefix + 'TaskTitle') || taskTitleFromNote(noteText, mode);
+  if(!title){
+    showToast('The task needs a title — nothing was written to take one from.', 'error');
+    return false;
+  }
+
+  const task = {
+    title,
+    due_date: val(prefix + 'TaskDue') || null,
+    assigned_to: val(prefix + 'TaskAssignee') || currentUser.id,
+    // The note travels with the task: whoever picks it up gets the context
+    // without having to go and find the record it came from.
+    notes: (noteText || '').trim() || null,
+    linked_lead_id:      kind === 'lead'      ? recordId : null,
+    linked_cold_lead_id: kind === 'cold_lead' ? recordId : null,
+    linked_application_id: null,
+  };
+
+  const { data, error } = await supa.from('tasks').insert(task).select().single();
+  if(error){ showToast('The note saved, but the task did not: ' + error.message, 'error'); return false; }
+
+  TASKS.unshift(data);
+  const who = task.assigned_to === currentUser.id
+    ? 'you'
+    : ((USERS.find(u => u.id === task.assigned_to) || {}).name || 'them');
+  showToast('Task added for ' + who + (task.due_date ? ', due ' + formatDate(task.due_date) : ''), 'success');
+  if(document.getElementById('view-tasks').style.display !== 'none') renderTasksList();
+  return true;
+}
+
 function openTaskDrawer(linkedKind, linkedId){
   const assignable = assignableUsers().slice().sort((x, y) => x.name.localeCompare(y.name));
   const internalAssignees = assignable.filter(u => roleOf(u).portal_scope === 'internal');
