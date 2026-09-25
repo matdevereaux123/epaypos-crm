@@ -1738,6 +1738,10 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
           Agents/ISOs
         </button>
+        <button class="nav-item" data-view="internalsales" id="navInternalSalesItem">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11h-6"/><path d="M19 8v6"/></svg>
+          Internal Sales
+        </button>
 
         <button class="nav-section-toggle" id="prospectingSectionToggle" type="button">
           <span>Prospecting</span>
@@ -2396,6 +2400,38 @@
             <tbody id="loadersTableBody"></tbody>
           </table>
           <div id="loadersEmptyState" class="empty-state" style="display:none;"></div>
+        </div>
+      </section>
+
+      <!-- INTERNAL SALES TEAM -->
+      <section id="view-internalsales" class="view" style="display:none;">
+        <div class="topbar">
+          <div>
+            <h1>Internal Sales Team</h1>
+            <p class="subtext">Our own sales people &mdash; what they are paid, who they report to, and what they can see. Everyone here is a CRM login, so leads, cold leads and tasks can be assigned straight to them.</p>
+          </div>
+          <button class="btn btn-accent" id="addInternalSalesBtn">+ Add Sales Person</button>
+        </div>
+
+        <div class="cards-row" id="internalSalesStats"></div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h2 id="internalSalesCount">The team</h2>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <select id="internalSalesActiveFilter" style="width:auto;min-width:120px;">
+                <option value="active">Active</option>
+                <option value="all">All</option>
+                <option value="inactive">Inactive</option>
+              </select>
+              <input class="search-input" placeholder="Search name, title or email..." id="internalSalesSearch">
+            </div>
+          </div>
+          <table>
+            <thead><tr><th>Name</th><th>Title</th><th>Classification</th><th>Pay</th><th>Open leads</th><th></th></tr></thead>
+            <tbody id="internalSalesTableBody"></tbody>
+          </table>
+          <div id="internalSalesEmptyState" class="empty-state" style="display:none;"></div>
         </div>
       </section>
 
@@ -3118,6 +3154,11 @@
   <div class="drawer" id="loaderDrawer"></div>
 </div>
 
+<!-- ================= DRAWER: INTERNAL SALES PERSON ================= -->
+<div class="overlay" id="internalSalesOverlay">
+  <div class="drawer" id="internalSalesDrawer" style="width:560px;"></div>
+</div>
+
 <!-- ================= DRAWER: AGREEMENT TEMPLATE (add/edit) ================= -->
 <div class="overlay" id="templateOverlay">
   <div class="drawer" id="templateDrawer" style="width:640px;"></div>
@@ -3322,7 +3363,35 @@ const DEFAULT_ROLES = {
 let CUSTOM_ROLES = {};
 let ROLES = Object.assign({}, DEFAULT_ROLES, CUSTOM_ROLES);
 function rebuildRoles(){ ROLES = Object.assign({}, DEFAULT_ROLES, CUSTOM_ROLES); }
-function roleOf(user){ return ROLES[user.role] || ROLES.in_house_sales; }
+// A person's access is their role plus anything granted to them
+// individually (users.extra_perms, database/70_internal_management_and_grants.sql).
+// Merged here, in the one place every permission check already goes through,
+// so all sixty-odd call sites get it without being touched. The database does
+// the same merge inside current_app_perms() — this mirrors it so the UI shows
+// exactly what RLS will actually allow.
+function roleOf(user){
+  const base = ROLES[(user && user.role)] || ROLES.in_house_sales;
+  const extra = user && user.extra_perms;
+  if(!extra || typeof extra !== 'object' || !Object.keys(extra).length) return base;
+  return Object.assign({}, base, { perms: Object.assign({}, base.perms, extra) });
+}
+
+// Only ever writes granted keys, as true. A permission left unticked is
+// absent rather than false, so a grant can add access and never silently
+// take away something the role itself allows.
+const GRANTABLE_PERMS = [
+  { key:'fullDashboard',   label:'See all records, not just their own',
+    note:'Turns a scoped portal login into a full internal view. The biggest one on this list.' },
+  { key:'viewAllLeads',    label:'See every lead',
+    note:'Leads created by other people, not only their own and the ones that came in through forms.' },
+  { key:'viewAllPartners', label:'View all partner records' },
+  { key:'editPartners',    label:'Edit partner records' },
+  { key:'viewBanking',     label:'View banking details' },
+  { key:'manageAutomation',label:'Manage automatic follow-up scheduling' },
+  { key:'manageSettings',  label:'Manage settings' },
+  { key:'manageUsers',     label:'Manage users',
+    note:'Includes granting access like this to anyone else. Hand out sparingly.' },
+];
 
 async function loadCustomRolesFromSupabase(){
   const { data, error } = await supa.from('roles').select('*').eq('is_custom', true);
@@ -4585,7 +4654,9 @@ let calFilter = 'all';
 // Safe placeholder until real login resolves — enterAppAsAuthUser() replaces
 // this with the actual logged-in user's row from Supabase.
 let currentUser = { id:null, name:'', email:'', brands:['epay'], role:'in_house_sales' };
-const ADMIN_ONLY_VIEWS = ['aiscraper', 'coldemail', 'newsletter'];
+// internalsales shows salaries, so it follows the same rule the
+// internal_sales_comp policies enforce: whoever manages users.
+const ADMIN_ONLY_VIEWS = ['aiscraper', 'coldemail', 'newsletter', 'internalsales'];
 // 'applications' is deliberately NOT in here. Application links can be
 // created for either brand — most of the ones in use are Envision ATM — and
 // the submissions all land in the same table. Hiding the tab on ATM meant an
@@ -4830,6 +4901,10 @@ function applyRolePermissions(){
   if(teamStructureNav) teamStructureNav.style.display = perms.viewAllPartners ? 'flex' : 'none';
 
   // AI Lead Scraper and Cold Email are admin-only (further gated to EPAY POS brand in setBrand)
+  // Salaries: same audience as the internal_sales_comp policies allow.
+  const navInternalSales = document.getElementById('navInternalSalesItem');
+  if(navInternalSales) navInternalSales.style.display = perms.manageUsers ? 'flex' : 'none';
+
   // Agreements is staff-only for now: sending a contract goes through the
   // send-email function, which refuses anyone without fullDashboard, so an
   // agent would get a tab whose only button always failed.
@@ -5203,6 +5278,7 @@ async function enterAppAsAuthUser(authUser){
     loadApplicationLinksFromSupabase(),
     loadIntegrationsFromSupabase(),
     loadContactsFromSupabase(),
+    loadInternalSalesCompFromSupabase(),
     loadAgreementTemplatesFromSupabase(),
     loadSignatureRequestsFromSupabase()
   ]);
@@ -5233,10 +5309,11 @@ async function enterAppAsAuthUser(authUser){
     lendingLeadCallNotes, isoLeads, isoLeadNotes, isoLeadCallNotes,
     newsletters, nlTemplates, connectedCalendars,
     calendarEvents, bookingLinks, bookingAvailability, notifications, tasks, coldOutreach, residualPayouts, atmLoaders, instantlyContacts, partnerDocuments, applicationLinks,
-    integrationsFromDb, contacts, agreementTemplates, signatureRequests
+    integrationsFromDb, contacts, internalSalesComp, agreementTemplates, signatureRequests
   ] = await tablesPromise;
 
   USERS = users;
+  INTERNAL_SALES_COMP = internalSalesComp;
   AGREEMENT_TEMPLATES = agreementTemplates;
   SIGNATURE_REQUESTS = signatureRequests;
   PARTNERS = partners;
@@ -8523,6 +8600,7 @@ function refreshActiveView(){
     else if(view === 'agents')      renderAgentsTable();
     else if(view === 'contacts')    renderContacts();
     else if(view === 'loaders')     renderLoaders();
+    else if(view === 'internalsales')renderInternalSales();
     else if(view === 'followups')   renderFollowups();
     else if(view === 'dashboard')   renderDashboard();
     else if(view === 'calendar')    renderCalendar();
@@ -8574,6 +8652,7 @@ function showView(view, fromHistory){
   if(view === 'settings'){ renderUsersTable(); renderRolesTable(); renderIntegrationsList(); renderConnectedCalendarsList(); renderApplicationLinksTable(); }
   if(view === 'agents') renderAgentsTable();
   if(view === 'loaders') renderLoaders();
+  if(view === 'internalsales') renderInternalSales();
   if(view === 'contacts') renderContacts();
   if(view === 'authresellers') renderResellersTable();
   if(view === 'coldleads') renderColdLeadsTable();
@@ -11822,6 +11901,8 @@ function openUserForm(userId){
         </select>
         <p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">Builds the reporting structure shown in the hierarchy view below.</p>
       </div>
+
+      ${roleOf(currentUser).perms.manageUsers ? extraPermsFieldHtml(editing) : ''}
     </div>
     <div class="drawer-footer">
       ${editing ? `<button class="btn" style="flex:1;color:var(--red);" onclick="deleteUser('${editing.id}')">Delete</button>` : `<button class="btn" style="flex:1;" onclick="closeUserDrawer()">Cancel</button>`}
@@ -11844,7 +11925,68 @@ function readUserFormFields(){
   const manager_id = document.getElementById('uManager').value || null;
   if(!name || !email) return null;
   const brands = access === 'both' ? ['epay','atm'] : [access];
-  return { name, email, brands, role, manager_id };
+  const fields = { name, email, brands, role, manager_id };
+  // Absent unless the grants block was actually on screen — a user edited by
+  // someone without manageUsers must not have their grants wiped to {}.
+  const grants = readExtraPermsFields('extraPermsBox');
+  if(grants) fields.extra_perms = grants;
+  return fields;
+}
+
+/* -------------------------------------------------------------------------
+   PER-PERSON ACCESS GRANTS
+   What their role already gives them is shown ticked and locked — it is not
+   this screen's to take away. Everything else is a switch, and switching one
+   on grants it to this person alone.
+   ------------------------------------------------------------------------- */
+// boxId, because two drawers render this block (Settings -> Users and
+// Internal Sales). With one shared id, getElementById returns whichever was
+// rendered first in the document, and saving from one drawer would read the
+// other one's ticks.
+function extraPermsFieldHtml(editing, boxId){
+  const roleKey = editing ? editing.role : 'in_house_sales';
+  const rolePerms = (ROLES[roleKey] || {}).perms || {};
+  const granted = (editing && editing.extra_perms) || {};
+
+  return `
+    <h3 style="font-size:14px;margin:24px 0 6px;">Access for this person</h3>
+    <p style="font-size:11.5px;color:var(--slate-500);margin:0 0 12px;">
+      On top of what their classification allows. Anything already ticked and greyed out comes from the
+      role itself &mdash; change that in Settings &rarr; Roles &amp; Permissions. These apply to this one
+      person, and the database enforces them, not just the screen.
+    </p>
+    <div id="${boxId || 'extraPermsBox'}" style="background:var(--surface-3);border:1px solid var(--line);border-radius:10px;padding:4px 13px 10px;">
+      ${GRANTABLE_PERMS.map(p => {
+        const fromRole = rolePerms[p.key] === true;
+        const on = fromRole || granted[p.key] === true;
+        return `
+        <label style="display:flex;gap:9px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--line);cursor:${fromRole?'default':'pointer'};">
+          <input type="checkbox" data-grant-key="${p.key}" ${on?'checked':''} ${fromRole?'disabled':''}
+            style="width:15px;height:15px;margin-top:2px;flex:0 0 auto;">
+          <span style="flex:1;">
+            <span style="font-size:12.5px;font-weight:500;color:${fromRole?'var(--slate-500)':'var(--navy-500)'};">${p.label}</span>
+            ${fromRole ? '<span style="font-size:10.5px;color:var(--slate-300);"> &middot; from their role</span>' : ''}
+            ${p.note ? `<div style="font-size:10.5px;color:var(--slate-300);margin-top:2px;line-height:1.45;">${p.note}</div>` : ''}
+          </span>
+        </label>`;
+      }).join('')}
+      <p style="font-size:10.5px;color:var(--slate-300);margin:10px 0 0;line-height:1.5;">
+        An Agent, ISO or Referral Partner with nothing ticked here stays inside their own records, exactly as before.
+      </p>
+    </div>`;
+}
+
+// null when the block was not rendered, so the caller can leave the column
+// alone rather than writing an empty object over someone's grants.
+function readExtraPermsFields(boxId){
+  const box = document.getElementById(boxId || 'extraPermsBox');
+  if(!box) return null;
+  const out = {};
+  box.querySelectorAll('[data-grant-key]').forEach(el => {
+    if(el.disabled) return;          // comes from the role; not stored per person
+    if(el.checked) out[el.dataset.grantKey] = true;
+  });
+  return out;
 }
 async function saveNewUser(){
   const fields = readUserFormFields();
@@ -19698,6 +19840,334 @@ async function createTaskFromNote(prefix, kind, recordId, noteText, mode){
   return true;
 }
 
+
+/* =========================================================================
+   INTERNAL SALES TEAM  (database/70_internal_management_and_grants.sql)
+
+   The Agents page, for our own people. The difference that matters: an
+   agent is a partner record with a login hanging off it, while an internal
+   sales person IS the login — so everyone on this page can be assigned a
+   lead, a cold lead or a task the moment they are added, with no second
+   identity to keep in step.
+
+   Pay lives in its own table rather than on users: every logged-in user
+   loads the users list to populate the assignment dropdowns, and a salary
+   is not something an agent should be able to read out of it.
+   ========================================================================= */
+let INTERNAL_SALES_COMP = [];
+let internalSalesSearch = '';
+let internalSalesActiveFilter = 'active';
+
+async function loadInternalSalesCompFromSupabase(){
+  const { data, error } = await supa.from('internal_sales_comp').select('*');
+  if(error){ reportLoadFailure('internal sales pay', error); return []; }
+  return data || [];
+}
+
+function compFor(userId){ return INTERNAL_SALES_COMP.find(c => c.user_id === userId) || null; }
+
+// Who belongs on this page: anyone whose classification is an internal one.
+// Driven off portal_scope rather than a hard-coded list of role keys, so a
+// custom internal role (Internal Management, say) appears without a change
+// here.
+function internalSalesPeople(){
+  const q = internalSalesSearch.trim().toLowerCase();
+  return USERS.filter(u => {
+    if(roleOf(u).portal_scope !== 'internal') return false;
+    const c = compFor(u.id);
+    // Admins are internal but are not automatically sales people — listing
+    // the owner here as somebody whose pay has not been set is noise. One
+    // who does sell appears the moment they are given a pay record.
+    if(roleOf(u).perms.manageUsers && !c) return false;
+    const active = c ? c.active !== false : true;
+    if(internalSalesActiveFilter === 'active' && !active) return false;
+    if(internalSalesActiveFilter === 'inactive' && active) return false;
+    if(!q) return true;
+    return [u.name, u.email, c && c.title].some(v => (v || '').toLowerCase().includes(q));
+  }).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function money(n){
+  if(n == null || n === '') return null;
+  return '$' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
+}
+
+function paySummary(c){
+  if(!c) return '<span style="color:var(--slate-300);">Not set</span>';
+  const bits = [];
+  if(c.pay_salary && c.salary_amount != null){
+    const per = { year:'/yr', month:'/mo', week:'/wk', hour:'/hr' }[c.salary_period] || '';
+    bits.push(money(c.salary_amount) + per);
+  }
+  if(c.pay_commission && c.commission_percent != null){
+    const basis = {
+      residual:'of residual', gross_profit:'of gross profit', revenue:'of revenue',
+      deal_value:'of deal value', other:''
+    }[c.commission_basis] || '';
+    bits.push(Number(c.commission_percent) + '% ' + basis);
+  }
+  if(c.draw_amount != null && Number(c.draw_amount) > 0) bits.push(money(c.draw_amount) + ' draw');
+  return bits.length ? bits.join(' + ') : '<span style="color:var(--slate-300);">Not set</span>';
+}
+
+function renderInternalSales(){
+  const rows = internalSalesPeople();
+  const body = document.getElementById('internalSalesTableBody');
+  const empty = document.getElementById('internalSalesEmptyState');
+  if(!body) return;
+
+  const withComp = rows.filter(u => compFor(u.id));
+  const salaried = rows.filter(u => { const c = compFor(u.id); return c && c.pay_salary; }).length;
+  const onCommission = rows.filter(u => { const c = compFor(u.id); return c && c.pay_commission; }).length;
+
+  document.getElementById('internalSalesStats').innerHTML = `
+    <div class="stat-card"><div class="label">Sales people</div><div class="value">${rows.length}</div></div>
+    <div class="stat-card"><div class="label">On a salary</div><div class="value">${salaried}</div></div>
+    <div class="stat-card"><div class="label">On commission</div><div class="value">${onCommission}</div></div>
+    <div class="stat-card${rows.length - withComp.length ? ' attention' : ''}"><div class="label">Pay not set</div><div class="value">${rows.length - withComp.length}</div></div>`;
+
+  document.getElementById('internalSalesCount').textContent =
+    rows.length === 1 ? '1 sales person' : `The team (${rows.length})`;
+
+  if(rows.length === 0){
+    body.innerHTML = '';
+    empty.style.display = 'block';
+    empty.textContent = internalSalesSearch
+      ? 'Nobody matches that search.'
+      : 'No internal sales people yet. Add the first one — they get a CRM login, so you can start assigning them leads straight away.';
+    return;
+  }
+  empty.style.display = 'none';
+
+  body.innerHTML = rows.map(u => {
+    const c = compFor(u.id);
+    const openLeads = LEADS.filter(l => l.assigned_to === u.id && !l.converted_to_account).length;
+    const inactive = c && c.active === false;
+    return `
+    <tr style="cursor:pointer;${inactive ? 'opacity:.6;' : ''}" onclick="openInternalSalesDrawer('${u.id}')">
+      <td class="name-cell"><b>${escAttr(u.name)}</b>${inactive ? ' <span class="integration-status not-connected">Inactive</span>' : ''}
+        <div class="sub">${escAttr(u.email)}</div></td>
+      <td>${c && c.title ? escAttr(c.title) : '—'}</td>
+      <td><span class="pill ${rolePillClass(u.role)}">${roleOf(u).label}</span></td>
+      <td>${paySummary(c)}</td>
+      <td>${openLeads || '—'}</td>
+      <td style="text-align:right;white-space:nowrap;">
+        <button class="btn btn-xs" onclick="event.stopPropagation(); openPartnerInviteEmailPreview('${u.id}')">${u.invite_sent ? 'Resend invite' : 'Send invite'}</button>
+        <button class="btn btn-sm" onclick="event.stopPropagation(); openInternalSalesDrawer('${u.id}')">Edit</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openInternalSalesDrawer(userId){
+  const u = userId ? USERS.find(x => x.id === userId) : null;
+  const c = userId ? compFor(userId) : null;
+  const v = (o, k) => (o && o[k] != null ? String(o[k]) : '');
+  const others = USERS.filter(x => !u || x.id !== u.id).sort((a, b) => a.name.localeCompare(b.name));
+  // Internal classifications only — this page is for our own people, and an
+  // Agent or Referral Partner login belongs on Agents/ISOs instead.
+  const internalRoles = Object.keys(ROLES).filter(k => ROLES[k].portal_scope === 'internal');
+  const roleKey = u ? u.role : 'in_house_sales';
+
+  document.getElementById('internalSalesDrawer').innerHTML = `
+    <div class="drawer-head">
+      <div><h2>${u ? u.name : 'Add sales person'}</h2>
+        <span style="font-size:12px;color:var(--slate-300);">${u ? 'CRM login &middot; ' + escAttr(u.email) : 'Creates their CRM login, so they can be assigned leads right away.'}</span></div>
+      <button class="drawer-close" onclick="closeInternalSalesDrawer()">&times;</button>
+    </div>
+    <div class="drawer-body">
+      <div id="internalSalesError" style="display:none;margin-bottom:12px;padding:10px 12px;background:var(--err-bg);border:1px solid var(--err-border);border-radius:8px;color:var(--err-text);font-size:12.5px;"></div>
+
+      <div class="field"><label>Name</label>
+        <input id="isName" value="${escAttr(v(u,'name'))}" placeholder="e.g. Jordan Reyes"></div>
+      <div class="field"><label>Email</label>
+        <input id="isEmail" type="email" value="${escAttr(v(u,'email'))}" placeholder="name@epaypos.net"></div>
+      <div class="ai-search-grid">
+        <div class="field"><label>Job title <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
+          <input id="isTitle" value="${escAttr(v(c,'title'))}" placeholder="e.g. Senior Account Executive"></div>
+        <div class="field"><label>Start date <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
+          <input id="isStart" type="date" value="${escAttr(v(c,'start_date'))}"></div>
+      </div>
+
+      <div class="field">
+        <label>Classification</label>
+        <select id="isRole" onchange="document.getElementById('isRoleDesc').textContent = ROLES[this.value].description;">
+          ${internalRoles.map(k => `<option value="${k}" ${k===roleKey?'selected':''}>${escAttr(ROLES[k].label)}</option>`).join('')}
+        </select>
+        <p id="isRoleDesc" style="font-size:11.5px;color:var(--slate-500);margin:6px 0 0;">${escAttr((ROLES[roleKey] || {}).description || '')}</p>
+      </div>
+
+      <div class="ai-search-grid">
+        <div class="field"><label>Brand access</label>
+          <select id="isAccess">
+            <option value="epay" ${u && u.brands && u.brands.length===1 && u.brands[0]==='epay' ? 'selected':''}>EPAY POS only</option>
+            <option value="atm"  ${u && u.brands && u.brands.length===1 && u.brands[0]==='atm' ? 'selected':''}>Envision ATM only</option>
+            <option value="both" ${!u || (u.brands && u.brands.length===2) ? 'selected':''}>Both</option>
+          </select></div>
+        <div class="field"><label>Reports to</label>
+          <select id="isManager">
+            <option value="">No one</option>
+            ${others.map(x => `<option value="${x.id}" ${u && u.manager_id===x.id ? 'selected':''}>${escAttr(x.name)} — ${escAttr(roleOf(x).label)}</option>`).join('')}
+          </select></div>
+      </div>
+
+      <h3 style="font-size:14px;margin:24px 0 6px;">Pay</h3>
+      <p style="font-size:11.5px;color:var(--slate-500);margin:0 0 12px;">Tick whichever applies — a base plus a split is normal, so both can be on at once. Visible to you and to them, nobody else.</p>
+
+      <label class="note-task-toggle" style="margin-bottom:8px;">
+        <input type="checkbox" id="isPaySalary" ${c && c.pay_salary ? 'checked' : ''} onchange="document.getElementById('isSalaryFields').style.display = this.checked ? 'block' : 'none';">
+        <span style="font-size:12.5px;font-weight:500;color:var(--navy-500);">Salary</span>
+      </label>
+      <div id="isSalaryFields" class="note-task-fields" style="display:${c && c.pay_salary ? 'block' : 'none'};">
+        <div class="ai-search-grid">
+          <div class="field"><label>Amount</label>
+            <input id="isSalaryAmount" type="number" step="0.01" min="0" value="${escAttr(v(c,'salary_amount'))}" placeholder="65000"></div>
+          <div class="field"><label>Per</label>
+            <select id="isSalaryPeriod">
+              ${['year','month','week','hour'].map(pd => `<option value="${pd}" ${((c && c.salary_period) || 'year')===pd?'selected':''}>${({year:'Year',month:'Month',week:'Week',hour:'Hour'})[pd]}</option>`).join('')}
+            </select></div>
+        </div>
+      </div>
+
+      <label class="note-task-toggle" style="margin-bottom:8px;">
+        <input type="checkbox" id="isPayCommission" ${c && c.pay_commission ? 'checked' : ''} onchange="document.getElementById('isCommissionFields').style.display = this.checked ? 'block' : 'none';">
+        <span style="font-size:12.5px;font-weight:500;color:var(--navy-500);">Commission</span>
+      </label>
+      <div id="isCommissionFields" class="note-task-fields" style="display:${c && c.pay_commission ? 'block' : 'none'};">
+        <div class="ai-search-grid">
+          <div class="field"><label>Percentage</label>
+            <input id="isCommissionPercent" type="number" step="0.001" min="0" max="100" value="${escAttr(v(c,'commission_percent'))}" placeholder="12.5"></div>
+          <div class="field"><label>Of what</label>
+            <select id="isCommissionBasis">
+              ${[['residual','Residual'],['gross_profit','Gross profit'],['revenue','Revenue'],['deal_value','Deal value'],['other','Something else']]
+                .map(([k, lbl]) => `<option value="${k}" ${((c && c.commission_basis) || 'residual')===k?'selected':''}>${lbl}</option>`).join('')}
+            </select></div>
+        </div>
+        <p style="font-size:10.5px;color:var(--slate-300);margin:0 0 10px;">Two people can both say "12%" and mean different money. This is the half that settles it.</p>
+      </div>
+
+      <div class="field"><label>Monthly draw <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
+        <input id="isDraw" type="number" step="0.01" min="0" value="${escAttr(v(c,'draw_amount'))}" placeholder="0"></div>
+
+      <div class="field"><label>Notes <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
+        <textarea id="isNotes" rows="3" placeholder="Ramp, guarantees, anything agreed that the numbers above don't say">${escAttr(v(c,'notes'))}</textarea></div>
+
+      <div class="field"><label>Status</label>
+        <select id="isActive">
+          <option value="true" ${!c || c.active !== false ? 'selected' : ''}>Active</option>
+          <option value="false" ${c && c.active === false ? 'selected' : ''}>Inactive — no longer selling</option>
+        </select>
+        <p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">Inactive hides them from this list. It does not remove their login — use Settings &rarr; Users for that.</p>
+      </div>
+
+      ${roleOf(currentUser).perms.manageUsers ? extraPermsFieldHtml(u, 'isExtraPermsBox') : ''}
+    </div>
+    <div class="drawer-footer">
+      <button class="btn" style="flex:1;" onclick="closeInternalSalesDrawer()">Cancel</button>
+      <button class="btn btn-accent" style="flex:1;" id="isSaveBtn" onclick="saveInternalSalesPerson(${u ? `'${u.id}'` : 'null'})">${u ? 'Save changes' : 'Add sales person'}</button>
+    </div>`;
+  document.getElementById('internalSalesOverlay').classList.add('open');
+}
+
+function closeInternalSalesDrawer(){ document.getElementById('internalSalesOverlay').classList.remove('open'); }
+
+async function saveInternalSalesPerson(userId){
+  const val = id => ((document.getElementById(id) || {}).value || '').trim();
+  const checked = id => !!(document.getElementById(id) || {}).checked;
+  const num = id => { const v = val(id); return v === '' ? null : Number(v); };
+  const err = document.getElementById('internalSalesError');
+  const btn = document.getElementById('isSaveBtn');
+  err.style.display = 'none';
+  const fail = msg => { err.textContent = msg; err.style.display = 'block'; btn.disabled = false; btn.textContent = original; };
+
+  const name = val('isName');
+  const email = val('isEmail');
+  const original = btn.textContent;
+  if(!name) return fail('A name is required.');
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail('A valid email address is required — it is what they log in with.');
+  if(checked('isPaySalary') && num('isSalaryAmount') == null) return fail('Salary is ticked, so it needs an amount.');
+  if(checked('isPayCommission') && num('isCommissionPercent') == null) return fail('Commission is ticked, so it needs a percentage.');
+
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+
+  const access = val('isAccess');
+  const userFields = {
+    name, email,
+    brands: access === 'both' ? ['epay','atm'] : [access],
+    role: val('isRole') || 'in_house_sales',
+    manager_id: val('isManager') || null,
+  };
+  const grants = readExtraPermsFields('isExtraPermsBox');
+  if(grants) userFields.extra_perms = grants;
+  if(userFields.manager_id === userId) return fail("Somebody can't report to themself.");
+
+  // The login first: the pay record points at it, and a comp row for a user
+  // that failed to save would be an orphan.
+  let user;
+  if(userId){
+    const res = await supa.from('users').update(userFields).eq('id', userId).select().single();
+    if(res.error) return fail(res.error.message);
+    user = res.data;
+    const idx = USERS.findIndex(x => x.id === userId);
+    if(idx !== -1) USERS[idx] = user;
+  } else {
+    const res = await supa.from('users').insert(userFields).select().single();
+    if(res.error) return fail(res.error.message);
+    user = res.data;
+    USERS.push(user);
+  }
+
+  const comp = {
+    user_id: user.id,
+    title: val('isTitle') || null,
+    start_date: val('isStart') || null,
+    pay_salary: checked('isPaySalary'),
+    pay_commission: checked('isPayCommission'),
+    salary_amount: checked('isPaySalary') ? num('isSalaryAmount') : null,
+    salary_period: val('isSalaryPeriod') || 'year',
+    commission_percent: checked('isPayCommission') ? num('isCommissionPercent') : null,
+    commission_basis: val('isCommissionBasis') || 'residual',
+    draw_amount: num('isDraw'),
+    notes: val('isNotes') || null,
+    active: val('isActive') === 'true',
+    updated_at: new Date().toISOString(),
+  };
+
+  const existing = compFor(user.id);
+  let compRes;
+  if(existing){
+    compRes = await supa.from('internal_sales_comp').update(comp).eq('user_id', user.id).select().single();
+  } else {
+    compRes = await supa.from('internal_sales_comp')
+      .insert(Object.assign({ created_by: currentUser.id }, comp)).select().single();
+  }
+
+  btn.disabled = false;
+  btn.textContent = original;
+
+  // The login saved even if this half did not, so say which half failed
+  // rather than letting "could not save" imply nothing happened.
+  if(compRes.error){
+    err.textContent = 'Their login saved, but the pay details did not: ' + compRes.error.message;
+    err.style.display = 'block';
+    renderInternalSales();
+    return;
+  }
+
+  if(existing){
+    const i = INTERNAL_SALES_COMP.findIndex(x => x.user_id === user.id);
+    INTERNAL_SALES_COMP[i] = compRes.data;
+  } else {
+    INTERNAL_SALES_COMP.push(compRes.data);
+  }
+
+  closeInternalSalesDrawer();
+  renderInternalSales();
+  renderUsersTable();
+  showToast(userId ? 'Saved' : `${name} added — send them an invite when you're ready.`, 'success');
+}
+
 function openTaskDrawer(linkedKind, linkedId){
   const assignable = assignableUsers().slice().sort((x, y) => x.name.localeCompare(y.name));
   const internalAssignees = assignable.filter(u => roleOf(u).portal_scope === 'internal');
@@ -20164,6 +20634,13 @@ document.getElementById('calPrevBtn').addEventListener('click', function(){
 document.getElementById('calNextBtn').addEventListener('click', function(){
   calViewDate = new Date(calViewDate.getFullYear(), calViewDate.getMonth()+1, 1);
   renderCalendar();
+});
+document.getElementById('addInternalSalesBtn').addEventListener('click', function(){ openInternalSalesDrawer(null); });
+document.getElementById('internalSalesSearch').addEventListener('input', function(){
+  internalSalesSearch = this.value; renderInternalSales();
+});
+document.getElementById('internalSalesActiveFilter').addEventListener('change', function(){
+  internalSalesActiveFilter = this.value; renderInternalSales();
 });
 document.getElementById('addLoaderBtn').addEventListener('click', function(){ openLoaderDrawer(null); });
 document.getElementById('loadersStateFilter').addEventListener('change', function(){
