@@ -2550,7 +2550,7 @@
             </div>
           </div>
           <table>
-            <thead><tr><th>Name</th><th>Contact</th><th>Category</th><th>Added</th><th></th></tr></thead>
+            <thead><tr><th>Name</th><th>Contact</th><th>Category</th><th>Assigned to</th><th>Added</th><th></th></tr></thead>
             <tbody id="recruitTableBody"></tbody>
           </table>
           <div id="recruitEmptyState" class="empty-state" style="display:none;"></div>
@@ -20768,12 +20768,23 @@ function drawRecruitTable(){
       <td>${r.converted
         ? `<span class="pill pill-status-active">Converted &rarr; ${RECRUIT_CATEGORIES[r.converted_kind] || '—'}</span>`
         : (r.category ? `<span class="pill pill-agent-basic">${RECRUIT_CATEGORIES[r.category]}</span>` : '<span style="color:var(--slate-300);">Not chosen</span>')}</td>
+      <td>${r.assigned_to ? escAttr((USERS.find(u => u.id === r.assigned_to) || {}).name || '—') : '<span style="color:var(--slate-300);">—</span>'}</td>
       <td>${formatDate(r.created_at)}</td>
       <td style="text-align:right;white-space:nowrap;">
         ${r.converted ? '' : `<button class="btn btn-xs btn-accent" onclick="event.stopPropagation(); convertRecruit('${r.id}')">Convert</button>`}
         <button class="btn btn-xs" style="color:var(--red);" onclick="event.stopPropagation(); deleteRecruit('${r.id}')">Delete</button>
       </td>
     </tr>`).join('');
+}
+
+// Every login, grouped the way the task and application assignment pickers
+// group them: our own people first, then agents / ISOs / referral partners.
+function assignedToOptionsHtml(selectedId){
+  const all = USERS.slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  const mine = all.filter(u => roleOf(u).portal_scope === 'internal');
+  const partners = all.filter(u => roleOf(u).portal_scope !== 'internal');
+  return (mine.length ? `<optgroup label="Employees / internal sales">${mine.map(u => assigneeOptionHtml(u, selectedId)).join('')}</optgroup>` : '')
+       + (partners.length ? `<optgroup label="Agents, ISOs &amp; referral partners">${partners.map(u => assigneeOptionHtml(u, selectedId)).join('')}</optgroup>` : '');
 }
 
 function openRecruitDrawer(id){
@@ -20800,7 +20811,15 @@ function openRecruitDrawer(id){
           <option value="">Not chosen yet</option>
           ${Object.keys(RECRUIT_CATEGORIES).map(k => `<option value="${k}" ${(r && (r.converted ? r.converted_kind : r.category)) === k ? 'selected' : ''}>${RECRUIT_CATEGORIES[k]}</option>`).join('')}
         </select>
-        <p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">Internal Sales creates a CRM login. Agent, ISO and Referral Partner create a partner record with a portal login.</p>
+        <p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">Internal Sales creates a CRM login (needs an email). Agent, ISO and Referral Partner create a partner record, plus a portal login if there is an email.</p>
+      </div>
+      <div class="field">
+        <label>Assigned to <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
+        <select id="rcAssignedTo">
+          <option value="">Unassigned</option>
+          ${assignedToOptionsHtml(r && r.assigned_to)}
+        </select>
+        <p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">Who is working this recruit — an internal sales person, agent, ISO or referral partner.</p>
       </div>
       <div class="field"><label>Notes</label><textarea id="rcNotes" rows="4">${v('notes')}</textarea></div>
     </div>
@@ -20819,12 +20838,16 @@ async function saveRecruit(id, thenConvert){
   if(!name){ showToast('A name is required.', 'error'); return; }
   const category = document.getElementById('rcCategory').value || null;
   if(thenConvert && !category){ showToast('Choose a category first — it decides where they go.', 'error'); return; }
-  if(thenConvert && !val('rcEmail')){ showToast('An email is required to convert — it becomes their login.', 'error'); return; }
+  // Only Internal Sales needs one: that conversion creates a CRM login, and
+  // users.email is NOT NULL. A partner can be created without one and simply
+  // has no portal login until an email is added to their record.
+  if(thenConvert && category === 'internal_sales' && !val('rcEmail')){ showToast('Internal Sales needs an email — it becomes their CRM login.', 'error'); return; }
 
   const fields = {
     name, company: val('rcCompany') || null, email: val('rcEmail') || null,
     phone: val('rcPhone') || null, city: val('rcCity') || null,
     state: val('rcState').toUpperCase() || null, notes: val('rcNotes') || null,
+    assigned_to: document.getElementById('rcAssignedTo').value || null,
   };
   const existing = id ? RECRUITS.find(x => x.id === id) : null;
   if(!(existing && existing.converted)) fields.category = category;
@@ -20859,8 +20882,8 @@ async function convertRecruit(id){
   const r = RECRUITS.find(x => x.id === id);
   if(!r || r.converted) return;
   if(!r.category){ showToast('Choose a category first — open them and pick where they go.', 'error'); openRecruitDrawer(id); return; }
-  if(!r.email){ showToast('Add their email first — it becomes their login.', 'error'); openRecruitDrawer(id); return; }
-  if(USERS.some(u => (u.email || '').toLowerCase() === r.email.toLowerCase()) && r.category === 'internal_sales'){
+  if(r.category === 'internal_sales' && !r.email){ showToast('Internal Sales needs an email — it becomes their CRM login.', 'error'); openRecruitDrawer(id); return; }
+  if(r.category === 'internal_sales' && USERS.some(u => (u.email || '').toLowerCase() === r.email.toLowerCase())){
     showToast(`${r.email} already has a CRM login.`, 'error'); return;
   }
 
@@ -20877,7 +20900,7 @@ async function convertRecruit(id){
     const { data, error } = await supa.from('partners').insert({
       name: r.company || r.name,
       contact: r.name,
-      email: r.email,
+      email: r.email || '—',   // same placeholder the Add Partner form uses
       phone: r.phone || '—',
       type: r.category,
       reseller_type: r.category === 'agent' ? 'basic_payments' : null,
@@ -20907,7 +20930,7 @@ async function convertRecruit(id){
   }
   drawRecruitTable();
   const where = r.category === 'internal_sales' ? 'Internal Sales' : r.category === 'referral_partner' ? 'Referral Partners' : 'Agents/ISOs';
-  showToast(`${r.name} converted — they're now under ${where}.`, 'success');
+  showToast(`${r.name} converted — they're now under ${where}.${r.category !== 'internal_sales' && !r.email ? ' No portal login yet — add an email to their record to create one.' : ''}`, 'success');
 }
 
 document.getElementById('addRecruitBtn').addEventListener('click', () => openRecruitDrawer(null));
