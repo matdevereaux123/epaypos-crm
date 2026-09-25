@@ -14788,6 +14788,14 @@ function esignStatusPill(status){
   return `<span class="esign-status ${s}">${labels[s] || s}</span>`;
 }
 
+// 18 random bytes, the same length the column default generates. Used when
+// the app needs to know the token before the row exists.
+function randomSigningToken(){
+  const bytes = new Uint8Array(18);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 function signingUrl(token){
   return (PREFERRED_LINK_HOST || window.location.origin) + '/sign/' + encodeURIComponent(token);
 }
@@ -14820,6 +14828,129 @@ Equipment supplied under this Agreement remains the property of Company unless p
 This document, together with any schedule attached to it, is the entire agreement between the parties and replaces any prior understanding.
 
 By signing below, {{contact_name}} confirms they are authorised to enter into this Agreement on behalf of {{business_name}}.`;
+
+
+/* -------------------------------------------------------------------------
+   UPLOADED DOCUMENTS
+   A template can be the PDF that already exists rather than something
+   retyped. The file is uploaded as soon as it is chosen — so the drawer can
+   show its real size and a working Open button before anything is saved —
+   and the row records where it landed.
+   ------------------------------------------------------------------------- */
+const AGREEMENT_BUCKET = 'agreement-documents';
+const MAX_AGREEMENT_FILE_MB = 20;
+let pendingTemplateFile = null;
+
+function setTemplateSource(kind){
+  document.getElementById('tplSourceTypedTab').classList.toggle('active', kind === 'typed');
+  document.getElementById('tplSourceFileTab').classList.toggle('active', kind === 'file');
+  document.getElementById('tplTypedBox').style.display = kind === 'typed' ? 'block' : 'none';
+  document.getElementById('tplFileBox').style.display  = kind === 'file'  ? 'block' : 'none';
+}
+
+function currentTemplateSource(){
+  const tab = document.getElementById('tplSourceFileTab');
+  return (tab && tab.classList.contains('active')) ? 'file' : 'typed';
+}
+
+function fileSizeLabel(bytes){
+  if(bytes == null) return '';
+  if(bytes < 1024) return bytes + ' B';
+  if(bytes < 1024 * 1024) return Math.round(bytes / 1024) + ' KB';
+  return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+}
+
+// Reads pendingTemplateFile, which openTemplateDrawer seeds from the row
+// being edited and onTemplateFileChosen replaces after an upload.
+function templateFileStateHtml(){
+  const f = pendingTemplateFile;
+  if(!f || !f.path){
+    return `
+      <button type="button" class="btn btn-sm" style="width:100%;" onclick="document.getElementById('tplFileInput').click()">
+        Choose a PDF to upload
+      </button>`;
+  }
+  return `
+    <div style="display:flex;align-items:center;gap:11px;padding:12px 13px;background:var(--surface-3);border:1px solid var(--line);border-radius:10px;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="var(--brand-accent-2)" stroke-width="2" style="width:22px;height:22px;flex:0 0 auto;">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:12.5px;font-weight:600;color:var(--navy-500);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escAttr(f.name || 'Document.pdf')}</div>
+        <div style="font-size:10.5px;color:var(--slate-300);">${escAttr(fileSizeLabel(f.size))} &middot; uploaded</div>
+      </div>
+      <button type="button" class="btn btn-xs" onclick="openStoredDocument('${escAttr(f.path)}', '${escAttr(f.name || 'document.pdf')}')">Open</button>
+      <button type="button" class="btn btn-xs" onclick="document.getElementById('tplFileInput').click()">Replace</button>
+    </div>`;
+}
+
+async function onTemplateFileChosen(input){
+  const file = input.files && input.files[0];
+  input.value = '';
+  if(!file) return;
+
+  const state = document.getElementById('tplFileState');
+  const err = document.getElementById('templateError');
+  const fail = msg => {
+    err.textContent = msg; err.style.display = 'block';
+    state.innerHTML = templateFileStateHtml();
+  };
+
+  if(file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name)){
+    return fail('That is not a PDF. Export it from Word with Save as PDF and try again — a .doc or .docx will not open for the client without Word installed.');
+  }
+  if(file.size > MAX_AGREEMENT_FILE_MB * 1024 * 1024){
+    return fail(`That file is ${fileSizeLabel(file.size)}. The limit is ${MAX_AGREEMENT_FILE_MB} MB — a contract that big is usually a scan, and rescanning it as text keeps it readable on a phone.`);
+  }
+
+  err.style.display = 'none';
+  state.innerHTML = `<p style="font-size:12.5px;color:var(--slate-500);padding:12px 0;">Uploading ${escAttr(file.name)}…</p>`;
+
+  // A folder of its own, so replacing the file on a template never
+  // overwrites what a sent envelope already copied out of it.
+  const folder = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2);
+  const path = 'templates/' + folder + '/' + safeFileName(file.name);
+
+  const { error } = await supa.storage.from(AGREEMENT_BUCKET).upload(path, file, {
+    contentType: 'application/pdf', upsert: false
+  });
+  if(error) return fail('The upload failed: ' + error.message);
+
+  pendingTemplateFile = { path, name: file.name, type: 'application/pdf', size: file.size };
+  state.innerHTML = templateFileStateHtml();
+}
+
+// Storage rejects a fair amount of what a filename can contain, and a
+// contract named "Merchant Agreement (rev 3) – FINAL.pdf" is the norm rather
+// than the exception. The original name is kept in the row for display.
+function safeFileName(name){
+  const cleaned = String(name || 'document.pdf')
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  return cleaned.slice(-80) || 'document.pdf';
+}
+
+// The bucket is private, so this pulls the bytes with the caller's own
+// credentials and hands the browser a blob — no public URL exists to leak.
+async function fetchStoredDocument(path){
+  const { data, error } = await supa.storage.from(AGREEMENT_BUCKET).download(path);
+  if(error) return { error };
+  return { blob: data };
+}
+
+async function openStoredDocument(path, name){
+  const { blob, error } = await fetchStoredDocument(path);
+  if(error){ showToast('Could not open that document: ' + error.message, 'error'); return; }
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, '_blank');
+  if(!win){
+    // Popup blocked — fall back to a download, which is never blocked.
+    const a = document.createElement('a');
+    a.href = url; a.download = name || 'document.pdf';
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
 
 function scopedTemplates(){
   const q = templateSearch.trim().toLowerCase();
@@ -14865,7 +14996,7 @@ function renderTemplatesTable(){
     const use = templateUseCounts(t.id);
     return `
     <tr style="cursor:pointer;" onclick="openTemplateDrawer('${t.id}')">
-      <td><b>${escAttr(t.name)}</b>${t.active === false ? ' <span class="integration-status not-connected">Archived</span>' : ''}
+      <td><b>${escAttr(t.name)}</b>${t.active === false ? ' <span class="integration-status not-connected">Archived</span>' : ''}${t.source_type === 'file' ? ' <span class="esign-status draft">PDF</span>' : ''}
         ${t.description ? `<div style="font-size:11.5px;color:var(--slate-500);">${escAttr(t.description)}</div>` : ''}</td>
       <td>${catLabels[t.category] || t.category}</td>
       <td>${brandLabels[t.brand] || t.brand}</td>
@@ -14882,8 +15013,13 @@ function renderTemplatesTable(){
 function openTemplateDrawer(templateId, useStarter){
   const t = templateId ? AGREEMENT_TEMPLATES.find(x => x.id === templateId) : null;
   const v = (k, d) => (t && t[k] != null ? String(t[k]) : (d || ''));
-  const body = t ? t.body : (useStarter ? STARTER_AGREEMENT_BODY : '');
+  const body = t ? (t.body || '') : (useStarter ? STARTER_AGREEMENT_BODY : '');
   const fields = (t && Array.isArray(t.signer_fields)) ? t.signer_fields : [];
+  const sourceType = (t && t.source_type) || 'typed';
+  // Holds an upload made in this drawer before the template row is saved.
+  pendingTemplateFile = t && t.file_path
+    ? { path: t.file_path, name: t.file_name, type: t.file_type, size: t.file_size }
+    : null;
 
   document.getElementById('templateDrawer').innerHTML = `
     <div class="drawer-head">
@@ -14915,18 +15051,42 @@ function openTemplateDrawer(templateId, useStarter){
       </div>
 
       <h3 style="font-size:14px;margin:22px 0 8px;">Document</h3>
-      <p style="font-size:11.5px;color:var(--slate-500);margin:0 0 8px;">
-        Click a field to drop it in at the cursor. <span class="mono">#&nbsp;Heading</span>, <span class="mono">##&nbsp;Subheading</span>,
-        <span class="mono">-&nbsp;bullet</span> and <span class="mono">**bold**</span> all work. A signature block is added at the end automatically.
-      </p>
-      <div style="margin-bottom:8px;">
-        ${MERGE_FIELDS.map(f => `<span class="merge-chip" onclick="insertMergeField('{{${f.key}}}')" title="${escAttr(f.label)}">{{${f.key}}}</span>`).join('')}
+      <div class="sign-tabs" style="margin-bottom:14px;">
+        <button type="button" class="sign-tab ${sourceType === 'typed' ? 'active' : ''}" id="tplSourceTypedTab"
+          onclick="setTemplateSource('typed')">Type it out</button>
+        <button type="button" class="sign-tab ${sourceType === 'file' ? 'active' : ''}" id="tplSourceFileTab"
+          onclick="setTemplateSource('file')">Upload a PDF</button>
       </div>
-      <div class="field">
-        <textarea id="tplBody" rows="18" style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.6;">${escAttr(body)}</textarea>
+
+      <div id="tplTypedBox" style="display:${sourceType === 'typed' ? 'block' : 'none'};">
+        <p style="font-size:11.5px;color:var(--slate-500);margin:0 0 8px;">
+          Click a field to drop it in at the cursor. <span class="mono">#&nbsp;Heading</span>, <span class="mono">##&nbsp;Subheading</span>,
+          <span class="mono">-&nbsp;bullet</span> and <span class="mono">**bold**</span> all work. A signature block is added at the end automatically.
+        </p>
+        <div style="margin-bottom:8px;">
+          ${MERGE_FIELDS.map(f => `<span class="merge-chip" onclick="insertMergeField('{{${f.key}}}')" title="${escAttr(f.label)}">{{${f.key}}}</span>`).join('')}
+        </div>
+        <div class="field">
+          <textarea id="tplBody" rows="18" style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.6;">${escAttr(body)}</textarea>
+        </div>
+        <button class="btn btn-sm" style="width:100%;" onclick="previewTemplateBody()">Preview how it will look</button>
+        <div id="tplPreview" style="display:none;margin-top:12px;"></div>
       </div>
-      <button class="btn btn-sm" style="width:100%;" onclick="previewTemplateBody()">Preview how it will look</button>
-      <div id="tplPreview" style="display:none;margin-top:12px;"></div>
+
+      <div id="tplFileBox" style="display:${sourceType === 'file' ? 'block' : 'none'};">
+        <p style="font-size:11.5px;color:var(--slate-500);margin:0 0 10px;">
+          The contract you already have, sent as-is. PDF only &mdash; it is the one format that opens the same way on
+          every phone and laptop your client might be holding. Export from Word with Save as PDF.
+        </p>
+        <div id="tplFileState">${templateFileStateHtml()}</div>
+        <input type="file" id="tplFileInput" accept="application/pdf,.pdf" style="display:none;"
+          onchange="onTemplateFileChosen(this)">
+        <p style="font-size:10.5px;color:var(--slate-300);margin:10px 0 0;line-height:1.5;">
+          Merge fields don't apply to an uploaded file &mdash; nothing can be typed into a PDF from here. Anything the
+          signer has to fill in should be set up under &ldquo;What the signer fills in&rdquo; below, and it is recorded
+          alongside their signature.
+        </p>
+      </div>
 
       <h3 style="font-size:14px;margin:22px 0 8px;">What the signer fills in</h3>
       <p style="font-size:11.5px;color:var(--slate-500);margin:0 0 10px;">Beyond their signature. One per line, as <span class="mono">Label</span> or <span class="mono">Label*</span> to make it required.</p>
@@ -15004,15 +15164,30 @@ async function saveTemplate(templateId){
 
   const name = val('tplName');
   const body = ((document.getElementById('tplBody') || {}).value || '').trim();
+  const source = currentTemplateSource();
   if(!name){ err.textContent = 'A template name is required.'; err.style.display = 'block'; return; }
-  if(!body){ err.textContent = 'The document is empty — there is nothing to sign.'; err.style.display = 'block'; return; }
+  if(source === 'typed' && !body){
+    err.textContent = 'The document is empty — there is nothing to sign.';
+    err.style.display = 'block'; return;
+  }
+  if(source === 'file' && !(pendingTemplateFile && pendingTemplateFile.path)){
+    err.textContent = 'Choose the PDF to upload first — a file template with no file is a send button that produces nothing.';
+    err.style.display = 'block'; return;
+  }
 
   const fields = {
     name,
     description:   val('tplDesc') || null,
     category:      val('tplCategory') || 'agreement',
     brand:         val('tplBrand') || 'epay',
-    body,
+    source_type:   source,
+    // Whichever half is not in use is cleared, so switching a template from
+    // typed to uploaded cannot leave stale text behind the file.
+    body:          source === 'typed' ? body : null,
+    file_path:     source === 'file' ? pendingTemplateFile.path : null,
+    file_name:     source === 'file' ? pendingTemplateFile.name : null,
+    file_type:     source === 'file' ? (pendingTemplateFile.type || 'application/pdf') : null,
+    file_size:     source === 'file' ? pendingTemplateFile.size : null,
     signer_fields: parseSignerFields((document.getElementById('tplSignerFields') || {}).value),
     require_countersign: !!(document.getElementById('tplCountersign') || {}).checked,
     email_subject: val('tplSubject') || null,
@@ -15050,6 +15225,10 @@ async function duplicateTemplate(templateId){
   if(!t) return;
   const copy = {
     name: t.name + ' (copy)', description: t.description, category: t.category, brand: t.brand,
+    // Both copies point at the same stored file. Replacing the file on one
+    // uploads to a new folder rather than overwriting, so they stay apart.
+    source_type: t.source_type || 'typed',
+    file_path: t.file_path, file_name: t.file_name, file_type: t.file_type, file_size: t.file_size,
     body: t.body, signer_fields: t.signer_fields, require_countersign: t.require_countersign,
     email_subject: t.email_subject, email_message: t.email_message, active: t.active,
     created_by: currentUser.id,
@@ -15216,8 +15395,10 @@ function renderSendSignatureDrawer(){
 
   const rec = sendSignState.recordId ? findSignableRecord(sendSignState.recordType, sendSignState.recordId) : null;
   const ctx = mergeContextFor(sendSignState.recordType, sendSignState.recordId);
-  const missing = unresolvedMergeFields(tpl.body, ctx);
-  const preview = applyMerge(tpl.body, ctx);
+  const isFile = tpl.source_type === 'file';
+  // Nothing to merge into a PDF, so no blank-field warning to give either.
+  const missing = isFile ? [] : unresolvedMergeFields(tpl.body, ctx);
+  const preview = isFile ? '' : applyMerge(tpl.body, ctx);
 
   const defaultSubject = applyMerge(tpl.email_subject || `Please sign: ${tpl.name}`, ctx);
   const defaultMessage = applyMerge(tpl.email_message ||
@@ -15280,10 +15461,25 @@ function renderSendSignatureDrawer(){
         </div>` : ''}
 
       <h3 style="font-size:14px;margin:22px 0 10px;">What they will see</h3>
-      <div class="sign-paper" style="max-height:300px;">
-        ${renderAgreementText(preview)}
-        ${signatureBlockHtml({ brand: tpl.brand, require_countersign: tpl.require_countersign })}
-      </div>
+      ${isFile ? `
+        <div style="display:flex;align-items:center;gap:11px;padding:13px;background:var(--surface-3);border:1px solid var(--line);border-radius:10px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--brand-accent-2)" stroke-width="2" style="width:22px;height:22px;flex:0 0 auto;">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:12.5px;font-weight:600;color:var(--navy-500);">${escAttr(tpl.file_name || 'Document.pdf')}</div>
+            <div style="font-size:10.5px;color:var(--slate-300);">${escAttr(fileSizeLabel(tpl.file_size))} &middot; sent exactly as it is</div>
+          </div>
+          <button class="btn btn-xs" onclick="openStoredDocument('${escAttr(tpl.file_path)}', '${escAttr(tpl.file_name || 'document.pdf')}')">Open</button>
+        </div>
+        <p style="font-size:10.5px;color:var(--slate-300);margin:8px 0 0;line-height:1.5;">
+          They open this document, then sign underneath it on the same page. The signed copy you download afterwards is
+          this file with a signature page added, carrying their signature, the time, and the IP it came from.
+        </p>`
+      : `
+        <div class="sign-paper" style="max-height:300px;">
+          ${renderAgreementText(preview)}
+          ${signatureBlockHtml({ brand: tpl.brand, require_countersign: tpl.require_countersign })}
+        </div>`}
     </div>
     <div class="drawer-footer">
       <button class="btn" style="flex:1;" onclick="closeSendSignDrawer()">Cancel</button>
@@ -15355,10 +15551,35 @@ async function sendSignatureRequest(){
   // the document still exists with its link — resend is one click, and the
   // alternative (email first) would mean a client holding a link to a row
   // that was never written.
-  const row = {
+  const isFile = tpl.source_type === 'file';
+  let fileFields = {};
+  if(isFile){
+    // The token is generated here rather than by the column default, because
+    // the file has to be copied to envelopes/<token>/ BEFORE the row exists —
+    // an envelope pointing at the template's own file would change under
+    // somebody the day that template's PDF was replaced.
+    const token = randomSigningToken();
+    const dest = 'envelopes/' + token + '/' + safeFileName(tpl.file_name || 'document.pdf');
+    const { error: copyError } = await supa.storage.from(AGREEMENT_BUCKET).copy(tpl.file_path, dest);
+    if(copyError){
+      btn.disabled = false; btn.textContent = original;
+      err.textContent = 'The document could not be prepared for sending: ' + copyError.message;
+      err.style.display = 'block';
+      return;
+    }
+    fileFields = {
+      token,
+      file_path: dest,
+      file_name: tpl.file_name,
+      file_type: tpl.file_type || 'application/pdf',
+      file_size: tpl.file_size,
+    };
+  }
+
+  const row = Object.assign({
     template_id: tpl.id,
     title: tpl.name,
-    document_text: applyMerge(tpl.body, ctx),
+    document_text: isFile ? null : applyMerge(tpl.body, ctx),
     signer_fields: Array.isArray(tpl.signer_fields) ? tpl.signer_fields : [],
     require_initials: !!tpl.require_initials,
     require_countersign: !!tpl.require_countersign,
@@ -15376,12 +15597,15 @@ async function sendSignatureRequest(){
     sent_by: currentUser.id,
     sent_by_name: currentUser.name || null,
     sent_by_email: currentUser.email || null,
-  };
+  }, fileFields);
 
   const { data, error } = await supa.from('signature_requests').insert(row).select().single();
   if(error){
     btn.disabled = false; btn.textContent = original;
     err.textContent = error.message; err.style.display = 'block';
+    // The copy was made before the row; without this the bucket keeps a file
+    // for an envelope that never existed, under a token nothing points at.
+    if(fileFields.file_path) supa.storage.from(AGREEMENT_BUCKET).remove([fileFields.file_path]);
     return;
   }
 
@@ -15514,10 +15738,22 @@ function renderSignRequestDetail(r, events){
         </div>` : ''}
 
       ${drawerSection('sec-esign-doc-'+r.id, 'The document', `
+        ${r.file_path ? `
+          <div style="display:flex;align-items:center;gap:11px;padding:13px;background:var(--surface-3);border:1px solid var(--line);border-radius:10px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--brand-accent-2)" stroke-width="2" style="width:22px;height:22px;flex:0 0 auto;">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:12.5px;font-weight:600;color:var(--navy-500);">${escAttr(r.file_name || 'Document.pdf')}</div>
+              <div style="font-size:10.5px;color:var(--slate-300);">${escAttr(fileSizeLabel(r.file_size))} &middot; the exact file they were sent</div>
+            </div>
+            <button class="btn btn-xs" onclick="openStoredDocument('${escAttr(r.file_path)}', '${escAttr(r.file_name || 'document.pdf')}')">Open</button>
+          </div>
+          ${(r.status === 'signed' || r.countersigned_at) ? `<div class="sign-paper" style="margin-top:12px;">${signatureBlockHtml(r)}</div>` : ''}
+        ` : `
         <div class="sign-paper" style="max-height:420px;">
           ${renderAgreementText(r.document_text)}
           ${(r.status === 'signed' || r.countersigned_at) ? signatureBlockHtml(r) : ''}
-        </div>
+        </div>`}
         ${(r.signer_field_values && Object.keys(r.signer_field_values).length) ? `
           <div style="margin-top:12px;">
             <div style="font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--slate-500);margin-bottom:6px;">Filled in by the signer</div>
@@ -15526,7 +15762,7 @@ function renderSignRequestDetail(r, events){
               return `<div class="detail-row"><span class="k">${escAttr(def ? def.label : k)}</span><span class="v">${escAttr(r.signer_field_values[k])}</span></div>`;
             }).join('')}
           </div>` : ''}
-        ${r.status === 'signed' ? `<button class="btn btn-sm" style="width:100%;margin-top:12px;" onclick="printSignedCopy('${r.id}')">Print / save as PDF</button>` : ''}
+        ${r.status === 'signed' ? `<button class="btn btn-sm" style="width:100%;margin-top:12px;" onclick="printSignedCopy('${r.id}')">${r.file_path ? 'Download the signed PDF' : 'Print / save as PDF'}</button>` : ''}
       `, r.status === 'signed')}
 
       ${drawerSection('sec-esign-audit-'+r.id, 'Audit trail', `
@@ -15646,6 +15882,130 @@ async function deleteSignatureRequest(id){
 // Printing goes through a hidden iframe rather than window.open(): a popup
 // blocker silently eating the signed copy is exactly the sort of failure
 // that gets discovered in front of a merchant.
+
+/* -------------------------------------------------------------------------
+   THE SIGNED COPY OF AN UPLOADED PDF
+
+   The original file is never modified in storage: the signature page is
+   added here, in the browser, from the untouched original plus what the
+   database recorded. That way the stored document stays exactly what was
+   sent — and the signed copy can be produced again at any time from the
+   same two sources rather than being a third thing that could disagree
+   with them.
+
+   pdf-lib is loaded only when somebody actually asks for a signed copy.
+   ------------------------------------------------------------------------- */
+let pdfLibPromise = null;
+function loadPdfLib(){
+  if(window.PDFLib) return Promise.resolve(window.PDFLib);
+  if(pdfLibPromise) return pdfLibPromise;
+  pdfLibPromise = new Promise((resolve, reject) => {
+    const el = document.createElement('script');
+    el.src = 'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js';
+    el.onload = () => resolve(window.PDFLib);
+    el.onerror = () => reject(new Error('Could not load the PDF tool'));
+    document.head.appendChild(el);
+  });
+  return pdfLibPromise;
+}
+
+async function buildSignedPdf(r, events){
+  const PDFLib = await loadPdfLib();
+  const { PDFDocument, StandardFonts, rgb } = PDFLib;
+
+  const { blob, error } = await fetchStoredDocument(r.file_path);
+  if(error) throw new Error(error.message || 'The original document could not be read');
+
+  const pdf = await PDFDocument.load(await blob.arrayBuffer());
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+
+  const page = pdf.addPage([612, 792]);
+  const ink = rgb(0.08, 0.13, 0.23);
+  const grey = rgb(0.36, 0.42, 0.55);
+  let y = 740;
+  const MAX_W = 500;
+  const line = (text, opts) => {
+    const o = opts || {};
+    const size = o.size || 10;
+    const f = o.bold ? bold : font;
+    let str = String(text == null ? '' : text).replace(/[\r\n]+/g, ' ');
+    while(str && f.widthOfTextAtSize(str, size) > MAX_W) str = str.slice(0, -2);
+    page.drawText(str, { x: o.x || 56, y, size, font: f, color: o.grey ? grey : ink });
+    y -= (o.gap || 15);
+  };
+
+  line('Signature page', { size: 17, bold: true, gap: 10 });
+  line(r.title || 'Agreement', { size: 11, grey: true, gap: 26 });
+
+  line('SIGNED BY', { size: 8, grey: true, gap: 16 });
+
+  // The drawn signature goes in as an image; a typed one is written out in
+  // text, since a cursive screen font would not travel into the PDF anyway.
+  if(r.signature_image && /^data:image\/png/.test(r.signature_image)){
+    const png = await pdf.embedPng(await (await fetch(r.signature_image)).arrayBuffer());
+    const scale = Math.min(230 / png.width, 64 / png.height);
+    page.drawImage(png, { x: 56, y: y - png.height * scale + 10, width: png.width * scale, height: png.height * scale });
+    y -= (png.height * scale + 6);
+  } else {
+    line(r.signature_name || '', { size: 20, gap: 24 });
+  }
+  page.drawLine({ start: { x: 56, y: y }, end: { x: 320, y: y }, thickness: 0.8, color: ink });
+  y -= 16;
+  line(r.signature_name || r.signer_name || '', { bold: true, gap: 13 });
+  if(r.signer_title) line(r.signer_title, { size: 9, grey: true, gap: 13 });
+  line(r.signer_email || '', { size: 9, grey: true, gap: 13 });
+  line('Signed ' + esignWhen(r.signed_at) + (r.signed_ip ? '  ·  IP ' + r.signed_ip : ''), { size: 9, grey: true, gap: 26 });
+
+  if(r.countersigned_at){
+    line((r.brand === 'atm' ? 'ENVISION ATM' : 'EPAY POS'), { size: 8, grey: true, gap: 20 });
+    line(r.countersign_name || '', { size: 16, gap: 10 });
+    page.drawLine({ start: { x: 56, y: y }, end: { x: 320, y: y }, thickness: 0.8, color: ink });
+    y -= 16;
+    line(r.countersign_name || '', { bold: true, gap: 13 });
+    if(r.countersign_title) line(r.countersign_title, { size: 9, grey: true, gap: 13 });
+    line('Countersigned ' + esignWhen(r.countersigned_at), { size: 9, grey: true, gap: 24 });
+  }
+
+  y -= 10;
+  line('CERTIFICATE OF COMPLETION', { size: 8, grey: true, gap: 16 });
+  line('Document: ' + (r.file_name || r.title || ''), { size: 9, gap: 13 });
+  line('Document ID: ' + (r.id || ''), { size: 9, grey: true, gap: 13 });
+  if(r.sent_by_name) line('Sent by: ' + r.sent_by_name + (r.sent_by_email ? ' <' + r.sent_by_email + '>' : ''), { size: 9, grey: true, gap: 13 });
+  if(r.sent_at) line('Sent: ' + esignWhen(r.sent_at), { size: 9, grey: true, gap: 13 });
+
+  (events || []).forEach(e => {
+    if(y < 70) return;   // one page of trail; the full list lives in the CRM
+    line('· ' + esignWhen(e.at) + '  ' + e.event + (e.ip ? '  from ' + e.ip : ''), { size: 8.5, grey: true, gap: 12 });
+  });
+
+  if(y > 60){
+    y = 52;
+    line('Timestamps are recorded by the server. IP addresses are taken from the request, not supplied by the signer.',
+      { size: 7.5, grey: true, gap: 10 });
+  }
+
+  return await pdf.save();
+}
+
+async function downloadSignedPdf(r, events, btn){
+  const label = btn ? btn.textContent : null;
+  if(btn){ btn.disabled = true; btn.textContent = 'Building…'; }
+  try {
+    const bytes = await buildSignedPdf(r, events);
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = (r.title || 'Agreement').replace(/[^a-zA-Z0-9 ._-]+/g, '') + ' - signed.pdf';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch(e){
+    alert('The signed copy could not be built: ' + (e.message || e) + '\n\nThe original document and the signature are both safe — try again, or open the document from the record.');
+  } finally {
+    if(btn){ btn.disabled = false; btn.textContent = label; }
+  }
+}
+
 async function printSignedCopy(id){
   const [reqRes, evRes] = await Promise.all([
     supa.from('signature_requests').select('*').eq('id', id).single(),
@@ -15654,6 +16014,17 @@ async function printSignedCopy(id){
   if(reqRes.error || !reqRes.data){ showToast('Could not load the document.', 'error'); return; }
   const r = reqRes.data;
   const events = evRes.data || [];
+
+  // An uploaded contract is returned as itself with a signature page added,
+  // not re-typeset into our own layout — what they signed is the PDF.
+  if(r.file_path){
+    await downloadSignedPdf(r, events, null);
+    supa.from('signature_events').insert({
+      request_id: id, event: 'downloaded', detail: 'Signed PDF downloaded',
+      actor: currentUser.email || currentUser.name || null
+    });
+    return;
+  }
 
   const certRows = events.map(e => `
     <tr><td>${escAttr(esignWhen(e.at))}</td><td>${escAttr(e.event)}</td>
@@ -15837,8 +16208,24 @@ async function renderSignaturePage(token){
 
     ${doc.message ? `<div style="background:var(--hover);border-radius:10px;padding:13px 15px;font-size:13px;color:var(--navy-500);margin-bottom:18px;white-space:pre-wrap;">${escAttr(doc.message)}</div>` : ''}
 
-    <div class="sign-paper" id="signPaper">${renderAgreementText(doc.document_text)}</div>
-    <p class="sign-scroll-note" id="signScrollNote">Scroll to the end of the document to sign.</p>
+    ${doc.file_path ? `
+      <div id="signFileCard" style="border:1px solid var(--line);border-radius:12px;padding:16px;background:var(--surface-3);">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--brand-accent-2)" stroke-width="2" style="width:26px;height:26px;flex:0 0 auto;">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13.5px;font-weight:600;color:var(--navy-700);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escAttr(doc.file_name || 'Agreement.pdf')}</div>
+            <div style="font-size:11px;color:var(--slate-500);">${escAttr(fileSizeLabel(doc.file_size))} &middot; PDF</div>
+          </div>
+          <button type="button" class="btn btn-sm" id="signOpenDocBtn" onclick="openSignerDocument()">Open the document</button>
+        </div>
+        <div id="signPdfFrame" style="margin-top:14px;"></div>
+      </div>
+      <p class="sign-scroll-note" id="signScrollNote">Open the document to read it &mdash; then you can sign below.</p>
+    ` : `
+      <div class="sign-paper" id="signPaper">${renderAgreementText(doc.document_text)}</div>
+      <p class="sign-scroll-note" id="signScrollNote">Scroll to the end of the document to sign.</p>
+    `}
 
     <div id="signError" style="display:none;margin:14px 0 0;padding:10px 12px;background:var(--err-bg);border:1px solid var(--err-border);border-radius:8px;color:var(--err-text);font-size:12.5px;"></div>
 
@@ -15904,8 +16291,69 @@ async function renderSignaturePage(token){
     </div>`;
 
   updateTypedSignature();
-  watchSignScroll();
+  if(doc.file_path){
+    // An embedded PDF has no scroll position this page can see — it lives in
+    // the browser's own viewer — so the gate becomes an explicit act instead:
+    // they open the document, which is also worth recording on its own.
+    // Tried immediately so a laptop user sees the contract without clicking.
+    showSignerPdfInline();
+  } else {
+    watchSignScroll();
+  }
   setupSignPad();
+}
+
+/* The signer's copy is fetched with the anon key and shown from a blob, so
+   no readable URL to this document exists outside this page. The storage
+   policy (database/71) lets anon read only under envelopes/<token>/, so
+   holding the link is what grants the read — the same secret either way. */
+let signerDocBlobUrl = null;
+
+async function loadSignerDocument(){
+  if(signerDocBlobUrl) return signerDocBlobUrl;
+  const { blob, error } = await fetchStoredDocument(signPageState.doc.file_path);
+  if(error) return null;
+  signerDocBlobUrl = URL.createObjectURL(blob);
+  return signerDocBlobUrl;
+}
+
+async function showSignerPdfInline(){
+  const box = document.getElementById('signPdfFrame');
+  if(!box) return;
+  box.innerHTML = `<p style="font-size:12px;color:var(--slate-500);padding:6px 0;">Loading the document…</p>`;
+  const url = await loadSignerDocument();
+  if(!url){
+    box.innerHTML = `<p style="font-size:12px;color:var(--red);padding:6px 0;">The document could not be loaded here — use the button above to open it, or reply to the email that brought you here.</p>`;
+    return;
+  }
+  box.innerHTML = `
+    <iframe src="${url}#view=FitH" title="Document" style="width:100%;height:420px;border:1px solid var(--line);border-radius:8px;background:#fff;"></iframe>
+    <p style="font-size:10.5px;color:var(--slate-300);margin:6px 0 0;">Not showing? Use “Open the document” above — some phones open PDFs in their own viewer.</p>`;
+  unlockSignForm('You can sign below once you have read it.');
+}
+
+async function openSignerDocument(){
+  const doc = signPageState.doc;
+  const url = await loadSignerDocument();
+  if(!url){ alert('That document could not be opened. Reply to the email you received and we will send it across.'); return; }
+
+  const win = window.open(url, '_blank');
+  if(!win){
+    const a = document.createElement('a');
+    a.href = url; a.download = doc.file_name || 'agreement.pdf';
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+  supa.rpc('public_log_document_opened', { p_token: signPageState.token });
+  unlockSignForm('Document opened — you can sign below.');
+}
+
+function unlockSignForm(noteText){
+  const wrap = document.getElementById('signFormWrap');
+  const note = document.getElementById('signScrollNote');
+  if(!wrap) return;
+  wrap.style.opacity = '1';
+  wrap.style.pointerEvents = 'auto';
+  if(note && noteText){ note.textContent = noteText; note.style.color = 'var(--ok-text)'; }
 }
 
 /* The form stays disabled until the document has actually been scrolled
@@ -15922,10 +16370,7 @@ function watchSignScroll(){
   const unlock = () => {
     if(unlocked) return;
     unlocked = true;
-    wrap.style.opacity = '1';
-    wrap.style.pointerEvents = 'auto';
-    note.textContent = 'You have reached the end of the document.';
-    note.style.color = 'var(--ok-text)';
+    unlockSignForm('You have reached the end of the document.');
     paper.removeEventListener('scroll', maybeUnlock);
     window.removeEventListener('resize', maybeUnlock);
   };
@@ -16071,6 +16516,9 @@ async function submitSignature(){
   const doc = Object.assign({}, signPageState.doc, {
     status:'signed', signed_at: data.signed_at || new Date().toISOString(),
     signature_name: name, signature_image: image, signer_title: title,
+    // From the server's own reading of the request, so the copy the signer
+    // keeps shows the same IP the record does.
+    signed_ip: data.ip || null,
     signature_style: signPageState.mode === 'draw' ? 'drawn' : (signPageState.font || 'script'),
   });
   signPageState.doc = doc;
@@ -16108,6 +16556,21 @@ function renderSignedConfirmation(doc){
         Keep a copy for your records using the button below.
       </p>
     </div>
+    ${doc.file_path ? `
+      <div style="display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:12px;padding:15px;background:var(--surface-3);">
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--brand-accent-2)" stroke-width="2" style="width:24px;height:24px;flex:0 0 auto;">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:600;color:var(--navy-700);">${escAttr(doc.file_name || 'Agreement.pdf')}</div>
+          <div style="font-size:11px;color:var(--slate-500);">Signed ${escAttr(esignWhen(doc.signed_at))}</div>
+        </div>
+      </div>
+      <button class="landing-submit" style="margin-top:16px;" id="signerDownloadBtn"
+        onclick="downloadSignedPdf(signPageState.doc, null, this)">Download your signed copy</button>
+      <p style="font-size:10.5px;color:var(--slate-300);text-align:center;margin:10px 0 0;line-height:1.5;">
+        Your copy is the document you just read with a signature page added, showing your signature, the time, and the IP it was signed from.
+      </p>`
+    : `
     <div class="sign-paper" style="max-height:44vh;">
       ${renderAgreementText(doc.document_text)}
       ${signatureBlockHtml({
@@ -16120,7 +16583,7 @@ function renderSignedConfirmation(doc){
         countersign_image: doc.countersign_image,
       })}
     </div>
-    <button class="landing-submit" style="margin-top:16px;" onclick="window.print()">Print / save a copy</button>`;
+    <button class="landing-submit" style="margin-top:16px;" onclick="window.print()">Print / save a copy</button>`}`;
 }
 
 const MENU_DOTS_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>';
