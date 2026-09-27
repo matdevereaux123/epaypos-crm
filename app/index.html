@@ -298,6 +298,45 @@
   select:focus{outline:none !important; border-color:var(--brand-accent-2) !important; box-shadow:0 0 0 3px rgba(42,63,224,0.12) !important;}
   [data-brand="atm"] select:focus{box-shadow:0 0 0 3px rgba(14,159,122,0.14) !important;}
   select:disabled{opacity:.5 !important; cursor:default !important;}
+  /* ---------- MULTI-ASSIGN CHECKLIST ---------- */
+  .multi-assign{ border:1px solid var(--line); border-radius:9px; background:var(--surface-2); overflow:hidden; }
+  .ma-search{ width:100%; border:none; border-bottom:1px solid var(--line); padding:9px 12px; font-size:13px; background:var(--card); outline:none; }
+  .ma-list{ max-height:220px; overflow-y:auto; padding:4px 0; }
+  .ma-group{ padding:7px 12px 3px; font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.6px; color:var(--slate-400); }
+  .ma-row{ display:flex; align-items:center; gap:9px; padding:7px 12px; cursor:pointer; font-size:13px; }
+  .ma-row:hover{ background:var(--hover); }
+  .ma-row input{ width:15px; height:15px; flex:0 0 auto; cursor:pointer; }
+  .ma-sub{ color:var(--slate-400); font-size:11px; }
+  .ma-empty{ padding:12px; font-size:12.5px; color:var(--slate-500); margin:0; }
+
+  /* ---------- SEARCHABLE SELECT (wraps every <select> with enough options) ---------- */
+  .select-search-wrap{ position:relative; width:100%; }
+  .select-search-wrap select{ position:absolute; opacity:0; pointer-events:none; width:1px; height:1px; }
+  .select-search-btn{
+    width:100%; text-align:left; appearance:none; background-color:var(--card);
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235B6B8C' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 11px center; background-size:13px;
+    border:1.5px solid var(--line); border-radius:9px; padding:9px 34px 9px 12px;
+    font-family:'Inter',sans-serif; font-size:13px; font-weight:500; color:var(--navy-700);
+    cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    transition:border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
+  }
+  .select-search-btn.placeholder{ color:var(--placeholder); }
+  .select-search-wrap:hover .select-search-btn{ border-color:var(--brand-accent-2); background-color:var(--surface-3); }
+  .select-search-wrap.open .select-search-btn{ border-color:var(--brand-accent-2); box-shadow:0 0 0 3px rgba(42,63,224,0.12); }
+  .select-search-panel{
+    display:none; position:absolute; z-index:60; top:calc(100% + 4px); left:0; right:0;
+    background:var(--card); border:1px solid var(--line); border-radius:9px;
+    box-shadow:0 10px 30px rgba(0,0,0,.18); overflow:hidden;
+  }
+  .select-search-wrap.open .select-search-panel{ display:block; }
+  .select-search-input{ width:100%; border:none; border-bottom:1px solid var(--line); padding:9px 12px; font-size:13px; background:var(--card); color:var(--navy-700); outline:none; }
+  .select-search-options{ max-height:240px; overflow-y:auto; }
+  .select-search-opt{ padding:8px 12px; font-size:13px; cursor:pointer; }
+  .select-search-opt:hover{ background:var(--hover); }
+  .select-search-opt.sel{ background:var(--accent-soft); font-weight:600; }
+  .select-search-empty{ padding:10px 12px; font-size:12.5px; color:var(--slate-500); }
+
   select option{color:var(--navy-700); background:var(--card);}
 
   .brand-toggle{display:flex;gap:8px;margin-bottom:22px;}
@@ -13856,31 +13895,40 @@ async function saveLeadBrand(id, brand){
     : `${l.business_name} moved to ${brandLabel(brand)}.`, 'success');
 }
 
-async function saveLeadAssignment(id, userId){
+async function saveLeadAssignment(id, fieldId){
   const l = LEADS.find(x=>x.id===id); if(!l) return;
-  const assigned_to = userId || null;
-  const { error } = await supa.from('leads').update({ assigned_to }).eq('id', id);
-  if(error){ alert('Could not save: ' + error.message); return; }
+  const ids = getMultiAssignIds(fieldId);
+  const assigned_to = ids[0] || null;
+  const { error } = await supa.from('leads').update({ assigned_to, assigned_to_ids: ids }).eq('id', id);
+  if(error){ showToast('Could not save: ' + error.message, 'error'); return; }
   l.assigned_to = assigned_to;
+  l.assigned_to_ids = ids;
+  showToast('Assignment saved.', 'success');
   if(document.getElementById('view-leads').style.display !== 'none') renderLeadsBoard();
   if(document.getElementById('view-accounts').style.display !== 'none') renderAccountsTable();
 }
 
-async function saveColdLeadAssignment(id, userId){
+async function saveColdLeadAssignment(id, fieldId){
   const c = COLD_LEADS.find(x=>x.id===id); if(!c) return;
-  const assigned_to = userId || null;
-  const { error } = await supa.from('cold_leads').update({ assigned_to }).eq('id', id);
-  if(error){ alert('Could not save: ' + error.message); return; }
+  const ids = getMultiAssignIds(fieldId);
+  const assigned_to = ids[0] || null;
+  const { error } = await supa.from('cold_leads').update({ assigned_to, assigned_to_ids: ids }).eq('id', id);
+  if(error){ showToast('Could not save: ' + error.message, 'error'); return; }
   c.assigned_to = assigned_to;
+  c.assigned_to_ids = ids;
+  showToast('Assignment saved.', 'success');
   renderColdLeadsTable();
 }
 
-async function saveApplicationAssignment(id, userId){
+async function saveApplicationAssignment(id, fieldId){
   const a = APPLICATIONS.find(x=>x.id===id); if(!a) return;
-  const assigned_to = userId || null;
-  const { error } = await supa.from('applications').update({ assigned_to }).eq('id', id);
-  if(error){ alert('Could not save: ' + error.message); return; }
+  const ids = getMultiAssignIds(fieldId);
+  const assigned_to = ids[0] || null;
+  const { error } = await supa.from('applications').update({ assigned_to, assigned_to_ids: ids }).eq('id', id);
+  if(error){ showToast('Could not save: ' + error.message, 'error'); return; }
   a.assigned_to = assigned_to;
+  a.assigned_to_ids = ids;
+  showToast('Assignment saved.', 'success');
   renderApplicationsTable();
 }
 
@@ -14506,11 +14554,7 @@ async function openLeadDetail(id){
     </div>
     <div class="field" style="margin-top:12px;">
       <label>Assigned to</label>
-      <select id="leadAssignedTo" onchange="saveLeadAssignment('${l.id}', this.value)">
-        <option value="">Unassigned</option>
-        ${internalUsers.length ? `<optgroup label="Employees">${internalUsers.map(u => assigneeOptionHtml(u, l.assigned_to)).join('')}</optgroup>` : ''}
-        ${portalUsers.length ? `<optgroup label="Agents &amp; partners">${portalUsers.map(u => assigneeOptionHtml(u, l.assigned_to)).join('')}</optgroup>` : ''}
-      </select>
+      ${multiAssignHtml('leadAssignedTo_' + l.id, (l.assigned_to_ids && l.assigned_to_ids.length) ? l.assigned_to_ids : (l.assigned_to ? [l.assigned_to] : []), { maxHeight:'200px', onChange:`saveLeadAssignment('${l.id}', 'leadAssignedTo_${l.id}')` })}
       <p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">Who owns working this lead. Assigning an agent or partner is what gives them access to it — they see nothing they haven't been given.</p>
     </div>
     <div class="field" style="margin-top:12px;">
@@ -17299,11 +17343,7 @@ function applicationFormFieldsHtml(a){
   return `
     <div class="field">
       <label>Assign to <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
-      <select id="apAssignedTo">
-        <option value="">Unassigned</option>
-        ${internalAssignees.length ? `<optgroup label="Employees">${internalAssignees.map(u => assigneeOptionHtml(u, a.assigned_to)).join('')}</optgroup>` : ''}
-        ${portalAssignees.length ? `<optgroup label="Agents &amp; partners">${portalAssignees.map(u => assigneeOptionHtml(u, a.assigned_to)).join('')}</optgroup>` : ''}
-      </select>
+      ${multiAssignHtml('apAssignedTo', (a.assigned_to_ids && a.assigned_to_ids.length) ? a.assigned_to_ids : (a.assigned_to ? [a.assigned_to] : []), { maxHeight:'180px' })}
       <p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">If this application came from an agent or ISO's own work, assign it to them so it shows up in their portal.</p>
     </div>
     <h3 style="font-size:14px;margin:20px 0 12px;">Applicant</h3>
@@ -17440,7 +17480,8 @@ async function saveNewApplication(source){
     average_sale_amount: document.getElementById('apAvgSale').value.trim(),
     monthly_sales_average: document.getElementById('apMonthlySales').value.trim(),
     terms_accepted: document.getElementById('apTerms').checked,
-    assigned_to: document.getElementById('apAssignedTo').value || null,
+    assigned_to: getMultiAssignIds('apAssignedTo')[0] || null,
+    assigned_to_ids: getMultiAssignIds('apAssignedTo'),
   };
 
   // Opened via "Mark as Physical Application" from a Lead/Account/Cold Lead
@@ -17557,11 +17598,7 @@ async function openApplicationDetail(id){
 
       <div class="field" style="margin-bottom:18px;">
         <label>Assigned to</label>
-        <select id="applicationAssignedTo" onchange="saveApplicationAssignment('${a.id}', this.value)">
-          <option value="">Unassigned</option>
-          ${internalAssignees.length ? `<optgroup label="Employees">${internalAssignees.map(u => assigneeOptionHtml(u, a.assigned_to)).join('')}</optgroup>` : ''}
-          ${portalAssignees.length ? `<optgroup label="Agents &amp; partners">${portalAssignees.map(u => assigneeOptionHtml(u, a.assigned_to)).join('')}</optgroup>` : ''}
-        </select>
+        ${multiAssignHtml('applicationAssignedTo_' + a.id, (a.assigned_to_ids && a.assigned_to_ids.length) ? a.assigned_to_ids : (a.assigned_to ? [a.assigned_to] : []), { maxHeight:'200px', onChange:`saveApplicationAssignment('${a.id}', 'applicationAssignedTo_${a.id}')` })}
       </div>
 
       <hr style="border:none;border-top:1px solid var(--line);margin:16px 0;">
@@ -18319,11 +18356,7 @@ function openColdLeadDetail(id){
         ${createdByLabel(c) ? `<div class="detail-row"><span class="k">Added by</span><span class="v">${createdByLabel(c)}</span></div>` : ''}
         <div class="field" style="margin-top:12px;">
           <label>Assigned to</label>
-          <select id="coldLeadAssignedTo" onchange="saveColdLeadAssignment('${c.id}', this.value)">
-            <option value="">Unassigned</option>
-            ${internalAssignees.length ? `<optgroup label="Employees">${internalAssignees.map(u => assigneeOptionHtml(u, c.assigned_to)).join('')}</optgroup>` : ''}
-            ${portalAssignees.length ? `<optgroup label="Agents &amp; partners">${portalAssignees.map(u => assigneeOptionHtml(u, c.assigned_to)).join('')}</optgroup>` : ''}
-          </select>
+          ${multiAssignHtml('coldLeadAssignedTo_' + c.id, (c.assigned_to_ids && c.assigned_to_ids.length) ? c.assigned_to_ids : (c.assigned_to ? [c.assigned_to] : []), { maxHeight:'200px', onChange:`saveColdLeadAssignment('${c.id}', 'coldLeadAssignedTo_${c.id}')` })}
         </div>
 
         ${(c.linkedin_url || c.facebook_url || c.instagram_url) ? `
@@ -20248,7 +20281,8 @@ function stopNotificationPolling(){
 function myTasks(){
   return roleOf(currentUser).perms.fullDashboard
     ? TASKS.slice()
-    : TASKS.filter(t => t.created_by === currentUser.id || t.assigned_to === currentUser.id);
+    : TASKS.filter(t => t.created_by === currentUser.id || t.assigned_to === currentUser.id
+        || (t.assigned_to_ids || []).includes(currentUser.id));
 }
 
 function taskLinkedRecordHtml(t){
@@ -20338,10 +20372,13 @@ function taskGroups(rows){
   } else if(taskGroupBy === 'priority'){
     TASK_PRIORITY_ORDER.forEach(k => push(k, TASK_PRIORITIES[k].label + ' priority', TASK_PRIORITIES[k].color, rows.filter(t => (t.priority || 'normal') === k)));
   } else if(taskGroupBy === 'person'){
-    const ids = Array.from(new Set(rows.map(t => t.assigned_to || '')));
+    // A multi-assigned task belongs under every one of its assignees, not
+    // just the primary — the same task can show up in more than one group.
+    const idsOf = t => (t.assigned_to_ids && t.assigned_to_ids.length) ? t.assigned_to_ids : (t.assigned_to ? [t.assigned_to] : ['']);
+    const ids = Array.from(new Set(rows.flatMap(idsOf)));
     ids.map(id => ({ id, name: id === currentUser.id ? 'Me' : ((USERS.find(u => u.id === id) || {}).name || 'Unassigned') }))
        .sort((a, b) => (a.name === 'Me' ? -1 : b.name === 'Me' ? 1 : a.name.localeCompare(b.name)))
-       .forEach(p => push('p' + p.id, p.name, 'var(--brand-accent-2)', rows.filter(t => (t.assigned_to || '') === p.id)));
+       .forEach(p => push('p' + p.id, p.name, 'var(--brand-accent-2)', rows.filter(t => idsOf(t).includes(p.id))));
   } else if(taskGroupBy === 'category'){
     taskCategories().forEach(cat => push('c' + cat, cat, 'var(--brand-accent-2)', rows.filter(t => (t.category || '').trim() === cat)));
     push('cnone', 'No category', 'var(--slate-300)', rows.filter(t => !(t.category || '').trim()));
@@ -20355,7 +20392,8 @@ function taskGroups(rows){
 
 function taskRowHtml(t){
   const overdue = !t.completed && t.due_date && t.due_date < todayISO();
-  const assignee = t.assigned_to && t.assigned_to !== currentUser.id ? USERS.find(u => u.id === t.assigned_to) : null;
+  const otherIds = ((t.assigned_to_ids && t.assigned_to_ids.length) ? t.assigned_to_ids : (t.assigned_to ? [t.assigned_to] : [])).filter(id => id !== currentUser.id);
+  const assigneeLabel = assigneeSummary(otherIds);
   const pr = TASK_PRIORITIES[t.priority || 'normal'];
   const rec = taskLinkedRecordHtml(t);
   return `
@@ -20368,7 +20406,7 @@ function taskRowHtml(t){
         ${t.due_date ? `<span class="task-due${overdue ? ' overdue' : ''}">${overdue ? 'Overdue · ' : ''}${formatDate(t.due_date)}</span>` : ''}
         ${t.category ? `<span class="task-tag">${escAttr(t.category)}</span>` : ''}
         ${rec ? `<span>${rec}</span>` : ''}
-        ${assignee ? `<span>${escAttr(assignee.name)}</span>` : ''}
+        ${assigneeLabel ? `<span>${assigneeLabel}</span>` : ''}
       </div>
       ${t.notes ? `<div class="task-notes">${escAttr(t.notes)}</div>` : ''}
     </div>
@@ -20381,7 +20419,10 @@ function renderTasksList(){
   const visible = myTasks();
 
   // Person filter: only people who actually have a task in front of you.
-  const people = Array.from(new Set(visible.map(t => t.assigned_to).filter(id => id && id !== currentUser.id)))
+  const allAssigneeIds = new Set();
+  visible.forEach(t => { ((t.assigned_to_ids && t.assigned_to_ids.length) ? t.assigned_to_ids : (t.assigned_to ? [t.assigned_to] : [])).forEach(id => id && allAssigneeIds.add(id)); });
+  allAssigneeIds.delete(currentUser.id);
+  const people = Array.from(allAssigneeIds)
     .map(id => ({ id, name: (USERS.find(u => u.id === id) || {}).name || 'Someone' }))
     .sort((a, b) => a.name.localeCompare(b.name));
   if(taskPersonFilter !== 'mine' && taskPersonFilter !== 'all' && !people.some(p => p.id === taskPersonFilter)) taskPersonFilter = 'mine';
@@ -20398,8 +20439,9 @@ function renderTasksList(){
     + `<input class="search-input" id="taskSearchBox" placeholder="Search tasks..." value="${escAttr(taskSearch)}" oninput="taskSearch=this.value;renderTasksList(true)">`;
 
   let rows = visible.slice();
-  if(taskPersonFilter === 'mine') rows = rows.filter(t => t.assigned_to === currentUser.id || (!t.assigned_to && t.created_by === currentUser.id));
-  else if(taskPersonFilter !== 'all') rows = rows.filter(t => t.assigned_to === taskPersonFilter);
+  const taskHasAssignee = (t, id) => t.assigned_to === id || (t.assigned_to_ids || []).includes(id);
+  if(taskPersonFilter === 'mine') rows = rows.filter(t => taskHasAssignee(t, currentUser.id) || (!t.assigned_to && !(t.assigned_to_ids||[]).length && t.created_by === currentUser.id));
+  else if(taskPersonFilter !== 'all') rows = rows.filter(t => taskHasAssignee(t, taskPersonFilter));
   if(taskPriorityFilter !== 'all') rows = rows.filter(t => (t.priority || 'normal') === taskPriorityFilter);
   const q = taskSearch.trim().toLowerCase();
   if(q) rows = rows.filter(t => [t.title, t.notes, t.category, taskRecordLabel(t)].some(v => (v || '').toLowerCase().includes(q)));
@@ -20746,6 +20788,183 @@ async function noteOnCreate(type, id, text){
 }
 
 /* =========================================================================
+   MULTI-ASSIGN — one checklist, reused everywhere "Assign to" used to be a
+   single <select>. Backed by assigned_to_ids uuid[] (database/77_multi_assign.sql),
+   which the server keeps in step with the older single assigned_to column
+   (see that file for why the sync only ever runs one direction). Has its
+   own search box up top — the same reason every long dropdown in the app
+   gets one now (see enhanceSelectWithSearch below).
+   ========================================================================= */
+function multiAssignHtml(fieldId, selectedIds, o){
+  o = o || {};
+  selectedIds = selectedIds || [];
+  const onChangeAttr = o.onChange ? ` onchange="${o.onChange}"` : '';
+  const assignable = assignableUsers().slice().sort((a, b) => a.name.localeCompare(b.name));
+  const internal = assignable.filter(u => roleOf(u).portal_scope === 'internal');
+  const portal   = assignable.filter(u => roleOf(u).portal_scope === 'own');
+  const row = u => `
+    <label class="ma-row" data-q="${escAttr((u.name + ' ' + (u.email||'')).toLowerCase())}">
+      <input type="checkbox" value="${u.id}" ${selectedIds.includes(u.id) ? 'checked' : ''}>
+      <span>${escAttr(u.name)}${u.email ? ` <span class="ma-sub">${escAttr(u.email)}</span>` : ''}</span>
+    </label>`;
+  const groups = (internal.length ? `<div class="ma-group">Employees</div>${internal.map(row).join('')}` : '')
+               + (portal.length ? `<div class="ma-group">Agents &amp; partners</div>${portal.map(row).join('')}` : '');
+  return `
+    <div class="multi-assign" id="${fieldId}"${onChangeAttr}>
+      ${assignable.length > 6 ? `<input type="text" class="ma-search" placeholder="Search people..." oninput="filterMultiAssign('${fieldId}', this.value)">` : ''}
+      <div class="ma-list" style="${o.maxHeight ? 'max-height:' + o.maxHeight + ';overflow-y:auto;' : ''}">
+        ${groups || '<p class="ma-empty">Nobody to assign.</p>'}
+      </div>
+    </div>`;
+}
+
+function filterMultiAssign(fieldId, q){
+  q = (q || '').trim().toLowerCase();
+  const root = document.getElementById(fieldId);
+  if(!root) return;
+  let group = null, groupVisible = false;
+  Array.from(root.querySelectorAll('.ma-group, .ma-row')).forEach(el => {
+    if(el.classList.contains('ma-group')){
+      if(group) group.style.display = groupVisible ? '' : 'none';
+      group = el; groupVisible = false;
+      return;
+    }
+    const show = !q || el.dataset.q.includes(q);
+    el.style.display = show ? '' : 'none';
+    if(show) groupVisible = true;
+  });
+  if(group) group.style.display = groupVisible ? '' : 'none';
+}
+
+function getMultiAssignIds(fieldId){
+  const root = document.getElementById(fieldId);
+  if(!root) return [];
+  return Array.from(root.querySelectorAll('input:checked')).map(el => el.value);
+}
+
+// The label shown wherever a record used to print one assignee's name.
+function assigneeSummary(ids){
+  ids = ids || [];
+  if(!ids.length) return null;
+  const names = ids.map(id => (USERS.find(u => u.id === id) || {}).name).filter(Boolean);
+  if(!names.length) return null;
+  if(names.length <= 2) return names.join(' &amp; ');
+  return `${names[0]} +${names.length - 1} more`;
+}
+
+/* =========================================================================
+   SEARCHABLE SELECT — every <select> in the app gets a search box the
+   moment it has enough options to need one, with zero changes at each of
+   the ~110 places a <select> gets written. The real <select> stays in the
+   DOM and stays authoritative (same .value, same onchange, same form
+   submission) — this only replaces how it LOOKS and how an option gets
+   picked. A MutationObserver catches every select any drawer or table ever
+   injects, including ones that do not exist yet.
+   ========================================================================= */
+const SELECT_SEARCH_MIN_OPTIONS = 8;
+
+function shouldEnhanceSelect(sel){
+  if(sel.dataset.noSearch != null) return false;
+  if(sel.closest('.select-search-wrap')) return false;   // already enhanced
+  if(sel.multiple) return false;
+  return sel.options.length >= SELECT_SEARCH_MIN_OPTIONS;
+}
+
+function enhanceSelectWithSearch(sel){
+  if(!shouldEnhanceSelect(sel)) return;
+  sel.dataset.searchEnhanced = '1';
+
+  const wrap = document.createElement('div');
+  wrap.className = 'select-search-wrap';
+  sel.parentNode.insertBefore(wrap, sel);
+  wrap.appendChild(sel);
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'select-search-btn';
+  wrap.appendChild(btn);
+
+  const panel = document.createElement('div');
+  panel.className = 'select-search-panel';
+  panel.innerHTML = `<input type="text" class="select-search-input" placeholder="Search...">
+    <div class="select-search-options"></div>`;
+  wrap.appendChild(panel);
+
+  const input = panel.querySelector('.select-search-input');
+  const optsBox = panel.querySelector('.select-search-options');
+
+  function optionText(o){ return o.textContent || ''; }
+
+  function renderBtn(){
+    const o = sel.options[sel.selectedIndex];
+    btn.textContent = o ? optionText(o) : '';
+    btn.classList.toggle('placeholder', !o || !o.value);
+  }
+
+  function renderOptions(q){
+    q = (q || '').trim().toLowerCase();
+    optsBox.innerHTML = Array.from(sel.options).map((o, i) => {
+      if(q && !optionText(o).toLowerCase().includes(q)) return '';
+      return `<div class="select-search-opt${i === sel.selectedIndex ? ' sel' : ''}" data-i="${i}">${escAttr(optionText(o))}</div>`;
+    }).join('') || '<div class="select-search-empty">No matches</div>';
+  }
+
+  function open(){
+    if(wrap.classList.contains('open')) return;
+    renderOptions('');
+    wrap.classList.add('open');
+    input.value = '';
+    setTimeout(() => input.focus(), 0);
+  }
+  function close(){ wrap.classList.remove('open'); }
+
+  btn.addEventListener('click', (e) => { e.stopPropagation(); wrap.classList.contains('open') ? close() : open(); });
+  input.addEventListener('input', () => renderOptions(input.value));
+  input.addEventListener('keydown', (e) => { if(e.key === 'Escape'){ close(); btn.focus(); } });
+  optsBox.addEventListener('click', (e) => {
+    const opt = e.target.closest('.select-search-opt');
+    if(!opt) return;
+    sel.selectedIndex = Number(opt.dataset.i);
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    renderBtn();
+    close();
+  });
+  document.addEventListener('click', (e) => { if(!wrap.contains(e.target)) close(); });
+
+  // Keeps working if app code sets sel.value / rebuilds its options directly.
+  const mo = new MutationObserver(() => renderBtn());
+  mo.observe(sel, { childList: true, attributes: true, attributeFilter: ['disabled'] });
+  sel.addEventListener('change', renderBtn);
+
+  renderBtn();
+}
+
+function enhanceSelectsIn(root){
+  (root.querySelectorAll ? Array.from(root.querySelectorAll('select')) : []).forEach(enhanceSelectWithSearch);
+}
+
+function watchForNewSelects(){
+  enhanceSelectsIn(document);
+  new MutationObserver(muts => {
+    // A mutation's target is the select itself when app code repopulates an
+    // EXISTING select's options via innerHTML (the select was never
+    // "added", only its children changed) — covered by re-scanning the
+    // target, not just newly added nodes.
+    const targets = new Set();
+    muts.forEach(m => {
+      if(m.target && m.target.nodeType === 1) targets.add(m.target);
+      m.addedNodes.forEach(n => { if(n.nodeType === 1) targets.add(n); });
+    });
+    targets.forEach(n => {
+      if(n.tagName === 'SELECT') enhanceSelectWithSearch(n);
+      enhanceSelectsIn(n);
+    });
+  }).observe(document.body, { childList: true, subtree: true });
+}
+if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watchForNewSelects);
+else watchForNewSelects();
+
+/* =========================================================================
    INTERNAL SALES TEAM  (database/70_internal_management_and_grants.sql)
 
    The Agents page, for our own people. The difference that matters: an
@@ -21064,23 +21283,13 @@ function drawRecruitTable(){
       <td>${r.converted
         ? `<span class="pill pill-status-active">Converted &rarr; ${RECRUIT_CATEGORIES[r.converted_kind] || '—'}</span>`
         : (r.category ? `<span class="pill pill-agent-basic">${RECRUIT_CATEGORIES[r.category]}</span>` : '<span style="color:var(--slate-300);">Not chosen</span>')}</td>
-      <td>${r.assigned_to ? escAttr((USERS.find(u => u.id === r.assigned_to) || {}).name || '—') : '<span style="color:var(--slate-300);">—</span>'}</td>
+      <td>${assigneeSummary((r.assigned_to_ids && r.assigned_to_ids.length) ? r.assigned_to_ids : (r.assigned_to ? [r.assigned_to] : [])) || '<span style="color:var(--slate-300);">—</span>'}</td>
       <td>${formatDate(String(r.created_at).slice(0, 10))}</td>
       <td style="text-align:right;white-space:nowrap;">
         ${r.converted ? '' : `<button class="btn btn-xs btn-accent" onclick="event.stopPropagation(); convertRecruit('${r.id}')">Convert</button>`}
         <button class="btn btn-xs" style="color:var(--red);" onclick="event.stopPropagation(); deleteRecruit('${r.id}')">Delete</button>
       </td>
     </tr>`).join('');
-}
-
-// Every login, grouped the way the task and application assignment pickers
-// group them: our own people first, then agents / ISOs / referral partners.
-function assignedToOptionsHtml(selectedId){
-  const all = USERS.slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-  const mine = all.filter(u => roleOf(u).portal_scope === 'internal');
-  const partners = all.filter(u => roleOf(u).portal_scope !== 'internal');
-  return (mine.length ? `<optgroup label="Employees / internal sales">${mine.map(u => assigneeOptionHtml(u, selectedId)).join('')}</optgroup>` : '')
-       + (partners.length ? `<optgroup label="Agents, ISOs &amp; referral partners">${partners.map(u => assigneeOptionHtml(u, selectedId)).join('')}</optgroup>` : '');
 }
 
 function openRecruitDrawer(id){
@@ -21111,10 +21320,7 @@ function openRecruitDrawer(id){
       </div>
       <div class="field">
         <label>Assigned to <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
-        <select id="rcAssignedTo">
-          <option value="">Unassigned</option>
-          ${assignedToOptionsHtml(r && r.assigned_to)}
-        </select>
+        ${multiAssignHtml('rcAssignedTo', (r && r.assigned_to_ids && r.assigned_to_ids.length) ? r.assigned_to_ids : (r && r.assigned_to ? [r.assigned_to] : []), { maxHeight:'180px' })}
         <p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">Who is working this recruit — an internal sales person, agent, ISO or referral partner.</p>
       </div>
       ${recordNotesFieldHtml('recruit', r && r.id, { label:'Notes', textareaId:'rcNotes', rows:4 })}
@@ -21143,7 +21349,8 @@ async function saveRecruit(id, thenConvert){
     name, company: val('rcCompany') || null, email: val('rcEmail') || null,
     phone: val('rcPhone') || null, city: val('rcCity') || null,
     state: val('rcState').toUpperCase() || null,
-    assigned_to: document.getElementById('rcAssignedTo').value || null,
+    assigned_to: getMultiAssignIds('rcAssignedTo')[0] || null,
+    assigned_to_ids: getMultiAssignIds('rcAssignedTo'),
   };
   const firstNote = id ? '' : ((document.getElementById('rcNotes') || {}).value || '');
   const existing = id ? RECRUITS.find(x => x.id === id) : null;
@@ -21351,10 +21558,9 @@ async function saveInternalSalesPerson(userId){
 function openTaskDrawer(linkedKind, linkedId, taskId){
   const t = taskId ? TASKS.find(x => x.id === taskId) : null;
   if(taskId && !t) return;
-  const assignable = assignableUsers().slice().sort((x, y) => x.name.localeCompare(y.name));
-  const internalAssignees = assignable.filter(u => roleOf(u).portal_scope === 'internal' && u.id !== currentUser.id);
-  const portalAssignees = assignable.filter(u => roleOf(u).portal_scope === 'own' && u.id !== currentUser.id);
-  const cur = t ? (t.assigned_to || currentUser.id) : currentUser.id;
+  const curIds = t
+    ? ((t.assigned_to_ids && t.assigned_to_ids.length) ? t.assigned_to_ids : (t.assigned_to ? [t.assigned_to] : []))
+    : [currentUser.id];
 
   let linkedLabel = '';
   if(t){
@@ -21388,12 +21594,8 @@ function openTaskDrawer(linkedKind, linkedId, taskId){
       <div class="field"><label>Category <span style="color:var(--slate-300);font-weight:400;">(optional &mdash; pick one or type a new one)</span></label>
         <input id="taskCategory" list="taskCategoryList" value="${t ? escAttr(t.category || '') : ''}" placeholder="e.g. Follow-up, Paperwork, Call">
         <datalist id="taskCategoryList">${taskCategories().map(c => `<option value="${escAttr(c)}">`).join('')}</datalist></div>
-      <div class="field"><label>Assign to</label>
-        <select id="taskAssignedTo">
-          <option value="${currentUser.id}" ${cur === currentUser.id ? 'selected' : ''}>Me</option>
-          ${internalAssignees.length ? `<optgroup label="Employees">${internalAssignees.map(u => assigneeOptionHtml(u, cur)).join('')}</optgroup>` : ''}
-          ${portalAssignees.length ? `<optgroup label="Agents &amp; partners">${portalAssignees.map(u => assigneeOptionHtml(u, cur)).join('')}</optgroup>` : ''}
-        </select>
+      <div class="field"><label>Assign to <span style="color:var(--slate-300);font-weight:400;">(one or more — you don't need to add yourself if you created it)</span></label>
+        ${multiAssignHtml('taskAssignedTo', curIds, { maxHeight:'180px' })}
       </div>
       <div class="field"><label>Notes <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label><textarea id="taskNotes" rows="3">${t ? escAttr(t.notes || '') : ''}</textarea></div>
     </div>
@@ -21415,19 +21617,21 @@ async function saveTask(linkedKind, linkedId, taskId){
     due_date: document.getElementById('taskDueDate').value || null,
     priority: document.getElementById('taskPriority').value || 'normal',
     category: document.getElementById('taskCategory').value.trim() || null,
-    assigned_to: document.getElementById('taskAssignedTo').value || currentUser.id,
     notes: document.getElementById('taskNotes').value.trim() || null,
   };
+  const pickedIds = getMultiAssignIds('taskAssignedTo');
+  fields.assigned_to = pickedIds[0] || currentUser.id;
+  fields.assigned_to_ids = pickedIds.length ? pickedIds : [currentUser.id];
 
-  // Until database/76_task_organisation.sql has been run there is no priority
-  // or category column, and a save that names them fails. Saving the task
-  // without them is better than refusing to save at all.
-  const missingCols = e => e && /priority|category/.test(e.message || '') && /column|schema cache/i.test(e.message || '');
-  const dropNew = f => { const c = Object.assign({}, f); delete c.priority; delete c.category; return c; };
+  // Until the matching migration has been run there is no priority/category
+  // (76) or assigned_to_ids (77) column, and a save that names them fails.
+  // Saving the task without whichever is missing beats refusing to save.
+  const missingCols = e => e && /priority|category|assigned_to_ids/.test(e.message || '') && /column|schema cache/i.test(e.message || '');
+  const dropNew = f => { const c = Object.assign({}, f); delete c.priority; delete c.category; delete c.assigned_to_ids; return c; };
 
   if(taskId){
     let res = await supa.from('tasks').update(fields).eq('id', taskId);
-    if(missingCols(res.error)){ res = await supa.from('tasks').update(dropNew(fields)).eq('id', taskId); showToast('Saved without priority/category \u2014 run database/76_task_organisation.sql to enable them.', 'info'); }
+    if(missingCols(res.error)){ res = await supa.from('tasks').update(dropNew(fields)).eq('id', taskId); showToast('Saved, but not every field \u2014 run database/76_task_organisation.sql and database/77_multi_assign.sql to enable all of them.', 'info'); }
     if(res.error){ showToast('Could not save: ' + res.error.message, 'error'); return; }
     Object.assign(TASKS.find(x => x.id === taskId), fields);
     showToast('Task updated.', 'success');
@@ -21438,7 +21642,7 @@ async function saveTask(linkedKind, linkedId, taskId){
       linked_application_id: linkedKind === 'application' ? linkedId : null,
     });
     let res = await supa.from('tasks').insert(task).select().single();
-    if(missingCols(res.error)){ res = await supa.from('tasks').insert(dropNew(task)).select().single(); showToast('Saved without priority/category \u2014 run database/76_task_organisation.sql to enable them.', 'info'); }
+    if(missingCols(res.error)){ res = await supa.from('tasks').insert(dropNew(task)).select().single(); showToast('Saved, but not every field \u2014 run database/76_task_organisation.sql and database/77_multi_assign.sql to enable all of them.', 'info'); }
     if(res.error){ showToast('Could not save: ' + res.error.message, 'error'); return; }
     TASKS.unshift(res.data);
     showToast('Task added.', 'success');
