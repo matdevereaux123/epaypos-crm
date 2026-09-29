@@ -4869,7 +4869,26 @@ let calFilter = 'all';
 let currentUser = { id:null, name:'', email:'', brands:['epay'], role:'in_house_sales' };
 // internalsales shows salaries, so it follows the same rule the
 // internal_sales_comp policies enforce: whoever manages users.
-const ADMIN_ONLY_VIEWS = ['aiscraper', 'coldemail', 'newsletter', 'internalsales', 'recruiting', 'invoicing', 'billing'];
+const ADMIN_ONLY_VIEWS = ['aiscraper', 'coldemail', 'newsletter', 'invoicing', 'billing'];
+
+// Internal Sales and Recruiting are no longer flat admin gates — both are
+// owner-scoped now (database/79_ownership_scoping.sql), so the question is
+// not "are you an admin" but "is any of it yours".
+//
+// Internal Sales: if people report to you, you see your own team. The
+// internal_sales_comp policy draws the same line, returning your row, your
+// direct reports' rows, and everyone's only to whoever manages users.
+function canSeeInternalSales(){
+  return !!roleOf(currentUser).perms.manageUsers
+    || USERS.some(u => u.manager_id === currentUser.id);
+}
+
+// Recruiting: our own hiring pipeline, so internal staff only. A portal
+// login — an agent, ISO or referral partner — has no business in it, and
+// recruit_leads_select would hand them an empty list anyway.
+function canSeeRecruiting(){
+  return roleOf(currentUser).portal_scope === 'internal';
+}
 // 'applications' is deliberately NOT in here. Application links can be
 // created for either brand — most of the ones in use are Envision ATM — and
 // the submissions all land in the same table. Hiding the tab on ATM meant an
@@ -5124,9 +5143,9 @@ function applyRolePermissions(){
 
   // Salaries: same audience as the internal_sales_comp policies allow.
   const navInternalSales = document.getElementById('navInternalSalesItem');
-  if(navInternalSales) navInternalSales.style.display = perms.manageUsers ? 'flex' : 'none';
+  if(navInternalSales) navInternalSales.style.display = canSeeInternalSales() ? 'flex' : 'none';
   const navRecruiting = document.getElementById('navRecruitingItem');
-  if(navRecruiting) navRecruiting.style.display = perms.manageUsers ? 'flex' : 'none';
+  if(navRecruiting) navRecruiting.style.display = canSeeRecruiting() ? 'flex' : 'none';
 
   // Agreements is staff-only for now: sending a contract goes through the
   // send-email function, which refuses anyone without fullDashboard, so an
@@ -8856,6 +8875,8 @@ function showView(view, fromHistory){
   if(INTERNAL_ONLY_VIEWS.includes(view) && !roleOf(currentUser).perms.fullDashboard){
     view = 'dashboard';
   }
+  if(view === 'internalsales' && !canSeeInternalSales()) view = 'dashboard';
+  if(view === 'recruiting'    && !canSeeRecruiting())    view = 'dashboard';
   if(ATM_ONLY_VIEWS.includes(view) && currentBrand !== 'atm'){
     view = 'referrals';
   }
@@ -9076,6 +9097,16 @@ function scopedApplications(){
 
 function scopedPartnersForCurrentUser(){
   let scoped = PARTNERS.filter(p => partnerMatchesBrand(p, currentBrand));
+
+  // Mirrors partners_select in database/79_ownership_scoping.sql. RLS is what
+  // actually enforces this — nothing another user owns is even sent here —
+  // but "Preview as" renders from the admin's already-loaded list, so without
+  // the same rule repeated it would show a rep records they cannot see.
+  if(!roleOf(currentUser).perms.viewAllPartners && roleOf(currentUser).portal_scope === 'internal'){
+    const me = currentUser.id;
+    scoped = scoped.filter(p =>
+      p.assigned_to === me || p.created_by === me || (p.assigned_to_ids || []).includes(me));
+  }
   if(roleOf(currentUser).portal_scope === 'own'){
     // Match on users.linked_partner_id, which is what the RLS policy in
     // database/04_rls.sql uses too. This previously compared email addresses,
@@ -10359,6 +10390,15 @@ async function openReferralDetail(id){
       ${editableRow('ZIP', p.zip, { table:'partners', id:p.id, column:'zip', record:base, can: canEditPartners })}
 
       ${buildApplicationSectionHTML(p, decryptedPartnerSensitiveCache[p.id])}
+
+      ${roleOf(currentUser).perms.viewAllPartners ? `
+      <div class="field" style="margin-top:14px;">
+        <label>Assigned to</label>
+        ${multiAssignHtml('partnerAssignedTo_' + p.id,
+            (base.assigned_to_ids && base.assigned_to_ids.length) ? base.assigned_to_ids : (base.assigned_to ? [base.assigned_to] : []),
+            { maxHeight:'170px', onChange: `savePartnerAssignment('${p.id}')` })}
+        <p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">Who works this partner. Anyone not ticked cannot see this record at all unless they can see every partner.</p>
+      </div>` : ''}
 
       ${buildResidualsSectionHTML(p)}
 
@@ -13893,6 +13933,24 @@ async function saveLeadBrand(id, brand){
   showToast(brand === 'both'
     ? `${l.business_name} now shows on both boards.`
     : `${l.business_name} moved to ${brandLabel(brand)}.`, 'success');
+}
+
+async function savePartnerAssignment(id){
+  const p = PARTNERS.find(x => x.id === id); if(!p) return;
+  const ids = getMultiAssignIds('partnerAssignedTo_' + id);
+  const assigned_to = ids[0] || null;
+  const { error } = await supa.from('partners')
+    .update({ assigned_to, assigned_to_ids: ids }).eq('id', id);
+  if(error){ showToast('Could not save: ' + error.message, 'error'); return; }
+  p.assigned_to = assigned_to;
+  p.assigned_to_ids = ids;
+  // Unassigning yourself from a partner you cannot otherwise see removes it
+  // from your own list — say so rather than letting the row quietly vanish.
+  const stillMine = roleOf(currentUser).perms.viewAllPartners
+    || ids.includes(currentUser.id) || p.created_by === currentUser.id;
+  showToast(stillMine ? 'Assignment saved.' : 'Assignment saved — this record is no longer yours to see.', 'success');
+  renderReferralTable();
+  if(document.getElementById('view-agents').style.display !== 'none') renderAgentsTable();
 }
 
 async function saveLeadAssignment(id, fieldId){
@@ -20805,7 +20863,8 @@ function multiAssignHtml(fieldId, selectedIds, o){
   const row = u => `
     <label class="ma-row" data-q="${escAttr((u.name + ' ' + (u.email||'')).toLowerCase())}">
       <input type="checkbox" value="${u.id}" ${selectedIds.includes(u.id) ? 'checked' : ''}>
-      <span>${escAttr(u.name)}${u.email ? ` <span class="ma-sub">${escAttr(u.email)}</span>` : ''}</span>
+      <span>${escAttr(u.name)}${u.email ? ` <span class="ma-sub">${escAttr(u.email)}</span>` : ''}${
+        u.auth_id ? '' : ' <span class="ma-sub" style="color:var(--warn-text);">no login yet</span>'}</span>
     </label>`;
   const groups = (internal.length ? `<div class="ma-group">Employees</div>${internal.map(row).join('')}` : '')
                + (portal.length ? `<div class="ma-group">Agents &amp; partners</div>${portal.map(row).join('')}` : '');
@@ -20995,8 +21054,12 @@ function compFor(userId){ return INTERNAL_SALES_COMP.find(c => c.user_id === use
 // here.
 function internalSalesPeople(){
   const q = internalSalesSearch.trim().toLowerCase();
+  // A manager sees their own team; whoever manages users sees everyone.
+  // Mirrors internal_sales_comp's policy so "Preview as" stays honest.
+  const seeEveryone = !!roleOf(currentUser).perms.manageUsers;
   return USERS.filter(u => {
     if(roleOf(u).portal_scope !== 'internal') return false;
+    if(!seeEveryone && u.manager_id !== currentUser.id && u.id !== currentUser.id) return false;
     const c = compFor(u.id);
     // Admins are internal but are not automatically sales people — listing
     // the owner here as somebody whose pay has not been set is noise. One
@@ -21259,7 +21322,11 @@ async function renderRecruiting(){
 
 function drawRecruitTable(){
   const q = recruitSearch.trim().toLowerCase();
+  const seeAllRecruits = !!roleOf(currentUser).perms.viewAllPartners;
   const rows = RECRUITS.filter(r => {
+    // Same rule as recruit_leads_select (database/79_ownership_scoping.sql).
+    if(!seeAllRecruits && !(r.assigned_to === currentUser.id || r.created_by === currentUser.id
+        || (r.assigned_to_ids || []).includes(currentUser.id))) return false;
     if(recruitStatusFilter === 'open' && r.converted) return false;
     if(recruitStatusFilter === 'converted' && !r.converted) return false;
     if(!q) return true;
