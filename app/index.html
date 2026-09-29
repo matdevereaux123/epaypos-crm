@@ -4883,11 +4883,11 @@ function canSeeInternalSales(){
     || USERS.some(u => u.manager_id === currentUser.id);
 }
 
-// Recruiting: our own hiring pipeline, so internal staff only. A portal
-// login — an agent, ISO or referral partner — has no business in it, and
-// recruit_leads_select would hand them an empty list anyway.
+// Recruiting: admins only. Who we are hiring, and who has been approached,
+// is not something the sales floor should browse — not even their own slice
+// of it (database/80_recruiting_admin_only.sql, which narrows what 79 did).
 function canSeeRecruiting(){
-  return roleOf(currentUser).portal_scope === 'internal';
+  return !!roleOf(currentUser).perms.manageUsers;
 }
 // 'applications' is deliberately NOT in here. Application links can be
 // created for either brand — most of the ones in use are Envision ATM — and
@@ -12079,6 +12079,41 @@ function renderMirrorBanner(){
   `;
 }
 
+
+/* -------------------------------------------------------------------------
+   WHO CAN ACTUALLY LOG IN
+
+   invite_sent says an invite went out, which is not the same as the person
+   having accepted it. auth_id is the one that matters: no auth_id means no
+   Supabase login is attached to this row, so current_app_user_id() never
+   returns it and every RLS policy keyed on "assigned to me" misses. Work
+   assigned to such a row is invisible to the human it names.
+
+   Two rows for the same person — one invited, one not — look identical in an
+   assignee list, which is how a task can be assigned to "Mitch" and never
+   reach Mitch.
+   ------------------------------------------------------------------------- */
+function loginStateHtml(u){
+  if(u.auth_id){
+    return `<span style="font-size:11.5px;color:var(--green);">&#10003; Signed in</span>`;
+  }
+  if(u.invite_sent){
+    return `<span style="font-size:11.5px;color:var(--warn-text);">Invited ${formatDate(u.invite_sent_at)} &middot; never signed in</span>`;
+  }
+  return `<span style="font-size:11.5px;color:var(--red);">No login &mdash; cannot be reached</span>`;
+}
+
+// Same name on more than one row. Not an error on its own — two real people
+// can share a name — but it is the first thing to check when work assigned
+// to somebody never arrives.
+function duplicateUserBadge(u){
+  const name = (u.name || '').trim().toLowerCase();
+  if(!name) return '';
+  const others = USERS.filter(x => x.id !== u.id && (x.name || '').trim().toLowerCase() === name);
+  if(!others.length) return '';
+  return ` <span class="esign-status declined" title="Another record uses this name. Assigning work to the wrong one is invisible to the person.">duplicate name</span>`;
+}
+
 function renderUsersTable(){
   const toggleBtn = document.getElementById('usersViewToggleBtn');
   if(toggleBtn) toggleBtn.textContent = usersViewMode === 'flat' ? 'View as hierarchy' : 'View as list';
@@ -12101,11 +12136,11 @@ function renderUsersTable(){
         rows.push(`
           <tr onclick="openUserForm('${u.id}')">
             <td class="name-cell" style="padding-left:${14 + depth*26}px;">
-              ${depth > 0 ? `<span style="color:var(--slate-300);margin-right:6px;">↳</span>` : ''}${u.name}<div class="sub">${u.email}</div>
+              ${depth > 0 ? `<span style="color:var(--slate-300);margin-right:6px;">↳</span>` : ''}${u.name}${duplicateUserBadge(u)}<div class="sub">${u.email}</div>
             </td>
             <td><span class="pill ${rolePillClass(u.role)}">${roleOf(u).label}</span></td>
             <td><span class="pill ${u.brands.length>1 ? 'pill-agent-auth' : (u.brands[0]==='atm' ? 'pill-referral' : 'pill-agent-basic')}">${brandAccessLabel(u.brands)}</span></td>
-            <td>${u.invite_sent ? `<span style="font-size:11.5px;color:var(--green);">✓ Sent ${formatDate(u.invite_sent_at)}</span>` : `<span style="font-size:11.5px;color:var(--slate-500);">Not sent</span>`}</td>
+            <td>${loginStateHtml(u)}</td>
             <td style="text-align:right;white-space:nowrap;"><button class="btn btn-xs" onclick="event.stopPropagation(); openPartnerInviteEmailPreview('${u.id}')">${u.invite_sent ? 'Resend' : 'Send'} invite</button>${mirrorBtnHtml(u)}</td>
           </tr>`);
         renderBranch(u.id, depth + 1);
@@ -12118,10 +12153,10 @@ function renderUsersTable(){
 
   document.getElementById('usersTableBody').innerHTML = USERS.map(u => `
     <tr onclick="openUserForm('${u.id}')">
-      <td class="name-cell">${u.name}<div class="sub">${u.email}</div></td>
+      <td class="name-cell">${u.name}${duplicateUserBadge(u)}<div class="sub">${u.email}</div></td>
       <td><span class="pill ${rolePillClass(u.role)}">${roleOf(u).label}</span></td>
       <td><span class="pill ${u.brands.length>1 ? 'pill-agent-auth' : (u.brands[0]==='atm' ? 'pill-referral' : 'pill-agent-basic')}">${brandAccessLabel(u.brands)}</span></td>
-      <td>${u.invite_sent ? `<span style="font-size:11.5px;color:var(--green);">✓ Sent ${formatDate(u.invite_sent_at)}</span>` : `<span style="font-size:11.5px;color:var(--slate-500);">Not sent</span>`}</td>
+      <td>${loginStateHtml(u)}</td>
       <td style="text-align:right;white-space:nowrap;"><button class="btn btn-xs" onclick="event.stopPropagation(); openPartnerInviteEmailPreview('${u.id}')">${u.invite_sent ? 'Resend' : 'Send'} invite</button>${mirrorBtnHtml(u)}</td>
     </tr>
   `).join('');
@@ -21322,11 +21357,12 @@ async function renderRecruiting(){
 
 function drawRecruitTable(){
   const q = recruitSearch.trim().toLowerCase();
-  const seeAllRecruits = !!roleOf(currentUser).perms.viewAllPartners;
+  // Admins only, matching recruit_leads_all in
+  // database/80_recruiting_admin_only.sql. Kept here as well so Preview as
+  // shows a rep the same nothing the database would send them.
+  const seeRecruits = !!roleOf(currentUser).perms.manageUsers;
   const rows = RECRUITS.filter(r => {
-    // Same rule as recruit_leads_select (database/79_ownership_scoping.sql).
-    if(!seeAllRecruits && !(r.assigned_to === currentUser.id || r.created_by === currentUser.id
-        || (r.assigned_to_ids || []).includes(currentUser.id))) return false;
+    if(!seeRecruits) return false;
     if(recruitStatusFilter === 'open' && r.converted) return false;
     if(recruitStatusFilter === 'converted' && !r.converted) return false;
     if(!q) return true;
