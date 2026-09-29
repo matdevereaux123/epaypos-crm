@@ -4670,7 +4670,7 @@ async function emailApplicationLink(leadId){
         slug: applicationLinkSlug(label),
         label: label,
         brand: (l.brand === 'atm') ? 'atm' : 'epay',
-        created_by: currentUser.id
+        created_by: actingUser().id
       }).select().single();
       if(error){ showToast('Could not create the link: ' + error.message, 'error'); return; }
       APPLICATION_LINK_TOKENS.unshift(token);
@@ -6314,7 +6314,7 @@ async function createLeadFormToken(label, brand){
     label: label,
     brand: brand,
     kind: 'lead',
-    created_by: currentUser.id
+    created_by: actingUser().id
   }).select().single();
 }
 
@@ -6463,7 +6463,7 @@ async function createApplicationLinkForLead(leadId){
     slug: applicationLinkSlug(label),
     label: label,
     brand: (l.brand === 'atm') ? 'atm' : 'epay',
-    created_by: currentUser.id
+    created_by: actingUser().id
   }).select().single();
 
   if(error){ showToast('Could not create the link: ' + error.message, 'error'); return; }
@@ -6490,7 +6490,7 @@ async function createAndEmailApplicationLink(){
     slug: applicationLinkSlug(label),
     label: label,
     brand: brand,
-    created_by: currentUser.id
+    created_by: actingUser().id
   }).select().single();
   if(error){ showToast('Could not create the link: ' + error.message, 'error'); return; }
   APPLICATION_LINK_TOKENS.unshift(data);
@@ -6526,7 +6526,7 @@ async function createApplicationLink(){
     slug: applicationLinkSlug(label),
     label: label,
     brand: brand,
-    created_by: currentUser.id
+    created_by: actingUser().id
   }).select().single();
 
   if(error){ showToast('Could not create the link: ' + error.message, 'error'); return; }
@@ -8358,7 +8358,7 @@ async function saveLoader(loaderId){
     if(!error) Object.assign(LOADERS.find(x => x.id === loaderId), fields);
   } else {
     const res = await supa.from('atm_loaders')
-      .insert(Object.assign({ created_by: currentUser.id }, fields)).select().single();
+      .insert(Object.assign({ created_by: actingUser().id }, fields)).select().single();
     error = res.error;
     if(!error){ LOADERS.push(res.data); await noteOnCreate('loader', res.data.id, firstNote); }
   }
@@ -8415,14 +8415,21 @@ async function loadContactsFromSupabase(){
 }
 
 function buildUnifiedContactRows(){
-  const rows = CONTACTS.map(c => ({
+  // Built from the SCOPED sources, not the raw arrays. In a real session
+  // those are the same thing — RLS never sent the rest — but Preview as
+  // renders from the admin's loaded data, and reading CONTACTS/LEADS/
+  // PARTNERS directly is what made a rep's preview show the admin's own
+  // contacts. The filter below mirrors contacts_all
+  // (database/57_portal_users_can_add_records.sql).
+  const seeAllContacts = !!roleOf(currentUser).perms.fullDashboard;
+  const rows = CONTACTS.filter(c => seeAllContacts || c.created_by === currentUser.id).map(c => ({
     source: 'contact', id: c.id,
     name: c.name, business_name: c.business_name, phone: c.phone, email: c.email, notes: c.notes,
     typeKey: 'contact:' + (c.category || 'customer_facing'),
     typeLabel: CONTACT_CATEGORIES[c.category] || c.category || 'Contact',
   }));
 
-  LEADS.forEach(l => {
+  scopedLeads().forEach(l => {
     const isAccount = !!l.converted_to_account;
     rows.push({
       source: isAccount ? 'account' : 'lead', id: l.id,
@@ -8436,7 +8443,7 @@ function buildUnifiedContactRows(){
   // Only agents/resellers per this list — referral partners and ISOs are
   // a different relationship (commission, not staff/reseller) and weren't
   // asked for here.
-  PARTNERS.forEach(p => {
+  scopedPartnersForCurrentUser().forEach(p => {
     if(p.type !== 'agent') return;
     const isReseller = p.reseller_type === 'authorized_reseller';
     rows.push({
@@ -8589,7 +8596,7 @@ async function saveContact(contactId){
     if(!error) Object.assign(CONTACTS.find(x => x.id === contactId), fields);
   } else {
     const res = await supa.from('contacts')
-      .insert(Object.assign({ created_by: currentUser.id }, fields)).select().single();
+      .insert(Object.assign({ created_by: actingUser().id }, fields)).select().single();
     error = res.error;
     if(!error){ CONTACTS.push(res.data); await noteOnCreate('contact', res.data.id, firstNote); }
   }
@@ -10172,7 +10179,7 @@ async function uploadPartnerAdmitPacket(partnerId, input){
 
   const { data: doc, error } = await supa.from('partner_documents').insert({
     partner_id: partnerId, name: file.name, doc_type: 'admit_packet',
-    size_bytes: file.size, storage_path: path, uploaded_by: currentUser.email
+    size_bytes: file.size, storage_path: path, uploaded_by: actingUser().email
   }).select().single();
   if(error){ showToast('Uploaded, but the record could not be saved: ' + error.message, 'error'); return; }
 
@@ -10248,7 +10255,7 @@ async function approvePartnerOnboarding(partnerId){
   const { error } = await supa.from('partners').update({
     onboarding_status: 'active',
     onboarding_approved_at: new Date().toISOString(),
-    onboarding_approved_by: currentUser.id
+    onboarding_approved_by: actingUser().id
   }).eq('id', partnerId);
   if(error){ showToast('Could not approve: ' + error.message, 'error'); return; }
 
@@ -10619,7 +10626,7 @@ async function addNote(partnerId){
   const { data: note, error } = await supa.from('partner_notes').insert({
     partner_id: partnerId,
     text,
-    created_by: currentUser.email,
+    created_by: actingUser().email,
   }).select().single();
   if(error){ alert('Could not save note: ' + error.message); return; }
   NOTES.unshift(note);
@@ -11021,7 +11028,7 @@ async function quickCreateFuRecord(name){
         converted_to_account: false,
         converted_at: null,
         linked_partner_id: null,
-        created_by: currentUser.id
+        created_by: actingUser().id
       };
       const { data, error } = await supa.from('leads').insert(fields).select().single();
       if(error) throw error;
@@ -11107,7 +11114,7 @@ document.getElementById('fuSaveBtn').addEventListener('click', async function(){
     if(error){ alert('Could not save: ' + error.message); return; }
     p.next_follow_up = date;
     if(note){
-      const { data: newNote, error: noteErr } = await supa.from('partner_notes').insert({ partner_id: p.id, text: note, created_by: currentUser.email }).select().single();
+      const { data: newNote, error: noteErr } = await supa.from('partner_notes').insert({ partner_id: p.id, text: note, created_by: actingUser().email }).select().single();
       if(noteErr){ alert('Follow-up date saved, but could not save the note: ' + noteErr.message); }
       else NOTES.unshift(newNote);
     }
@@ -12048,17 +12055,56 @@ function userInitials(name){
    swaps currentUser). Filters Leads/Accounts to assigned_to === that
    employee, everywhere, until explicitly exited.
    ========================================================================= */
+/* -------------------------------------------------------------------------
+   PREVIEW AS
+
+   This used to filter exactly two views — the leads board and the accounts
+   table — and leave everything else rendering the admin's own data. So an
+   admin previewing a rep saw their OWN contacts, calendar and recruiting
+   list, and could reasonably conclude the rep saw them too. A preview that
+   is wrong about what somebody can see is worse than no preview.
+
+   It now swaps who the app thinks you are, so every scoping rule, nav gate
+   and permission check answers for that person — the same functions their
+   real session runs. The database is still the only thing enforcing any of
+   it; this just stops the screen disagreeing with it.
+
+   Writes stay with whoever is actually signed in: actingUser() is the real
+   account, so a record saved during a preview is not stamped as somebody
+   else's work.
+   ------------------------------------------------------------------------- */
+let realCurrentUser = null;
+
+function actingUser(){ return realCurrentUser || currentUser; }
+function isPreviewing(){ return !!realCurrentUser; }
+
 function startMirroring(userId){
   const u = USERS.find(x => x.id === userId);
   if(!u) return;
+  realCurrentUser = realCurrentUser || currentUser;
+  currentUser = u;
   mirroringUserId = userId;
-  showView('leads');
-}
-function exitMirroring(){
-  mirroringUserId = null;
+
+  // A previewed user may not have the brand currently on screen, and every
+  // brand-gated view would then redirect on its own.
+  const brands = u.brands || ['epay'];
+  if(!brands.includes(currentBrand)) setBrand(brands[0] || 'epay');
+
+  applyRolePermissions();
+  applyReportsNavVisibility();
+  showView('dashboard');
   renderMirrorBanner();
-  if(document.getElementById('view-leads').style.display !== 'none') renderLeadsBoard();
-  if(document.getElementById('view-accounts').style.display !== 'none') renderAccountsTable();
+}
+
+function exitMirroring(){
+  if(realCurrentUser){ currentUser = realCurrentUser; realCurrentUser = null; }
+  mirroringUserId = null;
+  const brands = currentUser.brands || ['epay'];
+  if(!brands.includes(currentBrand)) setBrand(brands[0] || 'epay');
+  applyRolePermissions();
+  applyReportsNavVisibility();
+  renderMirrorBanner();
+  showView('dashboard');
 }
 function renderMirrorBanner(){
   const el = document.getElementById('mirrorBanner');
@@ -12074,7 +12120,7 @@ function renderMirrorBanner(){
   el.style.display = 'flex';
   el.innerHTML = `
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="3"/><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/></svg>
-    Mirroring <b>${u.name}</b> — ${leadCount} lead${leadCount===1?'':'s'}, ${accountCount} account${accountCount===1?'':'s'} assigned to them
+    Previewing as <b>${u.name}</b> (${roleOf(u).label}) — this is their view of everything, not yours. ${leadCount} lead${leadCount===1?'':'s'}, ${accountCount} account${accountCount===1?'':'s'}. Anything saved is still saved as you
     <button class="mirror-exit" onclick="exitMirroring()">Exit mirror</button>
   `;
 }
@@ -12428,7 +12474,6 @@ function renderLeadsBoard(){
 
     const columnsHtml = ATM_LEAD_STAGES.map(stage => {
       let leadsInStage = scopedLeads().filter(l => leadStage(l) === stage.key && leadInBrand(l, 'atm') && !l.converted_to_account);
-      if(mirroringUserId) leadsInStage = leadsInStage.filter(l => l.assigned_to === mirroringUserId);
       if(q) leadsInStage = leadsInStage.filter(l => l.business_name.toLowerCase().includes(q) || l.contact_name.toLowerCase().includes(q));
       const isCollapsed = !!collapsed['atm_'+stage.key];
       const cardsHtml = leadsInStage.length ? leadsInStage.map(l => leadCardHtml(l, stage.color)).join('') : `<div class="kanban-empty">No leads in this stage</div>`;
@@ -12460,7 +12505,6 @@ function renderLeadsBoard(){
 
   const columnsHtml = phaseStages.map(stage => {
     let leadsInStage = scopedLeads().filter(l => leadStage(l) === stage.key && leadInBrand(l));
-    if(mirroringUserId) leadsInStage = leadsInStage.filter(l => l.assigned_to === mirroringUserId);
     if(q) leadsInStage = leadsInStage.filter(l => l.business_name.toLowerCase().includes(q) || l.contact_name.toLowerCase().includes(q));
     const isCollapsed = !!collapsed[stage.key];
     const cardsHtml = leadsInStage.length ? leadsInStage.map(l => leadCardHtml(l, phase.color)).join('') : `<div class="kanban-empty">No leads in this stage</div>`;
@@ -12994,7 +13038,7 @@ async function saveNewLead(){
     converted_to_account: startsConverted,
     converted_at: startsConverted ? new Date().toISOString().slice(0,10) : null,
     linked_partner_id: document.getElementById('lLinkedPartner').value || null,
-    created_by: currentUser.id,
+    created_by: actingUser().id,
   };
   const { data: lead, error } = await supa.from('leads').insert(fields).select().single();
   if(error){ alert('Could not add lead: ' + error.message); return; }
@@ -13054,7 +13098,7 @@ async function saveNewAccount(){
     converted_to_account: true,
     converted_at: today,
     linked_partner_id: document.getElementById('aaLinkedPartner').value || null,
-    created_by: currentUser.id,
+    created_by: actingUser().id,
   };
   const { data: account, error } = await supa.from('leads').insert(fields).select().single();
   if(error){ alert('Could not add account: ' + error.message); return; }
@@ -13432,7 +13476,7 @@ async function attachAccountDocument(id){
   if(uploadErr){ alert('Could not upload file: ' + uploadErr.message); return; }
   const { data: doc, error } = await supa.from('lead_documents').insert({
     lead_id: id, name: file.name, doc_type: docType, size_bytes: file.size,
-    storage_path: path, uploaded_by: currentUser.email,
+    storage_path: path, uploaded_by: actingUser().email,
   }).select().single();
   if(error){ alert('File uploaded, but could not save the record: ' + error.message); return; }
   LEAD_DOCUMENTS.unshift(doc);
@@ -15528,7 +15572,7 @@ async function saveTemplate(templateId){
     if(!error) Object.assign(AGREEMENT_TEMPLATES.find(x => x.id === templateId), fields);
   } else {
     const res = await supa.from('agreement_templates')
-      .insert(Object.assign({ created_by: currentUser.id }, fields)).select().single();
+      .insert(Object.assign({ created_by: actingUser().id }, fields)).select().single();
     error = res.error;
     if(!error) AGREEMENT_TEMPLATES.push(res.data);
   }
@@ -15553,7 +15597,7 @@ async function duplicateTemplate(templateId){
     file_path: t.file_path, file_name: t.file_name, file_type: t.file_type, file_size: t.file_size,
     body: t.body, signer_fields: t.signer_fields, require_countersign: t.require_countersign,
     email_subject: t.email_subject, email_message: t.email_message, active: t.active,
-    created_by: currentUser.id,
+    created_by: actingUser().id,
   };
   const { data, error } = await supa.from('agreement_templates').insert(copy).select().single();
   if(error){ showToast('Could not duplicate: ' + error.message, 'error'); return; }
@@ -15916,9 +15960,9 @@ async function sendSignatureRequest(){
     status: 'sent',
     sent_at: new Date().toISOString(),
     expires_at: expires,
-    sent_by: currentUser.id,
-    sent_by_name: currentUser.name || null,
-    sent_by_email: currentUser.email || null,
+    sent_by: actingUser().id,
+    sent_by_name: actingUser().name || null,
+    sent_by_email: actingUser().email || null,
   }, fileFields);
 
   const { data, error } = await supa.from('signature_requests').insert(row).select().single();
@@ -15933,7 +15977,7 @@ async function sendSignatureRequest(){
 
   await supa.from('signature_events').insert({
     request_id: data.id, event: 'created',
-    detail: 'Sent to ' + signerEmail, actor: currentUser.email || currentUser.name || null
+    detail: 'Sent to ' + signerEmail, actor: actingUser().email || actingUser().name || null
   });
 
   const sent = await sendOutboundEmail({
@@ -15952,7 +15996,7 @@ async function sendSignatureRequest(){
     request_id: data.id,
     event: sent ? 'sent' : 'send_failed',
     detail: sent ? ('Email delivered to ' + signerEmail) : 'The email could not be sent — the link is still valid and can be resent.',
-    actor: currentUser.email || currentUser.name || null
+    actor: actingUser().email || actingUser().name || null
   });
 
   // Keep the in-memory row the same shape the list query returns.
@@ -16135,7 +16179,7 @@ async function resendSignatureRequest(id){
   await supa.from('signature_requests').update({ reminder_sent_at: now }).eq('id', id);
   await supa.from('signature_events').insert({
     request_id: id, event:'reminded', detail:'Reminder sent to ' + r.signer_email,
-    actor: currentUser.email || currentUser.name || null
+    actor: actingUser().email || actingUser().name || null
   });
   r.reminder_sent_at = now;
   openSignRequestDetail(id);
@@ -16153,7 +16197,7 @@ async function voidSignatureRequest(id){
 
   await supa.from('signature_events').insert({
     request_id: id, event:'voided', detail:'Cancelled by ' + (currentUser.name || 'a user'),
-    actor: currentUser.email || currentUser.name || null
+    actor: actingUser().email || actingUser().name || null
   });
   r.status = 'voided'; r.voided_at = now;
   renderEsignTable();
@@ -16343,7 +16387,7 @@ async function printSignedCopy(id){
     await downloadSignedPdf(r, events, null);
     supa.from('signature_events').insert({
       request_id: id, event: 'downloaded', detail: 'Signed PDF downloaded',
-      actor: currentUser.email || currentUser.name || null
+      actor: actingUser().email || actingUser().name || null
     });
     return;
   }
@@ -16420,7 +16464,7 @@ async function printSignedCopy(id){
 
   supa.from('signature_events').insert({
     request_id: id, event:'downloaded', detail:'Signed copy printed',
-    actor: currentUser.email || currentUser.name || null
+    actor: actingUser().email || actingUser().name || null
   });
 }
 
@@ -17173,7 +17217,7 @@ async function duplicateLead(id){
     converted_at:     null,
     returned_to_cold_at: null,
     from_cold_lead_id: null,
-    created_by: currentUser.id
+    created_by: actingUser().id
   };
 
   const { data, error } = await supa.from('leads').insert(fields).select().single();
@@ -17211,7 +17255,7 @@ async function addLeadNote(leadId){
   const { data: note, error } = await supa.from('lead_notes').insert({
     lead_id: leadId,
     text,
-    created_by: currentUser.email,
+    created_by: actingUser().email,
   }).select().single();
   if(error){ alert('Could not save note: ' + error.message); return; }
   LEAD_NOTES.unshift(note);
@@ -17234,7 +17278,7 @@ async function addLeadCallNote(leadId){
   const { data: note, error } = await supa.from('lead_call_notes').insert({
     lead_id: leadId,
     text,
-    created_by: currentUser.email,
+    created_by: actingUser().email,
   }).select().single();
   if(error){ alert('Could not save note: ' + error.message); return; }
   LEAD_CALL_NOTES.unshift(note);
@@ -17257,7 +17301,6 @@ async function deleteLeadCallNote(noteId, leadId){
 function renderAccountsTable(filterText){
   renderMirrorBanner();
   let accounts = scopedLeads().filter(l => l.converted_to_account && leadInBrand(l));
-  if(mirroringUserId) accounts = accounts.filter(l => l.assigned_to === mirroringUserId);
   const q = (filterText || (document.getElementById('accountsSearch') ? document.getElementById('accountsSearch').value : '') || '').toLowerCase();
   const rows = accounts.filter(a => !q || a.business_name.toLowerCase().includes(q) || a.contact_name.toLowerCase().includes(q))
     .sort((a,b)=> new Date(b.converted_at) - new Date(a.converted_at));
@@ -18618,7 +18661,7 @@ async function saveNewColdLead(){
     notes: document.getElementById('clNotes').value.trim(),
     brand: (document.getElementById('clBrand') || {}).value || currentBrand,
     promoted: false,
-    created_by: currentUser.id,
+    created_by: actingUser().id,
   };
   const { data: coldLead, error } = await supa.from('cold_leads').insert(fields).select().single();
   if(error){ alert('Could not add cold lead: ' + error.message); return; }
@@ -18664,7 +18707,7 @@ async function promoteColdLead(id){
     brand: c.brand || 'epay',
     converted_to_account: false,
     converted_at: null,
-    created_by: currentUser.id,
+    created_by: actingUser().id,
   };
   fields.from_cold_lead_id = id;
   const { data: lead, error } = await supa.from('leads').insert(fields).select().single();
@@ -18745,7 +18788,7 @@ async function returnLeadToCold(leadId){
       address: l.business_address || null,
       promoted: false,
       promoted_lead_id: l.id,
-      created_by: currentUser.id
+      created_by: actingUser().id
     }).select().single();
     if(error){ showToast('Could not move it back: ' + error.message, 'error'); return; }
     COLD_LEADS.unshift(data);
@@ -18786,7 +18829,7 @@ async function createEpayLeadFromPartner(partnerId){
     converted_to_account: false,
     converted_at: null,
     business_address: p.address ? `${p.address}, ${p.city}, ${p.state}${p.zip ? ' '+p.zip : ''}` : '',
-    created_by: currentUser.id,
+    created_by: actingUser().id,
   };
   const { data: lead, error } = await supa.from('leads').insert(fields).select().single();
   if(error){ alert('Could not create lead: ' + error.message); return; }
@@ -18823,7 +18866,7 @@ async function createEpayLeadFromAtmLead(leadId){
     business_address: src.business_address || '',
     lead_source: 'Envision ATM cross-sell',
     linked_partner_id: src.linked_partner_id || null,
-    created_by: currentUser.id,
+    created_by: actingUser().id,
   };
   const { data: lead, error } = await supa.from('leads').insert(fields).select().single();
   if(error){ alert('Could not create lead: ' + error.message); return; }
@@ -19508,7 +19551,7 @@ async function pushAiResults(checked){
     linkedin_url: r.linkedin_url || '',
     facebook_url: r.facebook_url || '',
     instagram_url: r.instagram_url || '',
-    created_by: currentUser.id,
+    created_by: actingUser().id,
   }));
   const { data: saved, error } = await supa.from('cold_leads').insert(newColdLeads).select();
   if(error){ alert('Could not push to Cold Leads: ' + error.message); return; }
@@ -19590,7 +19633,7 @@ document.getElementById('syncInstantlyBtn').addEventListener('click', function()
       source: c.status === 'meeting_booked' ? 'Instantly — Meeting Booked' : 'Instantly — Reply',
       notes: `Campaign: ${c.campaign_name}.${c.reply_snippet ? ' Reply: "'+c.reply_snippet+'"' : ''}`,
       promoted: false,
-      created_by: currentUser.id,
+      created_by: actingUser().id,
     }));
     const { data: savedColdLeads, error: coldLeadErr } = await supa.from('cold_leads').insert(newColdLeads).select();
     if(coldLeadErr){
@@ -20111,7 +20154,7 @@ async function saveBookingAvailability(){
   for(let wd = 0; wd < 7; wd++){
     if(document.querySelector(`.bl-avail-enabled[data-weekday="${wd}"]`).checked){
       rows.push({
-        user_id: currentUser.id, weekday: wd,
+        user_id: actingUser().id, weekday: wd,
         start_time: document.querySelector(`.bl-avail-start[data-weekday="${wd}"]`).value,
         end_time: document.querySelector(`.bl-avail-end[data-weekday="${wd}"]`).value,
       });
@@ -20211,7 +20254,7 @@ async function saveNewBookingLink(){
   async function insertLink(attempt){
     const slug = slugify(name) + '-' + Math.floor(Math.random() * 900 + 100);
     const res = await supa.from('booking_links').insert({
-      user_id: currentUser.id, name, slug, meeting_type, duration_minutes,
+      user_id: actingUser().id, name, slug, meeting_type, duration_minutes,
       description: description || null, brand, zoom_link: zoom_link || null,
     }).select().single();
     if(res.error && res.error.code === '23505' && attempt < 2) return insertLink(attempt + 1);
@@ -21466,7 +21509,7 @@ async function saveRecruit(id, thenConvert){
     row = res.data;
     RECRUITS[RECRUITS.findIndex(x => x.id === id)] = row;
   } else {
-    const res = await supa.from('recruit_leads').insert(Object.assign({ created_by: currentUser.id }, fields)).select().single();
+    const res = await supa.from('recruit_leads').insert(Object.assign({ created_by: actingUser().id }, fields)).select().single();
     if(res.error){ showToast('Could not save: ' + res.error.message, 'error'); return; }
     row = res.data;
     RECRUITS.unshift(row);
@@ -21627,7 +21670,7 @@ async function saveInternalSalesPerson(userId){
     compRes = await supa.from('internal_sales_comp').update(comp).eq('user_id', user.id).select().single();
   } else {
     compRes = await supa.from('internal_sales_comp')
-      .insert(Object.assign({ created_by: currentUser.id }, comp)).select().single();
+      .insert(Object.assign({ created_by: actingUser().id }, comp)).select().single();
   }
 
   btn.disabled = false;
@@ -23020,7 +23063,7 @@ async function saveNewLendingLead(){
     loan_amount: document.getElementById('llAmount').value.trim(),
     source: document.getElementById('llSource').value.trim(),
     stage,
-    created_by: currentUser.id,
+    created_by: actingUser().id,
   };
   const { data: lead, error } = await supa.from('lending_leads').insert(fields).select().single();
   if(error){ alert('Could not add lead: ' + error.message); return; }
@@ -23140,7 +23183,7 @@ async function addLendingLeadNote(leadId){
   const text = document.getElementById('newLendingNoteText').value.trim();
   if(!text) return;
   const { data: note, error } = await supa.from('lending_lead_notes').insert({
-    lending_lead_id: leadId, text, created_by: currentUser.email,
+    lending_lead_id: leadId, text, created_by: actingUser().email,
   }).select().single();
   if(error){ alert('Could not save note: ' + error.message); return; }
   LENDING_LEAD_NOTES.unshift(note);
@@ -23158,7 +23201,7 @@ async function addLendingLeadCallNote(leadId){
   const text = document.getElementById('newLendingCallNoteText').value.trim();
   if(!text) return;
   const { data: note, error } = await supa.from('lending_lead_call_notes').insert({
-    lending_lead_id: leadId, text, created_by: currentUser.email,
+    lending_lead_id: leadId, text, created_by: actingUser().email,
   }).select().single();
   if(error){ alert('Could not save note: ' + error.message); return; }
   LENDING_LEAD_CALL_NOTES.unshift(note);
@@ -23338,7 +23381,7 @@ async function saveNewIsoLead(){
     linked_partner_id: document.getElementById('ilIso').value || null,
     source: document.getElementById('ilSource').value.trim(),
     stage,
-    created_by: currentUser.id,
+    created_by: actingUser().id,
   };
   const { data: lead, error } = await supa.from('iso_leads').insert(fields).select().single();
   if(error){ alert('Could not add lead: ' + error.message); return; }
@@ -23349,7 +23392,7 @@ async function saveNewIsoLead(){
   // added afterward — one notes system, not two.
   if(notes){
     const { data: note, error: noteErr } = await supa.from('iso_lead_notes').insert({
-      iso_lead_id: lead.id, text: notes, created_by: currentUser.email,
+      iso_lead_id: lead.id, text: notes, created_by: actingUser().email,
     }).select().single();
     if(noteErr){ alert('Lead saved, but the note could not be added: ' + noteErr.message); }
     else ISO_LEAD_NOTES.unshift(note);
@@ -23482,7 +23525,7 @@ async function addIsoLeadNote(leadId){
   const text = document.getElementById('newIsoNoteText').value.trim();
   if(!text) return;
   const { data: note, error } = await supa.from('iso_lead_notes').insert({
-    iso_lead_id: leadId, text, created_by: currentUser.email,
+    iso_lead_id: leadId, text, created_by: actingUser().email,
   }).select().single();
   if(error){ alert('Could not save note: ' + error.message); return; }
   ISO_LEAD_NOTES.unshift(note);
@@ -23500,7 +23543,7 @@ async function addIsoLeadCallNote(leadId){
   const text = document.getElementById('newIsoCallNoteText').value.trim();
   if(!text) return;
   const { data: note, error } = await supa.from('iso_lead_call_notes').insert({
-    iso_lead_id: leadId, text, created_by: currentUser.email,
+    iso_lead_id: leadId, text, created_by: actingUser().email,
   }).select().single();
   if(error){ alert('Could not save note: ' + error.message); return; }
   ISO_LEAD_CALL_NOTES.unshift(note);
