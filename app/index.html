@@ -9102,6 +9102,53 @@ function scopedApplications(){
   return APPLICATIONS.filter(a => a.assigned_to === currentUser.id);
 }
 
+/* Every list below mirrors one policy, so "Preview as" shows what that
+   person's own session would be sent and nothing more. In a real session
+   these filters are redundant — the rows never arrive — which is exactly
+   why they have to be written down somewhere the preview can run them.
+
+   Keep each one next to the migration it copies. If a policy changes and
+   its twin here does not, the preview starts lying again. */
+
+// cold_outreach_select, database/65_cold_outreach.sql
+function scopedColdOutreach(){
+  const perms = roleOf(currentUser).perms;
+  if(perms.fullDashboard) return COLD_OUTREACH.slice();
+  return COLD_OUTREACH.filter(o =>
+    o.assigned_to === currentUser.id || o.created_by === currentUser.id);
+}
+
+// lending_leads_all, database/57_portal_users_can_add_records.sql
+function scopedLendingLeads(){
+  const perms = roleOf(currentUser).perms;
+  if(perms.fullDashboard) return LENDING_LEADS.slice();
+  return LENDING_LEADS.filter(l => l.created_by === currentUser.id);
+}
+
+// iso_leads_select, database/44_iso_leads.sql
+function scopedIsoLeads(){
+  const perms = roleOf(currentUser).perms;
+  if(perms.fullDashboard) return ISO_LEADS.slice();
+  return ISO_LEADS.filter(l =>
+    l.assigned_to === currentUser.id
+    || (currentUser.linked_partner_id && l.linked_partner_id === currentUser.linked_partner_id));
+}
+
+// calendar_events_select, database/52_calendar_per_user.sql. Note this one
+// is manageUsers, not fullDashboard — somebody's diary is not pipeline data.
+function scopedCalendarEvents(){
+  if(roleOf(currentUser).perms.manageUsers) return CALENDAR_EVENTS.slice();
+  return CALENDAR_EVENTS.filter(e => e.owner_id === currentUser.id);
+}
+
+// tasks_select, database/77_multi_assign.sql
+function taskVisibleToMe(t){
+  if(roleOf(currentUser).perms.fullDashboard) return true;
+  return t.created_by === currentUser.id
+      || t.assigned_to === currentUser.id
+      || (t.assigned_to_ids || []).includes(currentUser.id);
+}
+
 function scopedPartnersForCurrentUser(){
   let scoped = PARTNERS.filter(p => partnerMatchesBrand(p, currentBrand));
 
@@ -11398,7 +11445,7 @@ function renderTeamStructure(){
 
 function teamStructurePartners(){
   const q = (document.getElementById('teamStructureSearch').value || '').trim().toLowerCase();
-  return PARTNERS.filter(p => p.type === 'agent')
+  return scopedPartnersForCurrentUser().filter(p => p.type === 'agent')
     .filter(p => !q || p.name.toLowerCase().includes(q) || (p.contact||'').toLowerCase().includes(q))
     .sort((a,b)=> a.name.localeCompare(b.name));
 }
@@ -18248,7 +18295,7 @@ document.getElementById('deleteSelectedColdLeadsBtn').addEventListener('click', 
    ========================================================================= */
 function renderColdOutreachTable(filterText){
   const q = (filterText || (document.getElementById('coldOutreachSearch') ? document.getElementById('coldOutreachSearch').value : '') || '').toLowerCase();
-  let rows = COLD_OUTREACH.slice().sort((a,b)=> new Date(b.created_at) - new Date(a.created_at));
+  let rows = scopedColdOutreach().sort((a,b)=> new Date(b.created_at) - new Date(a.created_at));
   if(q) rows = rows.filter(c => (c.business_name||'').toLowerCase().includes(q) || (c.address||'').toLowerCase().includes(q));
 
   document.getElementById('coldOutreachSelectAll').checked = false;
@@ -21841,7 +21888,7 @@ function taskLinkColumn(kind){ return kind === 'cold_lead' ? 'linked_cold_lead_i
 
 function renderRecordTasksWidget(kind, recordId){
   const linkCol = taskLinkColumn(kind);
-  const linked = TASKS.filter(t => t[linkCol] === recordId).sort((a, b) => {
+  const linked = TASKS.filter(t => t[linkCol] === recordId && taskVisibleToMe(t)).sort((a, b) => {
     if(!!a.completed !== !!b.completed) return a.completed ? 1 : -1;
     if(!a.due_date && !b.due_date) return 0;
     if(!a.due_date) return 1;
@@ -22160,7 +22207,7 @@ function renderCalendar(){
   const rows = cells.length / 7;
   const maxChips = gridHeight ? chipsPerCell(gridHeight / rows) : 3;
 
-  const scoped = CALENDAR_EVENTS.filter(e => calFilter === 'all' || e.calendar_id === calFilter);
+  const scoped = scopedCalendarEvents().filter(e => calFilter === 'all' || e.calendar_id === calFilter);
 
   document.getElementById('calGrid').innerHTML = cells.map(c => {
     if(c.outside){
@@ -22969,7 +23016,7 @@ function renderLendingLeadsBoard(){
   const q = (document.getElementById('lendingLeadsSearch') ? document.getElementById('lendingLeadsSearch').value : '').trim().toLowerCase();
 
   const columnsHtml = LENDING_STAGES.map(stage => {
-    let leadsInStage = LENDING_LEADS.filter(l => leadStage(l) === stage.key);
+    let leadsInStage = scopedLendingLeads().filter(l => leadStage(l) === stage.key);
     if(q) leadsInStage = leadsInStage.filter(l => l.business_name.toLowerCase().includes(q) || l.contact_name.toLowerCase().includes(q));
     const isCollapsed = !!collapsed['lending_' + stage.key];
     const cardsHtml = leadsInStage.length ? leadsInStage.map(l => lendingLeadCardHtml(l, stage.color)).join('') : `<div class="kanban-empty">No leads in this stage</div>`;
@@ -23274,7 +23321,7 @@ function renderIsoLeadsBoard(){
   const q = (document.getElementById('isoLeadsSearch') ? document.getElementById('isoLeadsSearch').value : '').trim().toLowerCase();
 
   const columnsHtml = ISO_LEAD_STAGES.map(stage => {
-    let leadsInStage = ISO_LEADS.filter(l => l.stage === stage.key);
+    let leadsInStage = scopedIsoLeads().filter(l => l.stage === stage.key);
     if(q) leadsInStage = leadsInStage.filter(l => l.business_name.toLowerCase().includes(q) || (l.contact_name||'').toLowerCase().includes(q));
     const isCollapsed = !!collapsed['iso_' + stage.key];
     const cardsHtml = leadsInStage.length ? leadsInStage.map(l => isoLeadCardHtml(l, stage.color)).join('') : `<div class="kanban-empty">No leads in this stage</div>`;
