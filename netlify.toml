@@ -5,10 +5,13 @@
 # `app` rather than the repo root serves the CRM at the site root AND
 # keeps everything outside app/ off the public site.
 #
-# There is no build step: app/index.html is the entire application.
+# The only build step stamps the version onto the login screen — see
+# tools/stamp-version.sh. app/index.html is otherwise the entire
+# application, shipped exactly as it is committed.
 
 [build]
   publish = "app"
+  command = "sh tools/stamp-version.sh"
 
 # ---------------------------------------------------------------------------
 # Pretty routes for the public pages.

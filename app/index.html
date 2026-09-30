@@ -198,6 +198,16 @@
   .pw-toggle:hover{color:var(--brand-accent-2);background:var(--hover);}
   .caps-hint{margin-top:6px;font-size:11.5px;font-weight:500;color:var(--warn-text);}
   .field input.invalid{border-color:var(--red);background:var(--err-bg);}
+  /* Which build you are looking at. Deliberately quiet — it is for the one
+     phone call a month that starts "it is doing something odd", not for
+     anybody logging in. */
+  .login-version{
+    position:absolute; left:0; right:0; bottom:14px;
+    text-align:center; font-size:10px; letter-spacing:.3px;
+    color:var(--slate-300); opacity:.65; pointer-events:none;
+    font-family:'IBM Plex Mono', monospace;
+  }
+
   .login-alt{text-align:center;margin:16px 0 0;font-size:12.5px;color:var(--slate-500);}
   .login-alt a{color:var(--accent-text);font-weight:600;text-decoration:none;}
   .login-alt a:hover{text-decoration:underline;}
@@ -1702,6 +1712,7 @@
      of localStorage — same UI, different data layer underneath. -->
 <!-- ================= LOGIN ================= -->
 <div id="login-screen" style="display:none;">
+  <div class="login-version" id="loginVersion"></div>
   <button type="button" id="loginThemeToggle" class="login-theme-toggle" aria-label="Toggle night mode" title="Toggle night mode">
     <svg class="lt-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
@@ -3477,6 +3488,15 @@
    in database/04_rls.sql, so this key alone can't read/write anything a
    logged-in user's role isn't allowed to.
    ========================================================================= */
+/* Replaced at deploy time by tools/stamp-version.sh with the date and the
+   commit Netlify built. Left as the placeholder when the file is opened
+   straight from a checkout, which is what "dev" below reports. */
+const APP_VERSION = '__APP_VERSION__';
+
+function appVersionLabel(){
+  return APP_VERSION.indexOf('__APP') === 0 ? 'dev build' : 'v' + APP_VERSION;
+}
+
 const SUPABASE_URL = 'https://gfnodfqkidtqjoofvwzr.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdmbm9kZnFraWR0cWpvb2Z2d3pyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYyMTE2MTgsImV4cCI6MjEwMTc4NzYxOH0.sc0ghmhGt71clexXMQj2Mhj2MFXrgEVmymuGbERePsk';
 const supa = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -5363,6 +5383,8 @@ applySidebarCollapsed(savedSidebarPref !== null ? savedSidebarPref === 'true' : 
    ========================================================================= */
 
 function showLoginScreen(){
+  const ver = document.getElementById('loginVersion');
+  if(ver) ver.textContent = appVersionLabel();
   // Drop any leftover view hash so a logged-out URL isn't pointing at a tab.
   if(history.state && history.state.app){
     history.replaceState({}, '', window.location.pathname + window.location.search);
