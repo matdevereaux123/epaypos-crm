@@ -1302,6 +1302,12 @@
     padding:12px 26px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13.5px;margin:6px 0 18px;}
   .email-preview-footer{background:var(--email-bg);padding:16px 24px;font-size:11px;color:var(--email-muted);text-align:center;}
 
+  /* ---------- MARKETING MATERIALS ---------- */
+  #view-marketing .field input,
+  #view-marketing .field textarea{width:100%;}
+  #view-marketing .field textarea{resize:vertical;min-height:58px;}
+  #view-marketing .quick-action-btn{min-height:74px;}
+
   /* ---------- CREATE A TASK WHILE WRITING A NOTE ---------- */
   .note-task-toggle{
     display:flex;align-items:center;gap:8px;cursor:pointer;margin:-4px 0 10px;
@@ -1962,7 +1968,10 @@
           <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
         <div class="nav-collapsible" id="resourcesSectionItems">
-          <div style="padding:8px 10px;font-size:12px;color:var(--slate-300);">No resources added yet</div>
+          <button class="nav-item" data-view="marketing">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+            Marketing Materials
+          </button>
         </div>
 
         <button class="nav-section-toggle" id="reportsSectionToggle" type="button">
@@ -2549,6 +2558,20 @@
           </table>
           <div id="loadersEmptyState" class="empty-state" style="display:none;"></div>
         </div>
+      </section>
+
+      <!-- RESOURCES: MARKETING MATERIALS -->
+      <section id="view-marketing" class="view" style="display:none;">
+        <div class="topbar">
+          <div>
+            <h1>Marketing Materials</h1>
+            <p class="subtext">One page per product, holding the brochure, spec sheet, rate card and anything else worth putting in front of a merchant. Everyone can open these; staff keep them current.</p>
+          </div>
+          <div class="topbar-actions">
+            <input class="search-input" placeholder="Search products or materials..." id="marketingSearch" style="min-width:260px;">
+          </div>
+        </div>
+        <div id="marketingContent"></div>
       </section>
 
       <!-- PAYMENTS: INVOICING (placeholder) -->
@@ -5542,6 +5565,8 @@ async function enterAppAsAuthUser(authUser){
     loadApplicationLinksFromSupabase(),
     loadIntegrationsFromSupabase(),
     loadContactsFromSupabase(),
+    loadMarketingProductsFromSupabase(),
+    loadMarketingMaterialsFromSupabase(),
     loadInternalSalesCompFromSupabase(),
     loadAgreementTemplatesFromSupabase(),
     loadSignatureRequestsFromSupabase()
@@ -5573,10 +5598,13 @@ async function enterAppAsAuthUser(authUser){
     lendingLeadCallNotes, isoLeads, isoLeadNotes, isoLeadCallNotes,
     newsletters, nlTemplates, connectedCalendars,
     calendarEvents, bookingLinks, bookingAvailability, notifications, tasks, coldOutreach, residualPayouts, atmLoaders, instantlyContacts, partnerDocuments, applicationLinks,
-    integrationsFromDb, contacts, internalSalesComp, agreementTemplates, signatureRequests
+    integrationsFromDb, contacts, marketingProducts, marketingMaterials, internalSalesComp,
+    agreementTemplates, signatureRequests
   ] = await tablesPromise;
 
   USERS = users;
+  MARKETING_PRODUCTS = marketingProducts;
+  MARKETING_MATERIALS = marketingMaterials;
   INTERNAL_SALES_COMP = internalSalesComp;
   AGREEMENT_TEMPLATES = agreementTemplates;
   SIGNATURE_REQUESTS = signatureRequests;
@@ -8870,6 +8898,7 @@ function refreshActiveView(){
     else if(view === 'agents')      renderAgentsTable();
     else if(view === 'contacts')    renderContacts();
     else if(view === 'loaders')     renderLoaders();
+    else if(view === 'marketing')   renderMarketing();
     else if(view === 'internalsales')renderInternalSales();
     else if(view === 'recruiting')  renderRecruiting();
     else if(view === 'followups')   renderFollowups();
@@ -8925,6 +8954,7 @@ function showView(view, fromHistory){
   if(view === 'settings'){ renderUsersTable(); renderRolesTable(); renderIntegrationsList(); renderConnectedCalendarsList(); renderApplicationLinksTable(); }
   if(view === 'agents') renderAgentsTable();
   if(view === 'loaders') renderLoaders();
+  if(view === 'marketing') renderMarketing();
   if(view === 'internalsales') renderInternalSales();
   if(view === 'recruiting') renderRecruiting();
   if(view === 'contacts') renderContacts();
@@ -17021,6 +17051,317 @@ function renderSignedConfirmation(doc){
     <button class="landing-submit" style="margin-top:16px;" onclick="window.print()">Print / save a copy</button>`}`;
 }
 
+
+/* =========================================================================
+   MARKETING MATERIALS  (database/81_marketing_materials.sql)
+
+   Resources -> Marketing Materials: one page per product, each holding the
+   collateral for it. A grid of products, and clicking one opens that
+   product's page — the same shape as a folder of brochures, which is how
+   people already think about this.
+
+   Everybody who can log in can read these, because an agent in front of a
+   merchant needs the brochure as much as an employee does. Only staff can
+   change them: collateral anybody can edit stops being the approved
+   version. The database enforces both.
+   ========================================================================= */
+const MARKETING_BUCKET = 'marketing-materials';
+let MARKETING_PRODUCTS = [];
+let MARKETING_MATERIALS = [];
+let marketingProductId = null;   // null = the grid; otherwise that product's page
+let marketingSearch = '';
+
+async function loadMarketingProductsFromSupabase(){
+  const { data, error } = await supa.from('marketing_products')
+    .select('*').order('sort_order').order('name');
+  if(error){ reportLoadFailure('marketing products', error); return []; }
+  return data || [];
+}
+
+async function loadMarketingMaterialsFromSupabase(){
+  const { data, error } = await supa.from('marketing_materials')
+    .select('*').order('sort_order').order('created_at');
+  if(error){ reportLoadFailure('marketing materials', error); return []; }
+  return data || [];
+}
+
+function canEditMarketing(){ return !!roleOf(currentUser).perms.fullDashboard; }
+
+function materialsFor(productId){
+  return MARKETING_MATERIALS.filter(m => m.product_id === productId);
+}
+
+function renderMarketing(){
+  if(marketingProductId) renderMarketingProductPage();
+  else renderMarketingGrid();
+}
+
+function renderMarketingGrid(){
+  const q = marketingSearch.trim().toLowerCase();
+  const visible = MARKETING_PRODUCTS.filter(p => {
+    if(p.active === false) return false;
+    if(!q) return true;
+    // Searching matches the material titles too — people look for "rate
+    // card", not for the product they half-remember it sitting under.
+    return (p.name || '').toLowerCase().includes(q)
+      || (p.description || '').toLowerCase().includes(q)
+      || materialsFor(p.id).some(m => (m.title || '').toLowerCase().includes(q));
+  });
+
+  const card = p => {
+    const n = materialsFor(p.id).length;
+    return `
+      <button class="quick-action-btn" style="text-align:left;align-items:flex-start;flex-direction:column;gap:6px;"
+        onclick="openMarketingProduct('${p.id}')">
+        <span style="display:flex;align-items:center;gap:9px;width:100%;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--brand-accent-2)" stroke-width="2" style="width:19px;height:19px;flex:0 0 auto;">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          <b style="font-size:13.5px;">${escAttr(p.name)}</b>
+        </span>
+        <span style="font-size:11.5px;color:var(--slate-500);">
+          ${n ? n + ' item' + (n === 1 ? '' : 's') : 'Nothing added yet'}
+        </span>
+      </button>`;
+  };
+
+  const group = (label, cat) => {
+    const rows = visible.filter(p => p.category === cat);
+    if(!rows.length) return '';
+    return `
+      <h3 class="dash-section-label" style="margin-top:22px;">${label}</h3>
+      <div class="cards-row">${rows.map(card).join('')}</div>`;
+  };
+
+  document.getElementById('marketingContent').innerHTML = `
+    ${group('Our products', 'epay')}
+    ${group('Platforms we resell', 'partner')}
+    ${group('Other', 'other')}
+    ${visible.length === 0 ? `<div class="stub-panel"><h3>Nothing matches</h3><p style="font-size:13px;">No product page matches “${escAttr(marketingSearch)}”.</p></div>` : ''}
+    ${canEditMarketing() ? `
+      <div style="margin-top:26px;">
+        <button class="btn btn-sm" onclick="addMarketingProduct()">+ Add a product page</button>
+      </div>` : ''}`;
+}
+
+function openMarketingProduct(id){
+  marketingProductId = id;
+  renderMarketing();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function closeMarketingProduct(){
+  marketingProductId = null;
+  renderMarketing();
+}
+
+function renderMarketingProductPage(){
+  const p = MARKETING_PRODUCTS.find(x => x.id === marketingProductId);
+  if(!p){ closeMarketingProduct(); return; }
+  const rows = materialsFor(p.id);
+  const editable = canEditMarketing();
+
+  const item = m => `
+    <div class="note-item" style="display:flex;align-items:flex-start;gap:12px;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="var(--brand-accent-2)" stroke-width="2" style="width:20px;height:20px;flex:0 0 auto;margin-top:2px;">
+        ${m.kind === 'link'
+          ? '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>'
+          : '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>'}
+      </svg>
+      <div style="flex:1;min-width:0;">
+        <div class="txt"><b>${escAttr(m.title)}</b></div>
+        ${m.description ? `<div style="font-size:11.5px;color:var(--slate-500);margin-top:2px;">${escAttr(m.description)}</div>` : ''}
+        <div class="meta" style="margin-top:3px;">
+          ${m.kind === 'link' ? escAttr(m.url) : escAttr(m.file_name || '') + (m.file_size ? ' · ' + fileSizeLabel(m.file_size) : '')}
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;flex:0 0 auto;">
+        <button class="btn btn-xs" onclick="openMarketingMaterial('${m.id}')">Open</button>
+        ${editable ? `<button class="btn btn-xs" style="color:var(--red);" onclick="deleteMarketingMaterial('${m.id}')">Remove</button>` : ''}
+      </div>
+    </div>`;
+
+  document.getElementById('marketingContent').innerHTML = `
+    <button class="btn btn-sm" style="margin-bottom:16px;" onclick="closeMarketingProduct()">&larr; All marketing materials</button>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h2>${escAttr(p.name)}</h2>
+        <span style="font-size:12px;color:var(--slate-500);">${rows.length} item${rows.length === 1 ? '' : 's'}</span>
+      </div>
+      <div style="padding:16px 18px;">
+        ${editable
+          ? `<div class="field"><label>What this page is for <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
+               <textarea id="mkDescription" rows="2" placeholder="Who it suits, what to lead with">${escAttr(p.description || '')}</textarea>
+               <button class="btn btn-xs" style="margin-top:6px;" onclick="saveMarketingProductDescription('${p.id}')">Save</button></div>`
+          : (p.description ? `<p style="font-size:13px;color:var(--slate-500);margin:0 0 14px;">${escAttr(p.description)}</p>` : '')}
+
+        ${rows.length ? rows.map(item).join('')
+          : `<div class="stub-panel" style="padding:34px 20px;">
+               <h3>Nothing here yet</h3>
+               <p style="font-size:13px;">${editable ? 'Add the brochure, spec sheet or rate card below.' : 'Nobody has added anything to this page yet.'}</p>
+             </div>`}
+
+        ${editable ? `
+          <div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--line);">
+            <h3 style="font-size:14px;margin:0 0 12px;">Add to this page</h3>
+            <div id="mkAddError" style="display:none;margin-bottom:10px;padding:9px 11px;background:var(--err-bg);border:1px solid var(--err-border);border-radius:8px;color:var(--err-text);font-size:12.5px;"></div>
+            <div class="ai-search-grid">
+              <div class="field"><label>Title</label><input id="mkTitle" placeholder="e.g. Full Service Restaurant brochure"></div>
+              <div class="field"><label>Note <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label><input id="mkDesc" placeholder="When to use it"></div>
+            </div>
+            <div class="sign-tabs" style="margin-bottom:12px;">
+              <button type="button" class="sign-tab active" id="mkTabFile" onclick="setMarketingAddMode('file')">Upload a file</button>
+              <button type="button" class="sign-tab" id="mkTabLink" onclick="setMarketingAddMode('link')">Add a link</button>
+            </div>
+            <div id="mkFileBox">
+              <input type="file" id="mkFileInput" style="display:none;" onchange="onMarketingFileChosen(this, '${p.id}')">
+              <button class="btn btn-sm" style="width:100%;" onclick="startMarketingUpload('${p.id}')">Choose a file and upload</button>
+              <p style="font-size:10.5px;color:var(--slate-300);margin:7px 0 0;">PDFs, images, slides — up to 40 MB. Give it a title first.</p>
+            </div>
+            <div id="mkLinkBox" style="display:none;">
+              <div class="field"><label>Address</label><input id="mkUrl" placeholder="https://…"></div>
+              <button class="btn btn-accent btn-sm" style="width:100%;" onclick="addMarketingLink('${p.id}')">Add link</button>
+            </div>
+          </div>` : ''}
+      </div>
+    </div>`;
+}
+
+function setMarketingAddMode(kind){
+  document.getElementById('mkTabFile').classList.toggle('active', kind === 'file');
+  document.getElementById('mkTabLink').classList.toggle('active', kind === 'link');
+  document.getElementById('mkFileBox').style.display = kind === 'file' ? 'block' : 'none';
+  document.getElementById('mkLinkBox').style.display = kind === 'link' ? 'block' : 'none';
+}
+
+function marketingAddError(msg){
+  const el = document.getElementById('mkAddError');
+  if(!el) return;
+  el.textContent = msg;
+  el.style.display = msg ? 'block' : 'none';
+}
+
+function startMarketingUpload(productId){
+  // Asking for the title first means the list never fills up with entries
+  // called "brochure-v3-FINAL-2.pdf".
+  if(!((document.getElementById('mkTitle') || {}).value || '').trim()){
+    marketingAddError('Give it a title first — that is what people will scan down the list for.');
+    return;
+  }
+  marketingAddError('');
+  document.getElementById('mkFileInput').click();
+}
+
+async function onMarketingFileChosen(input, productId){
+  const file = input.files && input.files[0];
+  input.value = '';
+  if(!file) return;
+  if(file.size > 40 * 1024 * 1024){
+    marketingAddError(`That file is ${fileSizeLabel(file.size)} — the limit is 40 MB.`);
+    return;
+  }
+
+  const title = ((document.getElementById('mkTitle') || {}).value || '').trim();
+  const description = ((document.getElementById('mkDesc') || {}).value || '').trim() || null;
+  marketingAddError('');
+
+  const folder = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now());
+  const path = productId + '/' + folder + '/' + safeFileName(file.name);
+
+  const { error: upErr } = await supa.storage.from(MARKETING_BUCKET)
+    .upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: false });
+  if(upErr){ marketingAddError('The upload failed: ' + upErr.message); return; }
+
+  const { data, error } = await supa.from('marketing_materials').insert({
+    product_id: productId, title, description, kind: 'file',
+    file_path: path, file_name: file.name, file_type: file.type || null, file_size: file.size,
+    created_by: actingUser().id,
+  }).select().single();
+
+  if(error){
+    // The file is already in the bucket; without this it would sit there
+    // forever with no row pointing at it.
+    supa.storage.from(MARKETING_BUCKET).remove([path]);
+    marketingAddError('Uploaded, but the entry could not be saved: ' + error.message);
+    return;
+  }
+
+  MARKETING_MATERIALS.push(data);
+  renderMarketing();
+  showToast('Added to ' + (MARKETING_PRODUCTS.find(p => p.id === productId) || {}).name, 'success');
+}
+
+async function addMarketingLink(productId){
+  const title = ((document.getElementById('mkTitle') || {}).value || '').trim();
+  const description = ((document.getElementById('mkDesc') || {}).value || '').trim() || null;
+  let url = ((document.getElementById('mkUrl') || {}).value || '').trim();
+  if(!title){ marketingAddError('Give it a title first.'); return; }
+  if(!url){ marketingAddError('Paste the address to link to.'); return; }
+  if(!/^https?:\/\//i.test(url)) url = 'https://' + url;
+  marketingAddError('');
+
+  const { data, error } = await supa.from('marketing_materials').insert({
+    product_id: productId, title, description, kind: 'link', url,
+    created_by: actingUser().id,
+  }).select().single();
+  if(error){ marketingAddError('Could not save: ' + error.message); return; }
+
+  MARKETING_MATERIALS.push(data);
+  renderMarketing();
+  showToast('Link added', 'success');
+}
+
+async function openMarketingMaterial(id){
+  const m = MARKETING_MATERIALS.find(x => x.id === id);
+  if(!m) return;
+  if(m.kind === 'link'){ window.open(m.url, '_blank', 'noopener'); return; }
+
+  const { data, error } = await supa.storage.from(MARKETING_BUCKET).download(m.file_path);
+  if(error){ showToast('Could not open that file: ' + error.message, 'error'); return; }
+  const url = URL.createObjectURL(data);
+  const win = window.open(url, '_blank');
+  if(!win){
+    const a = document.createElement('a');
+    a.href = url; a.download = m.file_name || 'file';
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+async function deleteMarketingMaterial(id){
+  const m = MARKETING_MATERIALS.find(x => x.id === id);
+  if(!m) return;
+  if(!confirm(`Remove “${m.title}” from this page?\n\nEveryone loses access to it. This cannot be undone.`)) return;
+
+  const { error } = await supa.from('marketing_materials').delete().eq('id', id);
+  if(error){ showToast('Could not remove: ' + error.message, 'error'); return; }
+  if(m.kind === 'file' && m.file_path) supa.storage.from(MARKETING_BUCKET).remove([m.file_path]);
+  MARKETING_MATERIALS = MARKETING_MATERIALS.filter(x => x.id !== id);
+  renderMarketing();
+  showToast('Removed', 'success');
+}
+
+async function saveMarketingProductDescription(productId){
+  const description = ((document.getElementById('mkDescription') || {}).value || '').trim() || null;
+  const { error } = await supa.from('marketing_products').update({ description }).eq('id', productId);
+  if(error){ showToast('Could not save: ' + error.message, 'error'); return; }
+  const p = MARKETING_PRODUCTS.find(x => x.id === productId);
+  if(p) p.description = description;
+  showToast('Saved', 'success');
+}
+
+async function addMarketingProduct(){
+  const name = (prompt('Name of the new product page') || '').trim();
+  if(!name) return;
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const { data, error } = await supa.from('marketing_products')
+    .insert({ name, slug, category: 'other', sort_order: 300 }).select().single();
+  if(error){ showToast('Could not add: ' + error.message, 'error'); return; }
+  MARKETING_PRODUCTS.push(data);
+  openMarketingProduct(data.id);
+  showToast('Page added', 'success');
+}
+
 const MENU_DOTS_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>';
 const MENU_TRASH_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
 
@@ -22267,6 +22608,12 @@ document.getElementById('calPrevBtn').addEventListener('click', function(){
 document.getElementById('calNextBtn').addEventListener('click', function(){
   calViewDate = new Date(calViewDate.getFullYear(), calViewDate.getMonth()+1, 1);
   renderCalendar();
+});
+document.getElementById('marketingSearch').addEventListener('input', function(){
+  marketingSearch = this.value;
+  // Searching from inside a product page means you want the whole library.
+  if(marketingSearch) marketingProductId = null;
+  renderMarketing();
 });
 document.getElementById('addInternalSalesBtn').addEventListener('click', function(){ openInternalSalesDrawer(null); });
 document.getElementById('internalSalesSearch').addEventListener('input', function(){
