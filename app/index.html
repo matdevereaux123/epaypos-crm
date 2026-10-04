@@ -1302,6 +1302,36 @@
     padding:12px 26px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13.5px;margin:6px 0 18px;}
   .email-preview-footer{background:var(--email-bg);padding:16px 24px;font-size:11px;color:var(--email-muted);text-align:center;}
 
+  /* ---------- HOW THEY ARE DOING ---------- */
+  .perf-panel{
+    background:var(--surface-3);border:1px solid var(--line);border-radius:12px;
+    padding:14px 15px;margin:0 0 18px;
+  }
+  .perf-row{display:flex;gap:22px;flex-wrap:wrap;}
+  .perf-stat{display:flex;flex-direction:column;gap:1px;}
+  .perf-stat.quiet{opacity:.72;}
+  .perf-n{font-family:'Space Grotesk';font-size:23px;font-weight:700;line-height:1.1;color:var(--navy-700);}
+  .perf-l{font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--slate-500);}
+  .perf-meta{font-size:11px;color:var(--slate-500);margin-top:9px;line-height:1.5;}
+  .standing-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;}
+  .standing-chip{
+    padding:5px 10px;border-radius:20px;border:1px solid var(--line);background:var(--card);
+    font-size:11px;font-weight:600;color:var(--slate-500);cursor:pointer;
+  }
+  .standing-chip:hover:not(:disabled){border-color:var(--brand-accent-2);}
+  .standing-chip.on{background:var(--hover);}
+  .standing-chip:disabled{cursor:default;opacity:.6;}
+  .standing-dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;display:inline-block;}
+  .standing-label{font-size:11px;font-weight:600;}
+  .perf-more{margin-top:12px;}
+  .perf-more summary{
+    font-size:11.5px;color:var(--brand-accent-2);cursor:pointer;font-weight:600;
+    list-style:none;
+  }
+  .perf-more summary::-webkit-details-marker{display:none;}
+  .perf-more summary:before{content:'+ ';}
+  .perf-more[open] summary:before{content:'– ';}
+
   /* ---------- MARKETING MATERIALS ---------- */
   #view-marketing .field input,
   #view-marketing .field textarea{width:100%;}
@@ -2635,7 +2665,7 @@
             </div>
           </div>
           <table>
-            <thead><tr><th>Name</th><th>Title</th><th>Classification</th><th>Pay</th><th>Open leads</th><th></th></tr></thead>
+            <thead><tr><th>Name</th><th>Title</th><th>Classification</th><th>Pay</th><th>How they're doing</th><th></th></tr></thead>
             <tbody id="internalSalesTableBody"></tbody>
           </table>
           <div id="internalSalesEmptyState" class="empty-state" style="display:none;"></div>
@@ -9510,7 +9540,8 @@ function renderReferralTable(filterText){
       <td onclick="event.stopPropagation();"><input type="checkbox" class="row-check-referrals" data-id="${p.id}" onchange="updateBulkDeleteBar('referrals')"></td>
       <td class="name-cell">${p.name}<div class="sub">${p.contact} · ${p.city}, ${p.state}</div></td>
       <td>${typePill(p)}</td>
-      <td><span class="pill" style="background:${activity.color}22;color:${activity.color};">${activity.label}</span></td>
+      <td><span class="pill" style="background:${activity.color}22;color:${activity.color};">${activity.label}</span>
+        ${p.standing ? `<div style="margin-top:4px;display:flex;align-items:center;gap:5px;">${standingBadge(p.standing)}</div>` : ''}</td>
       <td>
         <span class="link-chip mono">${baseUrl}${p.link_slug}
           <button onclick="event.stopPropagation(); copyLink('${baseUrl}${p.link_slug}')">Copy</button>
@@ -10471,16 +10502,8 @@ async function openReferralDetail(id){
       <button class="drawer-close" onclick="closeReferralDrawer()">&times;</button>
     </div>
     <div class="drawer-body">
-      ${editableRow('Name', p.name, { table:'partners', id:p.id, column:'name', record:base,
-          can: canEditPartners, onSaved: () => { renderReferralTable(); renderAgentsTable(); } })}
-      ${editableRow('Agent ID', p.agent_id, { table:'partners', id:p.id, column:'agent_id', record:base,
-          can: canEditPartners,
-          // Uppercased and trimmed by a trigger, so the row is re-read rather
-          // than assumed — an ID typed lowercase would otherwise sit on screen
-          // in a form the database does not hold.
-          parse: v => { const t = String(v||'').trim().toUpperCase(); return t || null; },
-          onSaved: () => { renderReferralTable(); renderAgentsTable();
-                           if(document.getElementById('view-residuals').style.display !== 'none') renderResidualsReport(); } })}
+      ${performancePanelHtml('partner', base)}
+
       ${editableRow('Contact', p.contact, { table:'partners', id:p.id, column:'contact', record:base, can: canEditPartners })}
       ${editableRow('Email', p.email, { table:'partners', id:p.id, column:'email', type:'email', record:base, can: canEditPartners,
           // A partner added without an email has no portal login yet —
@@ -10488,12 +10511,28 @@ async function openReferralDetail(id){
           // address" sendPartnerInvite() asks for, so make it actually work.
           onSaved: () => ensurePartnerPortalUser(base) })}
       ${editableRow('Phone', p.phone, { table:'partners', id:p.id, column:'phone', type:'tel', record:base, can: canEditPartners })}
-      ${editableRow('Website', p.website, { table:'partners', id:p.id, column:'website', record:base, can: canEditPartners })}
-      ${editableRow('Street', p.address, { table:'partners', id:p.id, column:'address', record:base, can: canEditPartners })}
-      ${editableRow('City', p.city, { table:'partners', id:p.id, column:'city', record:base, can: canEditPartners })}
-      ${editableRow('State', p.state, { table:'partners', id:p.id, column:'state', type:'select', record:base, can: canEditPartners,
-          options: [{value:'',label:'—'}].concat(US_STATES.map(st => ({value:st,label:st}))) })}
-      ${editableRow('ZIP', p.zip, { table:'partners', id:p.id, column:'zip', record:base, can: canEditPartners })}
+
+      ${/* Name, Agent ID, website and address are reference: needed sometimes,
+            read rarely, and they were pushing everything worth seeing below the
+            fold. Folded away rather than removed. */''}
+      ${drawerSection('sec-partner-detail-' + p.id, 'Name &amp; address', `
+        ${editableRow('Name', p.name, { table:'partners', id:p.id, column:'name', record:base,
+            can: canEditPartners, onSaved: () => { renderReferralTable(); renderAgentsTable(); } })}
+        ${editableRow('Agent ID', p.agent_id, { table:'partners', id:p.id, column:'agent_id', record:base,
+            can: canEditPartners,
+            // Uppercased and trimmed by a trigger, so the row is re-read rather
+            // than assumed — an ID typed lowercase would otherwise sit on screen
+            // in a form the database does not hold.
+            parse: v => { const t = String(v||'').trim().toUpperCase(); return t || null; },
+            onSaved: () => { renderReferralTable(); renderAgentsTable();
+                             if(document.getElementById('view-residuals').style.display !== 'none') renderResidualsReport(); } })}
+        ${editableRow('Website', p.website, { table:'partners', id:p.id, column:'website', record:base, can: canEditPartners })}
+        ${editableRow('Street', p.address, { table:'partners', id:p.id, column:'address', record:base, can: canEditPartners })}
+        ${editableRow('City', p.city, { table:'partners', id:p.id, column:'city', record:base, can: canEditPartners })}
+        ${editableRow('State', p.state, { table:'partners', id:p.id, column:'state', type:'select', record:base, can: canEditPartners,
+            options: [{value:'',label:'—'}].concat(US_STATES.map(st => ({value:st,label:st}))) })}
+        ${editableRow('ZIP', p.zip, { table:'partners', id:p.id, column:'zip', record:base, can: canEditPartners })}
+      `, false)}
 
       ${buildApplicationSectionHTML(p, decryptedPartnerSensitiveCache[p.id])}
 
@@ -11396,7 +11435,8 @@ function renderAgentsTable(filterText){
     <tr onclick="openReferralDetail('${p.id}')">
       <td class="name-cell">${p.name}<div class="sub">${p.contact} · ${p.city}, ${p.state}</div></td>
       <td>${p.reseller_type === 'authorized_reseller' ? '<span class="pill pill-agent-auth">Authorized Reseller</span>' : '<span class="pill pill-agent-basic">Basic Payments</span>'}</td>
-      <td><span class="pill" style="background:${activity.color}22;color:${activity.color};">${activity.label}</span></td>
+      <td><span class="pill" style="background:${activity.color}22;color:${activity.color};">${activity.label}</span>
+        ${p.standing ? `<div style="margin-top:4px;display:flex;align-items:center;gap:5px;">${standingBadge(p.standing)}</div>` : ''}</td>
       <td><span class="link-chip mono">${baseUrl}${p.link_slug}<button onclick="event.stopPropagation(); copyLink('${baseUrl}${p.link_slug}')">Copy</button></span></td>
       <td>${p.leads_submitted} leads<div class="sub">${p.deals_closed} closed</div></td>
       <td>${p.last_deal_date ? formatDate(p.last_deal_date) : '—'}</td>
@@ -11437,7 +11477,8 @@ function renderResellersTable(filterText){
     return `
     <tr onclick="openReferralDetail('${p.id}')">
       <td class="name-cell">${p.name}<div class="sub">${p.contact} · ${p.city}, ${p.state}</div></td>
-      <td><span class="pill" style="background:${activity.color}22;color:${activity.color};">${activity.label}</span></td>
+      <td><span class="pill" style="background:${activity.color}22;color:${activity.color};">${activity.label}</span>
+        ${p.standing ? `<div style="margin-top:4px;display:flex;align-items:center;gap:5px;">${standingBadge(p.standing)}</div>` : ''}</td>
       <td><span class="link-chip mono">${baseUrl}${p.link_slug}<button onclick="event.stopPropagation(); copyLink('${baseUrl}${p.link_slug}')">Copy</button></span></td>
       <td>${p.leads_submitted} leads<div class="sub">${p.deals_closed} closed</div></td>
       <td>${p.last_deal_date ? formatDate(p.last_deal_date) : '—'}</td>
@@ -17362,6 +17403,211 @@ async function addMarketingProduct(){
   showToast('Page added', 'success');
 }
 
+
+/* =========================================================================
+   HOW THEY ARE DOING  (database/83_performance_tracking.sql)
+
+   One panel, three places: a referral partner, an agent/ISO, and an
+   internal sales person. It sits at the TOP of the drawer, above the
+   contact details, because "are they producing" is the question somebody
+   opens that drawer to answer — the address is reference material.
+
+   Counted deals and typed deals are shown as two numbers, never summed
+   into one. A total that mixes "the CRM counted this" with "somebody told
+   me" is a figure nobody can check later.
+   ========================================================================= */
+const STANDINGS = [
+  { key:'star',     label:'Star',            color:'var(--green)',      hint:'Producing well above the rest' },
+  { key:'good',     label:'Doing well',      color:'var(--brand-accent-2)', hint:'Consistently submitting' },
+  { key:'steady',   label:'Steady',          color:'var(--slate-500)',  hint:'Ticking along' },
+  { key:'watch',    label:'Needs attention', color:'var(--warn-text)',  hint:'Gone quiet, or needs chasing' },
+  { key:'inactive', label:'Inactive',        color:'var(--red)',        hint:'Not submitting at all' },
+];
+
+function standingInfo(key){
+  return STANDINGS.find(s => s.key === key) || null;
+}
+
+function standingBadge(key){
+  const s = standingInfo(key);
+  if(!s) return '';
+  return `<span class="standing-dot" style="background:${s.color};" title="${escAttr(s.label)}"></span><span class="standing-label" style="color:${s.color};">${s.label}</span>`;
+}
+
+/* Deals counted from the pipeline. A partner's are the leads carrying their
+   id; a rep's are the ones assigned to or created by them. Accounts are the
+   subset that converted, so submitted vs won can be read off separately —
+   somebody submitting plenty and converting none is a different
+   conversation from somebody submitting nothing. */
+function dealStats(kind, id){
+  const all = kind === 'partner'
+    ? scopedLeads().filter(l => l.linked_partner_id === id)
+    : scopedLeads().filter(l => l.assigned_to === id || l.created_by === id);
+
+  const won = all.filter(l => l.converted_to_account);
+  const since = days => {
+    const cut = Date.now() - days * 86400000;
+    return all.filter(l => l.created_at && new Date(l.created_at).getTime() >= cut).length;
+  };
+  // The newest submission, which is usually the fastest way to tell whether
+  // somebody has gone quiet.
+  const dates = all.map(l => l.created_at).filter(Boolean).sort();
+  return {
+    submitted: all.length,
+    won: won.length,
+    last30: since(30),
+    last90: since(90),
+    lastAt: dates.length ? dates[dates.length - 1] : null,
+  };
+}
+
+function performancePanelHtml(kind, rec){
+  const stats = dealStats(kind, rec.id);
+  const editable = kind === 'partner'
+    ? !!roleOf(currentUser).perms.editPartners
+    : !!roleOf(currentUser).perms.manageUsers;
+  const manual = Number(rec.manual_deals || 0);
+  const by = rec.standing_updated_by
+    ? (USERS.find(u => u.id === rec.standing_updated_by) || {}).name
+    : null;
+
+  const stat = (n, label, opts) => {
+    const o = opts || {};
+    return `<div class="perf-stat${o.quiet ? ' quiet' : ''}">
+      <span class="perf-n" ${o.color ? `style="color:${o.color};"` : ''}>${n}</span>
+      <span class="perf-l">${label}</span></div>`;
+  };
+
+  const chips = STANDINGS.map(s => `
+    <button type="button" class="standing-chip ${rec.standing === s.key ? 'on' : ''}"
+      style="${rec.standing === s.key ? `border-color:${s.color};color:${s.color};` : ''}"
+      title="${escAttr(s.hint)}"
+      ${editable ? `onclick="setStanding('${kind}','${rec.id}','${rec.standing === s.key ? '' : s.key}')"` : 'disabled'}>
+      ${s.label}</button>`).join('');
+
+  return `
+    <div class="perf-panel">
+      <div class="perf-row">
+        ${stat(stats.submitted, 'Deals submitted')}
+        ${stat(stats.won, 'Became accounts', { color: stats.won ? 'var(--green)' : null })}
+        ${stat(stats.last30, 'Last 30 days', { color: stats.last30 ? null : 'var(--warn-text)' })}
+        ${manual ? stat(manual, 'Added by hand', { quiet: true }) : ''}
+      </div>
+      <div class="perf-meta">
+        ${stats.lastAt
+          ? `Last submission ${esignDayOnly(stats.lastAt)}`
+          : 'Nothing submitted through the CRM yet'}
+        ${stats.last90 ? ` · ${stats.last90} in the last 90 days` : ''}
+      </div>
+
+      <div class="standing-row">${chips}</div>
+      ${rec.standing || rec.standing_note ? `
+        <div class="perf-meta" style="margin-top:8px;">
+          ${rec.standing_note ? `“${escAttr(rec.standing_note)}”` : ''}
+          ${by ? `<span style="opacity:.75;"> — ${escAttr(by)}${rec.standing_updated_at ? ', ' + esignDayOnly(rec.standing_updated_at) : ''}</span>` : ''}
+        </div>` : ''}
+
+      ${editable ? `
+        <details class="perf-more">
+          <summary>Add a note or deals we did not count</summary>
+          <div class="ai-search-grid" style="margin-top:10px;">
+            <div class="field" style="margin:0;"><label>Deals submitted elsewhere</label>
+              <input type="number" min="0" id="perfManual_${rec.id}" value="${manual || ''}" placeholder="0"></div>
+            <div class="field" style="margin:0;"><label>What those were</label>
+              <input id="perfManualNote_${rec.id}" value="${escAttr(rec.manual_deals_note || '')}" placeholder="e.g. 3 boarded on paper in March"></div>
+          </div>
+          <div class="field" style="margin-top:10px;"><label>Note on how they are doing</label>
+            <textarea id="perfNote_${rec.id}" rows="2" placeholder="What you would tell someone picking this up">${escAttr(rec.standing_note || '')}</textarea></div>
+          <button class="btn btn-sm" style="width:100%;" onclick="savePerformanceNotes('${kind}','${rec.id}')">Save</button>
+        </details>` : ''}
+    </div>`;
+}
+
+function performanceTable(kind){ return kind === 'partner' ? 'partners' : 'internal_sales_comp'; }
+function performanceKeyColumn(kind){ return kind === 'partner' ? 'id' : 'user_id'; }
+
+function performanceRecord(kind, id){
+  return kind === 'partner'
+    ? PARTNERS.find(p => p.id === id)
+    : INTERNAL_SALES_COMP.find(c => c.user_id === id);
+}
+
+// One click sets it, clicking the same one again clears it — a standing you
+// cannot take off is one people stop trusting.
+async function setStanding(kind, id, standing){
+  const patch = {
+    standing: standing || null,
+    standing_updated_at: new Date().toISOString(),
+    standing_updated_by: actingUser().id,
+  };
+  const res = await supa.from(performanceTable(kind)).update(patch)
+    .eq(performanceKeyColumn(kind), id);
+  if(res.error){ showToast('Could not save: ' + res.error.message, 'error'); return; }
+
+  const rec = performanceRecord(kind, id);
+  if(rec) Object.assign(rec, patch);
+  else if(kind === 'internal'){
+    // No pay record yet — the standing still belongs somewhere, so create
+    // the row rather than dropping the click on the floor.
+    const ins = await supa.from('internal_sales_comp')
+      .insert(Object.assign({ user_id: id, created_by: actingUser().id }, patch)).select().single();
+    if(ins.error){ showToast('Could not save: ' + ins.error.message, 'error'); return; }
+    INTERNAL_SALES_COMP.push(ins.data);
+  }
+  refreshAfterPerformanceChange(kind, id);
+  showToast(standing ? 'Marked as ' + standingInfo(standing).label : 'Standing cleared', 'success');
+}
+
+async function savePerformanceNotes(kind, id){
+  const val = el => ((document.getElementById(el) || {}).value || '').trim();
+  const n = val('perfManual_' + id);
+  const patch = {
+    manual_deals: n === '' ? 0 : Math.max(0, parseInt(n, 10) || 0),
+    manual_deals_note: val('perfManualNote_' + id) || null,
+    standing_note: val('perfNote_' + id) || null,
+    standing_updated_at: new Date().toISOString(),
+    standing_updated_by: actingUser().id,
+  };
+  const existing = performanceRecord(kind, id);
+  let res;
+  if(kind === 'internal' && !existing){
+    res = await supa.from('internal_sales_comp')
+      .insert(Object.assign({ user_id: id, created_by: actingUser().id }, patch)).select().single();
+    if(!res.error) INTERNAL_SALES_COMP.push(res.data);
+  } else {
+    res = await supa.from(performanceTable(kind)).update(patch).eq(performanceKeyColumn(kind), id);
+    if(!res.error && existing) Object.assign(existing, patch);
+  }
+  if(res.error){ showToast('Could not save: ' + res.error.message, 'error'); return; }
+  refreshAfterPerformanceChange(kind, id);
+  showToast('Saved', 'success');
+}
+
+function refreshAfterPerformanceChange(kind, id){
+  if(kind === 'partner'){
+    renderReferralTable();
+    if(document.getElementById('view-agents').style.display !== 'none') renderAgentsTable();
+    if(document.getElementById('referralOverlay').classList.contains('open')) openReferralDetail(id);
+  } else {
+    renderInternalSales();
+    if(document.getElementById('internalSalesOverlay').classList.contains('open')) openInternalSalesDrawer(id);
+  }
+}
+
+// For the list views: the standing dot plus the two numbers that matter,
+// so a column of people can be read without opening any of them.
+function performanceCellHtml(kind, rec){
+  const stats = dealStats(kind, rec.id);
+  const s = standingInfo(rec.standing);
+  return `
+    <div style="display:flex;align-items:center;gap:7px;">
+      ${s ? `<span class="standing-dot" style="background:${s.color};" title="${escAttr(s.label)}"></span>` : ''}
+      <span><b>${stats.submitted}</b><span style="color:var(--slate-500);font-size:11.5px;"> submitted</span></span>
+      ${stats.won ? `<span style="color:var(--green);font-size:11.5px;">${stats.won} won</span>` : ''}
+    </div>
+    ${s ? `<div style="font-size:10.5px;color:${s.color};">${s.label}</div>` : ''}`;
+}
+
 const MENU_DOTS_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>';
 const MENU_TRASH_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
 
@@ -21624,7 +21870,7 @@ function renderInternalSales(){
       <td>${c && c.title ? escAttr(c.title) : '—'}</td>
       <td><span class="pill ${rolePillClass(u.role)}">${roleOf(u).label}</span></td>
       <td>${paySummary(c)}</td>
-      <td>${openLeads || '—'}</td>
+      <td>${performanceCellHtml('internal', Object.assign({}, c || {}, { id: u.id }))}</td>
       <td style="text-align:right;white-space:nowrap;">
         <button class="btn btn-xs" onclick="event.stopPropagation(); openPartnerInviteEmailPreview('${u.id}')">${u.invite_sent ? 'Resend invite' : 'Send invite'}</button>
         <button class="btn btn-sm" onclick="event.stopPropagation(); openInternalSalesDrawer('${u.id}')">Edit</button>
@@ -21688,6 +21934,10 @@ function openInternalSalesDrawerImpl(userId){
     </div>
     <div class="drawer-body">
       <div id="internalSalesError" style="display:none;margin-bottom:12px;padding:10px 12px;background:var(--err-bg);border:1px solid var(--err-border);border-radius:8px;color:var(--err-text);font-size:12.5px;"></div>
+
+      ${/* Only for somebody who exists — there is nothing to report on a
+            person being added, and the form still has to ask for the basics. */''}
+      ${u ? performancePanelHtml('internal', Object.assign({}, c || {}, { id: u.id })) : ''}
 
       <div class="field"><label>Name</label>
         <input id="isName" value="${escAttr(v(u,'name'))}" placeholder="e.g. Jordan Reyes"></div>
