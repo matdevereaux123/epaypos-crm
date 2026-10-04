@@ -1302,6 +1302,16 @@
     padding:12px 26px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13.5px;margin:6px 0 18px;}
   .email-preview-footer{background:var(--email-bg);padding:16px 24px;font-size:11px;color:var(--email-muted);text-align:center;}
 
+  /* ---------- NOTES THAT SAVE THEMSELVES ---------- */
+  .auto-notes{margin:0 0 20px;}
+  .auto-notes-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:6px;}
+  .auto-notes-head label{
+    font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;color:var(--slate-500);
+  }
+  .auto-notes-status{font-size:10.5px;color:var(--slate-300);transition:color .2s ease;}
+  .auto-notes textarea, .record-notes textarea{width:100%;resize:vertical;min-height:62px;}
+  .auto-notes-log{margin-top:14px;}
+
   /* ---------- HOW THEY ARE DOING ---------- */
   .perf-panel{
     background:var(--surface-3);border:1px solid var(--line);border-radius:12px;
@@ -10530,6 +10540,8 @@ async function openReferralDetail(id){
     <div class="drawer-body">
       ${performancePanelHtml('partner', base)}
 
+      ${partnerNotesWidgetHtml(p.id)}
+
       ${editableRow('Contact', p.contact, { table:'partners', id:p.id, column:'contact', record:base, can: canEditPartners })}
       ${editableRow('Email', p.email, { table:'partners', id:p.id, column:'email', type:'email', record:base, can: canEditPartners,
           // A partner added without an email has no portal login yet —
@@ -10693,24 +10705,9 @@ async function openReferralDetail(id){
 
       <h3 style="font-size:14px;margin:0 0 12px;">Log a follow-up note</h3>
       <div class="field">
-        <label>Note</label>
-        <textarea id="newNoteText" placeholder="What was discussed, decided, or needs to happen next..."></textarea>
-      </div>
-      <div class="field">
         <label>Next follow-up date</label>
-        <input type="date" id="newNoteDate" value="${p.next_follow_up || ''}">
-      </div>
-      <button class="btn btn-accent" style="width:100%;" onclick="addNote('${p.id}')">Save note</button>
-
-      <h3 style="font-size:14px;margin:24px 0 10px;">Activity log</h3>
-      <div id="notesList">
-        ${notesForPartner.length ? notesForPartner.map(n => `
-          <div class="note-item">
-            <button class="note-del" onclick="deletePartnerNote('${n.id}','${p.id}')" title="Delete">Delete</button>
-            <div class="meta">${formatDate(n.created_at)} · ${n.created_by}</div>
-            <div class="txt">${n.text}</div>
-          </div>
-        `).join('') : '<p style="color:var(--slate-500);font-size:13px;">No notes yet.</p>'}
+        <input type="date" id="newNoteDate" value="${p.next_follow_up || ''}"
+          onchange="savePartnerFollowUp('${p.id}')">
       </div>
 
       <hr style="border:none;border-top:1px solid var(--line);margin:20px 0;">
@@ -10718,6 +10715,22 @@ async function openReferralDetail(id){
     </div>
   `;
   document.getElementById('referralOverlay').classList.add('open');
+  drawPartnerNotes(p.id);
+}
+
+// The follow-up date used to ride along with the Save note button; the note
+// box saves itself now, so the date has to save itself too.
+async function savePartnerFollowUp(partnerId){
+  const el = document.getElementById('newNoteDate');
+  if(!el) return;
+  const next_follow_up = el.value || null;
+  const { error } = await supa.from('partners').update({ next_follow_up }).eq('id', partnerId);
+  if(error){ showToast('Could not save the follow-up date: ' + error.message, 'error'); return; }
+  const p = PARTNERS.find(x => x.id === partnerId);
+  if(p) p.next_follow_up = next_follow_up;
+  renderReferralTable();
+  if(document.getElementById('view-agents').style.display !== 'none') renderAgentsTable();
+  showToast(next_follow_up ? 'Follow-up set for ' + formatDate(next_follow_up) : 'Follow-up cleared', 'success');
 }
 
 async function deletePartnerNote(noteId, partnerId){
@@ -21499,6 +21512,171 @@ function formatDateTime(ts){
        + ' · ' + d.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
 }
 
+
+/* =========================================================================
+   NOTES THAT SAVE THEMSELVES
+
+   One driver, used by both notes systems: record_notes (cold leads,
+   loaders, contacts, cold outreach, recruits, and now internal sales
+   people) and partner_notes (referral partners, agents and ISOs).
+
+   Why it is not "save on every keystroke": the first pause in typing
+   CREATES the note, and every pause after that UPDATES that same note. Per
+   keystroke would turn one thought into forty rows in the activity log;
+   saving only on blur loses the note when a browser is closed mid-sentence.
+
+   Moving on — pressing the button, or clicking out of the box — closes the
+   note, and the next thing typed starts a fresh one. Either way the entry
+   lands in the log below carrying the author's email and the time, which is
+   what the manual Save button always did.
+   ========================================================================= */
+const NOTE_AUTOSAVE_MS = 1100;
+let noteDraft = { key: null, id: null, timer: null, saving: false, pending: false };
+
+function noteAutosaveStatus(statusId, text, tone){
+  const el = document.getElementById(statusId);
+  if(!el) return;
+  el.textContent = text;
+  el.style.color = tone === 'ok' ? 'var(--green)' : (tone === 'bad' ? 'var(--red)' : 'var(--slate-300)');
+}
+
+/* cfg: { key, boxId, statusId, insert(text), update(id, text), onSaved(row) } */
+function queueNoteAutosave(cfg){
+  // Switching record mid-draft must never append this text to the previous
+  // one's log.
+  if(noteDraft.key !== cfg.key){
+    clearTimeout(noteDraft.timer);
+    noteDraft = { key: cfg.key, id: null, timer: null, saving: false, pending: false };
+  }
+  clearTimeout(noteDraft.timer);
+  noteAutosaveStatus(cfg.statusId, 'Saving…');
+  noteDraft.timer = setTimeout(() => runNoteAutosave(cfg, false), NOTE_AUTOSAVE_MS);
+}
+
+async function runNoteAutosave(cfg, close){
+  const box = document.getElementById(cfg.boxId);
+  if(!box) return;
+  const text = (box.value || '').trim();
+
+  if(!text){
+    if(close) noteDraft = { key: null, id: null, timer: null, saving: false, pending: false };
+    noteAutosaveStatus(cfg.statusId, 'Saves as you type');
+    return;
+  }
+  // A save already in flight: queue one more rather than firing a second
+  // insert, which would put the same note in the log twice.
+  if(noteDraft.saving){ noteDraft.pending = true; return; }
+  noteDraft.saving = true;
+
+  const res = noteDraft.id ? await cfg.update(noteDraft.id, text) : await cfg.insert(text);
+  noteDraft.saving = false;
+
+  if(res.error){
+    noteAutosaveStatus(cfg.statusId, 'Not saved — ' + res.error.message, 'bad');
+    return;
+  }
+  noteDraft.id = res.data.id;
+  cfg.onSaved(res.data);
+  noteAutosaveStatus(cfg.statusId,
+    'Saved ' + new Date().toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' }), 'ok');
+
+  if(noteDraft.pending){ noteDraft.pending = false; return runNoteAutosave(cfg, close); }
+  if(close){
+    noteDraft = { key: null, id: null, timer: null, saving: false, pending: false };
+    box.value = '';
+    noteAutosaveStatus(cfg.statusId, 'Saved', 'ok');
+  }
+}
+
+function flushNoteAutosave(cfg, close){
+  clearTimeout(noteDraft.timer);
+  return runNoteAutosave(cfg, !!close);
+}
+
+/* ---- record_notes (cold leads, contacts, internal sales, …) ------------ */
+function recordNoteAutosaveCfg(type, id){
+  const dom = type + '-' + id;
+  return {
+    key: 'record:' + dom,
+    boxId: 'rn-text-' + dom,
+    statusId: 'rn-status-' + dom,
+    insert: text => supa.from('record_notes')
+      .insert({ entity_type: type, entity_id: id, text }).select().single(),
+    update: (noteId, text) => supa.from('record_notes')
+      .update({ text }).eq('id', noteId).select().single(),
+    onSaved: row => {
+      const key = type + ':' + id;
+      const list = RECORD_NOTES[key] || (RECORD_NOTES[key] = []);
+      const at = list.findIndex(n => n.id === row.id);
+      if(at === -1) list.unshift(row); else list[at] = row;
+      drawRecordNotes(type, id);
+    },
+  };
+}
+function recordNoteTyped(type, id){ queueNoteAutosave(recordNoteAutosaveCfg(type, id)); }
+function recordNoteDone(type, id){ return flushNoteAutosave(recordNoteAutosaveCfg(type, id), true); }
+
+/* ---- partner_notes (referral partners, agents, ISOs) ------------------- */
+function partnerNoteAutosaveCfg(partnerId){
+  return {
+    key: 'partner:' + partnerId,
+    boxId: 'pn-text-' + partnerId,
+    statusId: 'pn-status-' + partnerId,
+    insert: text => supa.from('partner_notes')
+      .insert({ partner_id: partnerId, text, created_by: actingUser().email }).select().single(),
+    update: (noteId, text) => supa.from('partner_notes')
+      .update({ text }).eq('id', noteId).select().single(),
+    onSaved: row => {
+      const at = NOTES.findIndex(n => n.id === row.id);
+      if(at === -1) NOTES.unshift(row); else NOTES[at] = row;
+      drawPartnerNotes(partnerId);
+    },
+  };
+}
+function partnerNoteTyped(id){ queueNoteAutosave(partnerNoteAutosaveCfg(id)); }
+function partnerNoteDone(id){ return flushNoteAutosave(partnerNoteAutosaveCfg(id), true); }
+
+function partnerNotesWidgetHtml(partnerId){
+  return `
+    <div class="auto-notes">
+      <div class="auto-notes-head">
+        <label>Notes</label>
+        <span class="auto-notes-status" id="pn-status-${partnerId}">Saves as you type</span>
+      </div>
+      <textarea id="pn-text-${partnerId}" rows="3" placeholder="What was discussed, decided, or needs to happen next..."
+        oninput="partnerNoteTyped('${partnerId}')" onblur="partnerNoteDone('${partnerId}')"></textarea>
+      <button type="button" class="btn btn-sm" style="width:100%;margin-top:7px;" onclick="partnerNoteDone('${partnerId}')">Save and start a new note</button>
+      <div id="pn-list-${partnerId}" class="auto-notes-log"></div>
+    </div>`;
+}
+
+// Redraws the log alone — re-rendering the drawer would take the cursor out
+// of the box somebody is still typing in.
+function drawPartnerNotes(partnerId){
+  const el = document.getElementById('pn-list-' + partnerId);
+  if(!el) return;
+  const rows = NOTES.filter(n => n.partner_id === partnerId)
+    .slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  el.innerHTML = rows.length ? rows.map(n => `
+    <div class="note-item">
+      <button class="note-del" onclick="deletePartnerNoteInline('${n.id}','${partnerId}')" title="Delete">Delete</button>
+      <div class="meta">${formatDateTime(n.created_at)} &middot; ${escAttr(n.created_by || 'Unknown')}</div>
+      <div class="txt">${escAttr(n.text).replace(/\n/g, '<br>')}</div>
+    </div>`).join('')
+    : '<p style="color:var(--slate-500);font-size:13px;margin:12px 0 0;">No notes yet. Every note is dated and shows who wrote it.</p>';
+}
+
+async function deletePartnerNoteInline(noteId, partnerId){
+  if(!confirm("Delete this note? This can't be undone.")) return;
+  const { error } = await supa.from('partner_notes').delete().eq('id', noteId);
+  if(error){ showToast('Could not delete: ' + error.message, 'error'); return; }
+  NOTES = NOTES.filter(n => n.id !== noteId);
+  // Deleting the row the box is still editing would otherwise leave it
+  // updating something that no longer exists.
+  if(noteDraft.id === noteId) noteDraft = { key: null, id: null, timer: null, saving: false, pending: false };
+  drawPartnerNotes(partnerId);
+}
+
 function recordNotesFieldHtml(type, id, o){
   o = o || {};
   const label = o.label || 'Notes';
@@ -21513,9 +21691,15 @@ function recordNotesWidgetHtml(type, id){
   loadRecordNotes(type, id);
   return `
     <div class="record-notes">
-      <textarea id="rn-text-${dom}" rows="3" placeholder="What happened, what's next..."></textarea>
+      <div class="auto-notes-head">
+        <label>Notes</label>
+        <span class="auto-notes-status" id="rn-status-${dom}">Saves as you type</span>
+      </div>
+      <textarea id="rn-text-${dom}" rows="3" placeholder="What happened, what's next..."
+        oninput="recordNoteTyped('${type}','${id}')"
+        onblur="${type === 'cold_lead' ? '' : `recordNoteDone('${type}','${id}')`}"></textarea>
       ${type === 'cold_lead' ? noteTaskOptionHtml('clNote', 'rn-text-' + dom, 'first') : ''}
-      <button type="button" class="btn btn-accent" style="width:100%;margin-top:8px;" onclick="addRecordNote('${type}','${id}')">Save note</button>
+      <button type="button" class="btn btn-accent" style="width:100%;margin-top:8px;" onclick="addRecordNote('${type}','${id}')">${type === 'cold_lead' ? 'Save note' : 'Save and start a new note'}</button>
       <div id="rn-list-${dom}" style="margin-top:14px;"><p style="color:var(--slate-500);font-size:13px;">Loading notes…</p></div>
     </div>`;
 }
@@ -21563,14 +21747,9 @@ async function addRecordNote(type, id){
     else showToast('Write the note first.', 'error');
     return;
   }
-  const { data, error } = await supa.from('record_notes')
-    .insert({ entity_type: type, entity_id: id, text }).select().single();
-  if(error){ showToast('Could not save note: ' + error.message, 'error'); return; }
-
-  const key = type + ':' + id;
-  RECORD_NOTES[key] = [data].concat(RECORD_NOTES[key] || []);
-  box.value = '';
-  drawRecordNotes(type, id);
+  // Autosave may already have written this note. Finishing the draft
+  // updates that row; inserting here as well would put it in the log twice.
+  await recordNoteDone(type, id);
 
   if(type === 'cold_lead'){
     // The cold lead list previews the latest note from the notes column.
@@ -21965,6 +22144,8 @@ function openInternalSalesDrawerImpl(userId){
       ${/* Only for somebody who exists — there is nothing to report on a
             person being added, and the form still has to ask for the basics. */''}
       ${u ? performancePanelHtml('internal', Object.assign({}, c || {}, { id: u.id })) : ''}
+
+      ${u ? recordNotesWidgetHtml('internal_sales', u.id) : ''}
 
       <div class="field"><label>Name</label>
         <input id="isName" value="${escAttr(v(u,'name'))}" placeholder="e.g. Jordan Reyes"></div>
