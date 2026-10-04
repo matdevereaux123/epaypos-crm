@@ -3665,6 +3665,17 @@ function roleOf(user){
 // Only ever writes granted keys, as true. A permission left unticked is
 // absent rather than false, so a grant can add access and never silently
 // take away something the role itself allows.
+// "Is this person staff?" — may send email, send a contract, add an
+// application, edit marketing materials. Separate from fullDashboard, which
+// now only means "sees every record" (database/84_scope_in_house_sales.sql).
+// fullDashboard is accepted as well so an admin, or anyone granted it
+// individually, is unaffected — and so nothing breaks before that migration
+// has been run.
+function hasStaffTools(){
+  const p = roleOf(currentUser).perms || {};
+  return !!(p.staffTools || p.fullDashboard);
+}
+
 const GRANTABLE_PERMS = [
   { key:'fullDashboard',   label:'See all records, not just their own',
     note:'Turns a scoped portal login into a full internal view. The biggest one on this list.' },
@@ -3675,6 +3686,8 @@ const GRANTABLE_PERMS = [
   { key:'viewBanking',     label:'View banking details' },
   { key:'manageAutomation',label:'Manage automatic follow-up scheduling' },
   { key:'manageSettings',  label:'Manage settings' },
+  { key:'staffTools',      label:'Staff tools (send email, send contracts, add applications)',
+    note:'What an employee needs to do the job. Separate from seeing everyone\u2019s records.' },
   { key:'manageUsers',     label:'Manage users',
     note:'Includes granting access like this to anyone else. Hand out sparingly.' },
 ];
@@ -5072,7 +5085,7 @@ function setBrand(brand){
   // alone, so a portal user would get an empty list and an Add button the
   // database always refuses.
   if(navLoaders) navLoaders.style.display =
-    (brand === 'atm' && roleOf(currentUser).perms.fullDashboard) ? 'flex' : 'none';
+    (brand === 'atm' && hasStaffTools()) ? 'flex' : 'none';
   lendingToggle.style.display = (brand === 'epay') ? 'flex' : 'none';
   lendingItems.style.display = (brand === 'epay') ? 'block' : 'none';
   isoToggle.style.display = (brand === 'atm') ? 'flex' : 'none';
@@ -5225,8 +5238,8 @@ function applyRolePermissions(){
   // agent would get a tab whose only button always failed.
   const esignToggle = document.getElementById('esignSectionToggle');
   const esignItems = document.getElementById('esignSectionItems');
-  if(esignToggle) esignToggle.style.display = perms.fullDashboard ? 'flex' : 'none';
-  if(esignItems)  esignItems.style.display  = perms.fullDashboard ? 'block' : 'none';
+  if(esignToggle) esignToggle.style.display = hasStaffTools() ? 'flex' : 'none';
+  if(esignItems)  esignItems.style.display  = hasStaffTools() ? 'block' : 'none';
 
   const marketingToggle = document.getElementById('marketingSectionToggle');
   const marketingItems = document.getElementById('marketingSectionItems');
@@ -5263,8 +5276,8 @@ function applyRolePermissions(){
     const show = (id, ok) => { const el = document.getElementById(id); if(el) el.style.display = ok ? '' : 'none'; };
     show('uploadReferralsBtn',     !!pp.editPartners);   // partners need editPartners
     show('addAgentBtn',            !!pp.editPartners);
-    show('addApplicationBtn',      !!pp.fullDashboard);  // applications insert: staff only
-    show('addPaperApplicationBtn', !!pp.fullDashboard);  // and a staff-only storage bucket
+    show('addApplicationBtn',      hasStaffTools());  // applications insert: staff only
+    show('addPaperApplicationBtn', hasStaffTools());  // and a staff-only storage bucket
   }
 
   // Same reasoning as the admin-only check above: hiding a nav item is not the
@@ -8960,7 +8973,7 @@ function showView(view, fromHistory){
   if(EPAY_ONLY_VIEWS.includes(view) && currentBrand !== 'epay'){
     view = 'referrals';
   }
-  if(INTERNAL_ONLY_VIEWS.includes(view) && !roleOf(currentUser).perms.fullDashboard){
+  if(INTERNAL_ONLY_VIEWS.includes(view) && !hasStaffTools()){
     view = 'dashboard';
   }
   if(view === 'internalsales' && !canSeeInternalSales()) view = 'dashboard';
@@ -9107,7 +9120,10 @@ function partnerDownlineIds(partnerId){
 // produce a refusal from the database.
 function assignableUsers(){
   const perms = roleOf(currentUser).perms;
-  if(perms.fullDashboard) return USERS.slice();
+  // staffTools, not fullDashboard: handing work to a colleague is something
+  // staff do, and scoping what a rep can SEE must not stop them passing a
+  // lead to the person who should have it.
+  if(hasStaffTools()) return USERS.slice();
 
   const ownPartner = currentUser.linked_partner_id;
   const downline = ownPartner ? partnerDownlineIds(ownPartner) : new Set();
@@ -9168,8 +9184,10 @@ function scopedLeads(){
     (pid && l.linked_partner_id === pid)
     || l.assigned_to === currentUser.id
     || l.created_by === currentUser.id
-    // internal staff also see leads with no user behind them — the forms
-    || (perms.fullDashboard && !l.created_by));
+    // internal staff also see leads with no user behind them — the forms.
+    // staffTools, not fullDashboard: an In House Sales rep is scoped to
+    // their own records but still works the unclaimed inbound pool.
+    || (hasStaffTools() && !l.created_by));
 }
 
 function scopedColdLeads(){
@@ -9179,8 +9197,16 @@ function scopedColdLeads(){
 }
 
 function scopedApplications(){
+  // Unclaimed inbound, same rule as leads: an application nobody is on yet.
+  // Mirrors applications_select in database/84_scope_in_house_sales.sql.
   const perms = roleOf(currentUser).perms;
   if(perms.fullDashboard) return APPLICATIONS;
+  if(hasStaffTools()){
+    return APPLICATIONS.filter(a =>
+      a.assigned_to === currentUser.id
+      || (a.assigned_to_ids || []).includes(currentUser.id)
+      || (!a.assigned_to && !(a.assigned_to_ids || []).length));
+  }
   return APPLICATIONS.filter(a => a.assigned_to === currentUser.id);
 }
 
@@ -10547,7 +10573,7 @@ async function openReferralDetail(id){
 
       ${buildResidualsSectionHTML(p)}
 
-      ${roleOf(currentUser).perms.fullDashboard ? agreementsSectionHtml('partner', p.id) : ''}
+      ${hasStaffTools() ? agreementsSectionHtml('partner', p.id) : ''}
 
       ${buildOnboardingSectionHTML(p)}
 
@@ -12092,6 +12118,7 @@ const ROLE_PERM_FIELDS = [
   { key:'editPartners', label:'Edit partner records' },
   { key:'manageAutomation', label:'Manage automatic follow-up scheduling' },
   { key:'fullDashboard', label:'Full dashboard (not scoped to own records)' },
+  { key:'staffTools', label:'Staff tools (send email, contracts, applications)' },
 ];
 document.getElementById('createRoleBtn').addEventListener('click', function(){
   document.getElementById('roleDrawer').innerHTML = `
@@ -14940,7 +14967,7 @@ async function openLeadDetail(id){
       ${drawerSection('sec-shipments-'+l.id, 'Shipments', shipmentsBody, false)}
       ${buildCollectionsSectionHTML(l)}
       ${buildDocsSectionHTML(l)}
-      ${roleOf(currentUser).perms.fullDashboard ? agreementsSectionHtml(l.converted_to_account ? 'account' : 'lead', l.id) : ''}
+      ${hasStaffTools() ? agreementsSectionHtml(l.converted_to_account ? 'account' : 'lead', l.id) : ''}
 
       <hr style="border:none;border-top:1px solid var(--line);margin:20px 0;">
       ${l.converted_to_account ? '' : `
@@ -16183,7 +16210,7 @@ function closeSignRequestDrawer(){ document.getElementById('signRequestOverlay')
 
 function renderSignRequestDetail(r, events){
   const open = ['sent','viewed'].includes(r.status);
-  const canManage = roleOf(currentUser).perms.fullDashboard;
+  const canManage = hasStaffTools();
   const needsCountersign = r.status === 'signed' && r.require_countersign && !r.countersigned_at;
 
   const eventLabels = {
@@ -17126,7 +17153,7 @@ async function loadMarketingMaterialsFromSupabase(){
   return data || [];
 }
 
-function canEditMarketing(){ return !!roleOf(currentUser).perms.fullDashboard; }
+function canEditMarketing(){ return hasStaffTools(); }
 
 function materialsFor(productId){
   return MARKETING_MATERIALS.filter(m => m.product_id === productId);

@@ -106,7 +106,11 @@ Deno.serve(async (req) => {
     .single();
 
   const perms = (callerRow as { roles?: { perms?: Record<string, unknown> } })?.roles?.perms ?? {};
-  if (perms.fullDashboard !== true && kind !== 'booking_link_share') {
+  // staffTools is what "is this person staff" means since
+  // database/84_scope_in_house_sales.sql; fullDashboard used to carry both
+  // that and "sees every record", and an In House Sales rep now has only
+  // the first. Either is accepted so admins and any older role still pass.
+  if (perms.fullDashboard !== true && perms.staffTools !== true && kind !== 'booking_link_share') {
     return jsonResponse({ error: 'Not authorized to send email' }, 403);
   }
   if (!callerRow) {
