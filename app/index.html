@@ -23775,7 +23775,7 @@ function subscriptionsSectionHtml(l){
               <button class="btn btn-accent btn-sm" style="width:100%;" onclick="addCatalogueSubscription('${l.id}')">Add to this account</button></div>
           </div>
           <p style="font-size:11.5px;color:var(--slate-500);margin:7px 0 0;" id="subPickTotal_${l.id}">Tick everything they are taking &mdash; they add up.</p>
-          <p style="font-size:10.5px;color:var(--slate-300);margin:4px 0 0;">Same list the boarding panel uses, at its listed price. Adding here ticks it there too.</p>
+          <p style="font-size:10.5px;color:var(--slate-300);margin:4px 0 0;">Same list the boarding panel uses, at its listed price. Tick as many as you need &mdash; software plans stack, so an account can run more than one.</p>
         </div>
 
         <div style="margin:16px 0 12px;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--slate-300);">Or something not on the list</div>
@@ -23842,14 +23842,6 @@ async function addCatalogueSubscription(leadId){
     return catalogue.find(c => c.source === source && c.key === key && (c.tierKey || '') === (tierKey || ''));
   }).filter(Boolean);
 
-  // An account is on one plan, so two of them in one go is a question only
-  // the person ticking can answer.
-  const plans = chosen.filter(c => c.source === 'pos_plan');
-  if(plans.length > 1){
-    return fail('An account can only be on one EPAY software plan — ' +
-      plans.map(p => p.name).join(' and ') + ' are both ticked. Pick one.');
-  }
-
   const added_at = ((document.getElementById('subCatDate_' + leadId) || {}).value || todayISO());
 
   // One save for the lot: two arrays and a column can all change together,
@@ -23860,10 +23852,27 @@ async function addCatalogueSubscription(leadId){
     epay_apps_selected: (l.epay_apps_selected || []).slice(),
   };
 
+  // Software plans stack. An account can run several — two locations, or a
+  // till on Retail and a floor on Table — so ticking a second one adds it
+  // rather than replacing the first.
+  //
+  // The first plan fills leads.pos_plan, because that column is what the
+  // boarding panel and its "pick a plan before moving on" check read. Any
+  // plan beyond that becomes a subscription line of its own: same name,
+  // same price, counted the same way. One column cannot hold four plans,
+  // and widening it would mean touching every screen that reads it.
+  const extras = (l.extra_subscriptions || []).slice();
+  let extrasChanged = false;
+
   chosen.forEach(c => {
     if(c.source === 'pos_plan'){
-      patch.pos_plan = c.key;
       patch.system_choice = 'epay';
+      if(!l.pos_plan && !patch.pos_plan){
+        patch.pos_plan = c.key;
+      } else {
+        extras.push({ name: c.name, price: c.price, category: 'EPAY software', added_at, plan_key: c.key });
+        extrasChanged = true;
+      }
       return;
     }
     // One entry per product: ticking another tier of the same integration
@@ -23878,6 +23887,7 @@ async function addCatalogueSubscription(leadId){
   ['integrations_selected', 'epay_apps_selected'].forEach(k => {
     if(chosen.some(c => c.source === k)) patch[k] = nextArrays[k];
   });
+  if(extrasChanged) patch.extra_subscriptions = extras;
 
   const { error } = await supa.from('leads').update(patch).eq('id', leadId);
   if(error) return fail('Could not add: ' + error.message);
