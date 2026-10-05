@@ -23662,11 +23662,51 @@ function subscriptionCatalogue(){
     source:'epay_apps_selected', group:'EPAY apps',
     key:item.key, name:item.name, price:item.price,
   }));
+  // The software itself. Only the plans with a number in them: "EPAY
+  // Custom" has no listed price, so it is typed in below like any other
+  // one-off arrangement rather than added at a price we made up.
+  POS_SYSTEM_PLANS.forEach(plan => {
+    const price = planMonthlyPrice(plan.key);
+    if(price == null) return;
+    out.push({ source:'pos_plan', group:'EPAY software', key:plan.key, name:plan.label, price });
+  });
   return out;
+}
+
+/* The POS plan's price lives in POS_SYSTEM_PLANS as a display string —
+   "$39.99/mo" — so it has to be read back out to be counted. "Custom
+   pricing" has no number in it on purpose, and comes back null. */
+function planMonthlyPrice(planKey){
+  const plan = POS_SYSTEM_PLANS.find(p => p.key === planKey);
+  if(!plan) return null;
+  const m = String(plan.price || '').match(/([0-9]+(?:\.[0-9]+)?)/);
+  return m ? Number(m[1]) : null;
+}
+
+/* The EPAY software itself — the monthly fee for the plan the account is
+   on. It was never part of the subscription figures, which made the
+   recurring total on an account smaller than what the merchant actually
+   pays every month. Derived from leads.pos_plan rather than copied into an
+   array, so it cannot drift from what the boarding panel says. */
+function posPlanLine(l){
+  if(l.system_choice && l.system_choice !== 'epay') return null;
+  if(!l.pos_plan) return null;
+  const plan = POS_SYSTEM_PLANS.find(p => p.key === l.pos_plan);
+  if(!plan) return null;
+  const price = planMonthlyPrice(l.pos_plan);
+  return {
+    source:'pos_plan', index:0, category:'EPAY software',
+    name: plan.label, price: price == null ? 0 : price,
+    added_at: l.converted_at || (l.created_at ? String(l.created_at).slice(0, 10) : null),
+    note: price == null ? 'custom pricing — add the agreed amount below' : null,
+    fixed: false,
+  };
 }
 
 function subscriptionLines(l){
   const lines = [];
+  const plan = posPlanLine(l);
+  if(plan) lines.push(plan);
   (l.integrations_selected || []).forEach((it, i) =>
     lines.push({ source:'integrations_selected', index:i, category:'Integration',
                  name: it.name, price: Number(it.price) || 0, added_at: it.added_at || null, fixed: true }));
@@ -23716,7 +23756,7 @@ function subscriptionsSectionHtml(l){
           <label>Add from the EPAY list</label>
           <select id="subCatalogue_${l.id}">
             <option value="">Choose software or an integration…</option>
-            ${['Integrations','EPAY apps'].map(g => `
+            ${['EPAY software','Integrations','EPAY apps'].map(g => `
               <optgroup label="${g}">
                 ${subscriptionCatalogue().filter(c => c.group === g).map((c, i) => `
                   <option value="${escAttr(c.source + '|' + c.key + '|' + (c.tierKey || ''))}">${escAttr(c.name)} — $${c.price}/mo</option>`).join('')}
@@ -23775,6 +23815,20 @@ async function addCatalogueSubscription(leadId){
     c.source === source && c.key === key && (c.tierKey || '') === (tierKey || ''));
   if(!choice) return fail('That item is no longer in the list.');
 
+  // The plan is a column, not an array — an account is on one plan, and
+  // picking a second means moving to it.
+  if(source === 'pos_plan'){
+    const { error: planError } = await supa.from('leads')
+      .update({ pos_plan: key, system_choice: 'epay' }).eq('id', leadId);
+    if(planError) return fail('Could not set the plan: ' + planError.message);
+    l.pos_plan = key;
+    l.system_choice = 'epay';
+    openLeadDetail(leadId);
+    if(document.getElementById('view-reportsubs').style.display !== 'none') renderSubscriptionReport();
+    showToast(`${choice.name} set — $${choice.price.toFixed(2)}/mo`, 'success');
+    return;
+  }
+
   // Writes into the same array the boarding panel ticks, so the two agree
   // rather than each holding half the picture. One entry per product: a
   // second tier of the same integration replaces the first, which is what
@@ -23829,7 +23883,20 @@ const SUBSCRIPTION_SOURCES = ['extra_subscriptions', 'integrations_selected', 'e
 
 async function removeSubscriptionLine(leadId, source, index){
   const l = LEADS.find(x => x.id === leadId);
-  if(!l || SUBSCRIPTION_SOURCES.indexOf(source) === -1) return;
+  if(!l) return;
+
+  if(source === 'pos_plan'){
+    if(!confirm('Take this account off its EPAY software plan?\n\nIt stops counting toward the monthly total and the subscription report. The plan can be set again from the list above.')) return;
+    const { error } = await supa.from('leads').update({ pos_plan: '' }).eq('id', leadId);
+    if(error){ showToast('Could not remove: ' + error.message, 'error'); return; }
+    l.pos_plan = '';
+    openLeadDetail(leadId);
+    if(document.getElementById('view-reportsubs').style.display !== 'none') renderSubscriptionReport();
+    showToast('Plan removed', 'success');
+    return;
+  }
+
+  if(SUBSCRIPTION_SOURCES.indexOf(source) === -1) return;
   const list = (l[source] || []).slice();
   const gone = list[index];
   if(!gone) return;
@@ -23863,6 +23930,10 @@ function collectSubscriptionReportItems(start, end){
     // Added by hand on the account rather than picked from a catalogue —
     // the only kind an account created outside the pipeline can have.
     (l.extra_subscriptions || []).forEach(item => pushIfInPeriod(item, item.category || 'Other'));
+    // The software plan itself. Left out until now, which made the monthly
+    // recurring figure smaller than what merchants actually pay.
+    const plan = posPlanLine(l);
+    if(plan) pushIfInPeriod(plan, 'EPAY software');
   });
   return items.sort((a,b) => (b.added_at||'0000-00-00').localeCompare(a.added_at||'0000-00-00'));
 }
