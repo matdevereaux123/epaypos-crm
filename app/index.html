@@ -4306,6 +4306,7 @@ function emptyAccountFields(){
     nrs_device:'', ncr_price:null, third_party_name:'', third_party_price:null,
     equipment_selected: [],          // [{ name, qty }] — qty lets a deal include more than one of an item
     equipment_free: false,           // true = comp the equipment cost, deal total shows as covered/$0
+    extra_subscriptions: [],         // [{ name, price, category, added_at }] — added by hand, any stage
     integrations_selected: [],       // [{ key, name, price }] — priced add-ons picked from EPAY_INTEGRATIONS_LIST
     epay_apps_selected: [],          // [{ key, name, price }] — picked from EPAY_APPS_LIST
     integrations_note:'',            // freeform, for anything not in that list
@@ -14979,6 +14980,7 @@ async function openLeadDetail(id){
       ${buildAccountDetailsHTML(l)}
       ${drawerSection('sec-shipments-'+l.id, 'Shipments', shipmentsBody, false)}
       ${buildCollectionsSectionHTML(l)}
+      ${subscriptionsSectionHtml(l)}
       ${buildDocsSectionHTML(l)}
       ${hasStaffTools() ? agreementsSectionHtml(l.converted_to_account ? 'account' : 'lead', l.id) : ''}
 
@@ -23619,6 +23621,148 @@ function formatPeriodLabel(start, end){
   return `${startStr} – ${endStr}`;
 }
 
+
+/* =========================================================================
+   SUBSCRIPTIONS ON AN ACCOUNT
+
+   What an account pays every month, in one place, editable at any stage.
+
+   Until now these lived only inside the boarding stage panel, as tick-boxes
+   against two fixed catalogues. That worked for a merchant walked through
+   the pipeline and not at all for one who was not: an account added
+   straight from the Accounts tab, or imported, had no screen that would
+   take a subscription. This section reads all three sources and writes to
+   the third, so adding one never depends on how the account arrived or
+   what stage it sits at.
+
+   Catalogue items stay read-only here on purpose — they are picked, with
+   their prices, in the boarding panel, and letting the same thing be
+   edited in two places is how two numbers end up disagreeing. Anything
+   typed in here is an extra, and says so.
+   ========================================================================= */
+function subscriptionLines(l){
+  const lines = [];
+  (l.integrations_selected || []).forEach((it, i) =>
+    lines.push({ source:'integrations_selected', index:i, category:'Integration',
+                 name: it.name, price: Number(it.price) || 0, added_at: it.added_at || null, fixed: true }));
+  (l.epay_apps_selected || []).forEach((it, i) =>
+    lines.push({ source:'epay_apps_selected', index:i, category:'EPAY App',
+                 name: it.name, price: Number(it.price) || 0, added_at: it.added_at || null, fixed: true }));
+  (l.extra_subscriptions || []).forEach((it, i) =>
+    lines.push({ source:'extra_subscriptions', index:i, category: it.category || 'Other',
+                 name: it.name, price: Number(it.price) || 0, added_at: it.added_at || null,
+                 note: it.note || null, fixed: false }));
+  return lines;
+}
+
+function subscriptionMonthlyTotal(l){
+  return subscriptionLines(l).reduce((sum, x) => sum + (Number(x.price) || 0), 0);
+}
+
+function subscriptionsSectionHtml(l){
+  const lines = subscriptionLines(l);
+  const total = subscriptionMonthlyTotal(l);
+  const canEdit = hasStaffTools();
+
+  const row = x => `
+    <div class="detail-row">
+      <span class="k">${escAttr(x.name || 'Unnamed')}
+        <span style="display:block;font-size:10px;color:var(--slate-300);text-transform:none;letter-spacing:0;">
+          ${escAttr(x.category)}${x.added_at ? ' · since ' + formatDate(x.added_at) : ''}${x.note ? ' · ' + escAttr(x.note) : ''}
+        </span></span>
+      <span class="v" style="white-space:nowrap;">$${(Number(x.price) || 0).toFixed(2)}/mo
+        ${(canEdit && !x.fixed)
+          ? ` <button class="btn btn-xs" style="color:var(--red);margin-left:6px;" onclick="removeSubscriptionLine('${l.id}','${x.source}',${x.index})">Remove</button>`
+          : ''}</span>
+    </div>`;
+
+  const body = `
+    ${lines.length ? lines.map(row).join('')
+      : '<p style="color:var(--slate-500);font-size:13px;margin:0 0 12px;">Nothing recurring on this account yet.</p>'}
+
+    <div class="detail-row" style="border-top:1px solid var(--line-strong);margin-top:6px;">
+      <span class="k"><b>Monthly total</b></span>
+      <span class="v"><b>$${total.toFixed(2)}/mo</b></span>
+    </div>
+
+    ${canEdit ? `
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
+        <div id="subAddError" style="display:none;margin-bottom:10px;padding:9px 11px;background:var(--err-bg);border:1px solid var(--err-border);border-radius:8px;color:var(--err-text);font-size:12.5px;"></div>
+        <div class="ai-search-grid">
+          <div class="field"><label>What they pay for</label>
+            <input id="subName_${l.id}" placeholder="e.g. Gateway monthly, QuickBooks sync"></div>
+          <div class="field"><label>Price per month</label>
+            <input id="subPrice_${l.id}" type="number" min="0" step="0.01" placeholder="0.00"></div>
+        </div>
+        <div class="ai-search-grid">
+          <div class="field"><label>Kind</label>
+            <select id="subCategory_${l.id}">
+              <option value="Other">Other / custom</option>
+              <option value="Integration">Integration</option>
+              <option value="EPAY App">EPAY App</option>
+              <option value="Service">Service fee</option>
+            </select></div>
+          <div class="field"><label>Started</label>
+            <input id="subDate_${l.id}" type="date" value="${todayISO()}"></div>
+        </div>
+        <button class="btn btn-accent btn-sm" style="width:100%;" onclick="addSubscriptionLine('${l.id}')">Add subscription</button>
+        <p style="font-size:10.5px;color:var(--slate-300);margin:7px 0 0;line-height:1.5;">
+          Counts toward the Subscriptions report for the month it started. Catalogue integrations and apps are picked in the
+          boarding panel and shown here read-only, so the same charge cannot be edited in two places.
+        </p>
+      </div>` : ''}`;
+
+  return drawerSection('sec-subs-' + l.id,
+    'Subscriptions' + (total ? ` ($${total.toFixed(2)}/mo)` : ''), body, total > 0);
+}
+
+async function addSubscriptionLine(leadId){
+  const l = LEADS.find(x => x.id === leadId);
+  if(!l) return;
+  const val = id => ((document.getElementById(id + '_' + leadId) || {}).value || '').trim();
+  const err = document.getElementById('subAddError');
+  const fail = msg => { if(err){ err.textContent = msg; err.style.display = 'block'; } };
+  if(err) err.style.display = 'none';
+
+  const name = val('subName');
+  const priceRaw = val('subPrice');
+  if(!name) return fail('Give it a name — that is what shows on the report.');
+  const price = Number(priceRaw);
+  if(priceRaw === '' || !isFinite(price) || price < 0) return fail('Enter the monthly price, or 0 if it is included.');
+
+  const next = (l.extra_subscriptions || []).concat([{
+    name,
+    price,
+    category: val('subCategory') || 'Other',
+    added_at: val('subDate') || todayISO(),
+  }]);
+
+  const { error } = await supa.from('leads').update({ extra_subscriptions: next }).eq('id', leadId);
+  if(error) return fail('Could not save: ' + error.message);
+
+  l.extra_subscriptions = next;
+  openLeadDetail(leadId);
+  if(document.getElementById('view-reportsubs').style.display !== 'none') renderSubscriptionReport();
+  showToast(`${name} added — $${price.toFixed(2)}/mo`, 'success');
+}
+
+async function removeSubscriptionLine(leadId, source, index){
+  const l = LEADS.find(x => x.id === leadId);
+  if(!l || source !== 'extra_subscriptions') return;
+  const list = (l.extra_subscriptions || []).slice();
+  const gone = list[index];
+  if(!gone) return;
+  if(!confirm(`Remove “${gone.name}” ($${(Number(gone.price)||0).toFixed(2)}/mo) from this account?\n\nIt stops counting toward the subscription report. Past periods already reported are unaffected.`)) return;
+
+  list.splice(index, 1);
+  const { error } = await supa.from('leads').update({ extra_subscriptions: list }).eq('id', leadId);
+  if(error){ showToast('Could not remove: ' + error.message, 'error'); return; }
+  l.extra_subscriptions = list;
+  openLeadDetail(leadId);
+  if(document.getElementById('view-reportsubs').style.display !== 'none') renderSubscriptionReport();
+  showToast('Removed', 'success');
+}
+
 function collectSubscriptionReportItems(start, end){
   const items = [];
   LEADS.forEach(l => {
@@ -23634,6 +23778,9 @@ function collectSubscriptionReportItems(start, end){
     };
     (l.integrations_selected || []).forEach(item => pushIfInPeriod(item, 'Integration'));
     (l.epay_apps_selected || []).forEach(item => pushIfInPeriod(item, 'EPAY App'));
+    // Added by hand on the account rather than picked from a catalogue —
+    // the only kind an account created outside the pipeline can have.
+    (l.extra_subscriptions || []).forEach(item => pushIfInPeriod(item, item.category || 'Other'));
   });
   return items.sort((a,b) => (b.added_at||'0000-00-00').localeCompare(a.added_at||'0000-00-00'));
 }
