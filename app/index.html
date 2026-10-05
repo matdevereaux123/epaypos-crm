@@ -23640,6 +23640,31 @@ function formatPeriodLabel(start, end){
    edited in two places is how two numbers end up disagreeing. Anything
    typed in here is an extra, and says so.
    ========================================================================= */
+/* Every priced thing we sell, as one flat list the drawer can offer. A
+   tiered integration becomes one option per tier — "Chowly · 3–4 delivery
+   apps · $120" — because picking the product without the tier is picking
+   no price at all. */
+function subscriptionCatalogue(){
+  const out = [];
+  EPAY_INTEGRATIONS_LIST.forEach(item => {
+    if(item.tiers){
+      item.tiers.forEach(t => out.push({
+        source:'integrations_selected', group:'Integrations',
+        key:item.key, tierKey:t.key,
+        name: item.name + ' — ' + t.label, price: t.price,
+      }));
+    } else {
+      out.push({ source:'integrations_selected', group:'Integrations',
+                 key:item.key, name:item.name, price:item.price });
+    }
+  });
+  EPAY_APPS_LIST.forEach(item => out.push({
+    source:'epay_apps_selected', group:'EPAY apps',
+    key:item.key, name:item.name, price:item.price,
+  }));
+  return out;
+}
+
 function subscriptionLines(l){
   const lines = [];
   (l.integrations_selected || []).forEach((it, i) =>
@@ -23671,7 +23696,7 @@ function subscriptionsSectionHtml(l){
           ${escAttr(x.category)}${x.added_at ? ' · since ' + formatDate(x.added_at) : ''}${x.note ? ' · ' + escAttr(x.note) : ''}
         </span></span>
       <span class="v" style="white-space:nowrap;">$${(Number(x.price) || 0).toFixed(2)}/mo
-        ${(canEdit && !x.fixed)
+        ${canEdit
           ? ` <button class="btn btn-xs" style="color:var(--red);margin-left:6px;" onclick="removeSubscriptionLine('${l.id}','${x.source}',${x.index})">Remove</button>`
           : ''}</span>
     </div>`;
@@ -23687,6 +23712,26 @@ function subscriptionsSectionHtml(l){
 
     ${canEdit ? `
       <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
+        <div class="field">
+          <label>Add from the EPAY list</label>
+          <select id="subCatalogue_${l.id}">
+            <option value="">Choose software or an integration…</option>
+            ${['Integrations','EPAY apps'].map(g => `
+              <optgroup label="${g}">
+                ${subscriptionCatalogue().filter(c => c.group === g).map((c, i) => `
+                  <option value="${escAttr(c.source + '|' + c.key + '|' + (c.tierKey || ''))}">${escAttr(c.name)} — $${c.price}/mo</option>`).join('')}
+              </optgroup>`).join('')}
+          </select>
+          <div class="ai-search-grid" style="margin-top:8px;">
+            <div class="field" style="margin:0;"><label>Started</label>
+              <input id="subCatDate_${l.id}" type="date" value="${todayISO()}"></div>
+            <div class="field" style="margin:0;display:flex;align-items:flex-end;">
+              <button class="btn btn-accent btn-sm" style="width:100%;" onclick="addCatalogueSubscription('${l.id}')">Add to this account</button></div>
+          </div>
+          <p style="font-size:10.5px;color:var(--slate-300);margin:7px 0 0;">Same list the boarding panel uses, at its listed price. Adding it here ticks it there too.</p>
+        </div>
+
+        <div style="margin:16px 0 12px;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--slate-300);">Or something not on the list</div>
         <div id="subAddError" style="display:none;margin-bottom:10px;padding:9px 11px;background:var(--err-bg);border:1px solid var(--err-border);border-radius:8px;color:var(--err-text);font-size:12.5px;"></div>
         <div class="ai-search-grid">
           <div class="field"><label>What they pay for</label>
@@ -23714,6 +23759,40 @@ function subscriptionsSectionHtml(l){
 
   return drawerSection('sec-subs-' + l.id,
     'Subscriptions' + (total ? ` ($${total.toFixed(2)}/mo)` : ' — none yet'), body, true);
+}
+
+async function addCatalogueSubscription(leadId){
+  const l = LEADS.find(x => x.id === leadId);
+  if(!l) return;
+  const pick = ((document.getElementById('subCatalogue_' + leadId) || {}).value || '');
+  const err = document.getElementById('subAddError');
+  const fail = msg => { if(err){ err.textContent = msg; err.style.display = 'block'; } };
+  if(err) err.style.display = 'none';
+  if(!pick) return fail('Choose something from the list first.');
+
+  const [source, key, tierKey] = pick.split('|');
+  const choice = subscriptionCatalogue().find(c =>
+    c.source === source && c.key === key && (c.tierKey || '') === (tierKey || ''));
+  if(!choice) return fail('That item is no longer in the list.');
+
+  // Writes into the same array the boarding panel ticks, so the two agree
+  // rather than each holding half the picture. One entry per product: a
+  // second tier of the same integration replaces the first, which is what
+  // changing a tier means.
+  const list = (l[source] || []).filter(it => it.key !== key);
+  const entry = { key, name: choice.name, price: choice.price,
+                  added_at: ((document.getElementById('subCatDate_' + leadId) || {}).value || todayISO()) };
+  if(tierKey) entry.tierKey = tierKey;
+  list.push(entry);
+
+  const patch = {}; patch[source] = list;
+  const { error } = await supa.from('leads').update(patch).eq('id', leadId);
+  if(error) return fail('Could not add: ' + error.message);
+
+  l[source] = list;
+  openLeadDetail(leadId);
+  if(document.getElementById('view-reportsubs').style.display !== 'none') renderSubscriptionReport();
+  showToast(`${choice.name} added — $${choice.price.toFixed(2)}/mo`, 'success');
 }
 
 async function addSubscriptionLine(leadId){
@@ -23746,18 +23825,21 @@ async function addSubscriptionLine(leadId){
   showToast(`${name} added — $${price.toFixed(2)}/mo`, 'success');
 }
 
+const SUBSCRIPTION_SOURCES = ['extra_subscriptions', 'integrations_selected', 'epay_apps_selected'];
+
 async function removeSubscriptionLine(leadId, source, index){
   const l = LEADS.find(x => x.id === leadId);
-  if(!l || source !== 'extra_subscriptions') return;
-  const list = (l.extra_subscriptions || []).slice();
+  if(!l || SUBSCRIPTION_SOURCES.indexOf(source) === -1) return;
+  const list = (l[source] || []).slice();
   const gone = list[index];
   if(!gone) return;
   if(!confirm(`Remove “${gone.name}” ($${(Number(gone.price)||0).toFixed(2)}/mo) from this account?\n\nIt stops counting toward the subscription report. Past periods already reported are unaffected.`)) return;
 
   list.splice(index, 1);
-  const { error } = await supa.from('leads').update({ extra_subscriptions: list }).eq('id', leadId);
+  const patch = {}; patch[source] = list;
+  const { error } = await supa.from('leads').update(patch).eq('id', leadId);
   if(error){ showToast('Could not remove: ' + error.message, 'error'); return; }
-  l.extra_subscriptions = list;
+  l[source] = list;
   openLeadDetail(leadId);
   if(document.getElementById('view-reportsubs').style.display !== 'none') renderSubscriptionReport();
   showToast('Removed', 'success');
