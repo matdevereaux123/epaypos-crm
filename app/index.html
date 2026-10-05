@@ -23754,21 +23754,28 @@ function subscriptionsSectionHtml(l){
       <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
         <div class="field">
           <label>Add from the EPAY list</label>
-          <select id="subCatalogue_${l.id}">
-            <option value="">Choose software or an integration…</option>
-            ${['EPAY software','Integrations','EPAY apps'].map(g => `
-              <optgroup label="${g}">
-                ${subscriptionCatalogue().filter(c => c.group === g).map((c, i) => `
-                  <option value="${escAttr(c.source + '|' + c.key + '|' + (c.tierKey || ''))}">${escAttr(c.name)} — $${c.price}/mo</option>`).join('')}
-              </optgroup>`).join('')}
-          </select>
+          <div class="multi-assign" id="subCatalogue_${l.id}">
+            <div class="ma-list" style="max-height:230px;overflow-y:auto;">
+              ${['EPAY software','Integrations','EPAY apps'].map(g => {
+                const rows = subscriptionCatalogue().filter(c => c.group === g);
+                if(!rows.length) return '';
+                return `<div class="ma-group">${g}</div>` + rows.map(c => `
+                  <label class="ma-row">
+                    <input type="checkbox" value="${escAttr(c.source + '|' + c.key + '|' + (c.tierKey || ''))}"
+                      data-price="${c.price}" onchange="updateSubscriptionPickTotal('${l.id}')">
+                    <span>${escAttr(c.name)} <span class="ma-sub">$${c.price.toFixed(2)}/mo</span></span>
+                  </label>`).join('');
+              }).join('')}
+            </div>
+          </div>
           <div class="ai-search-grid" style="margin-top:8px;">
             <div class="field" style="margin:0;"><label>Started</label>
               <input id="subCatDate_${l.id}" type="date" value="${todayISO()}"></div>
             <div class="field" style="margin:0;display:flex;align-items:flex-end;">
               <button class="btn btn-accent btn-sm" style="width:100%;" onclick="addCatalogueSubscription('${l.id}')">Add to this account</button></div>
           </div>
-          <p style="font-size:10.5px;color:var(--slate-300);margin:7px 0 0;">Same list the boarding panel uses, at its listed price. Adding it here ticks it there too.</p>
+          <p style="font-size:11.5px;color:var(--slate-500);margin:7px 0 0;" id="subPickTotal_${l.id}">Tick everything they are taking &mdash; they add up.</p>
+          <p style="font-size:10.5px;color:var(--slate-300);margin:4px 0 0;">Same list the boarding panel uses, at its listed price. Adding here ticks it there too.</p>
         </div>
 
         <div style="margin:16px 0 12px;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--slate-300);">Or something not on the list</div>
@@ -23801,52 +23808,87 @@ function subscriptionsSectionHtml(l){
     'Subscriptions' + (total ? ` ($${total.toFixed(2)}/mo)` : ' — none yet'), body, true);
 }
 
+// Running total of what is ticked, so two choices visibly add up before
+// anything is saved rather than after.
+function updateSubscriptionPickTotal(leadId){
+  const root = document.getElementById('subCatalogue_' + leadId);
+  const out = document.getElementById('subPickTotal_' + leadId);
+  if(!root || !out) return;
+  const picked = Array.from(root.querySelectorAll('input:checked'));
+  if(!picked.length){
+    out.textContent = 'Tick everything they are taking — they add up.';
+    out.style.color = 'var(--slate-500)';
+    return;
+  }
+  const sum = picked.reduce((t, el) => t + (Number(el.dataset.price) || 0), 0);
+  out.innerHTML = `<b>${picked.length} selected — $${sum.toFixed(2)}/mo</b> to add`;
+  out.style.color = 'var(--navy-500)';
+}
+
 async function addCatalogueSubscription(leadId){
   const l = LEADS.find(x => x.id === leadId);
   if(!l) return;
-  const pick = ((document.getElementById('subCatalogue_' + leadId) || {}).value || '');
+  const root = document.getElementById('subCatalogue_' + leadId);
   const err = document.getElementById('subAddError');
   const fail = msg => { if(err){ err.textContent = msg; err.style.display = 'block'; } };
   if(err) err.style.display = 'none';
-  if(!pick) return fail('Choose something from the list first.');
 
-  const [source, key, tierKey] = pick.split('|');
-  const choice = subscriptionCatalogue().find(c =>
-    c.source === source && c.key === key && (c.tierKey || '') === (tierKey || ''));
-  if(!choice) return fail('That item is no longer in the list.');
+  const picked = Array.from(root ? root.querySelectorAll('input:checked') : []);
+  if(!picked.length) return fail('Tick at least one thing from the list.');
 
-  // The plan is a column, not an array — an account is on one plan, and
-  // picking a second means moving to it.
-  if(source === 'pos_plan'){
-    const { error: planError } = await supa.from('leads')
-      .update({ pos_plan: key, system_choice: 'epay' }).eq('id', leadId);
-    if(planError) return fail('Could not set the plan: ' + planError.message);
-    l.pos_plan = key;
-    l.system_choice = 'epay';
-    openLeadDetail(leadId);
-    if(document.getElementById('view-reportsubs').style.display !== 'none') renderSubscriptionReport();
-    showToast(`${choice.name} set — $${choice.price.toFixed(2)}/mo`, 'success');
-    return;
+  const catalogue = subscriptionCatalogue();
+  const chosen = picked.map(el => {
+    const [source, key, tierKey] = el.value.split('|');
+    return catalogue.find(c => c.source === source && c.key === key && (c.tierKey || '') === (tierKey || ''));
+  }).filter(Boolean);
+
+  // An account is on one plan, so two of them in one go is a question only
+  // the person ticking can answer.
+  const plans = chosen.filter(c => c.source === 'pos_plan');
+  if(plans.length > 1){
+    return fail('An account can only be on one EPAY software plan — ' +
+      plans.map(p => p.name).join(' and ') + ' are both ticked. Pick one.');
   }
 
-  // Writes into the same array the boarding panel ticks, so the two agree
-  // rather than each holding half the picture. One entry per product: a
-  // second tier of the same integration replaces the first, which is what
-  // changing a tier means.
-  const list = (l[source] || []).filter(it => it.key !== key);
-  const entry = { key, name: choice.name, price: choice.price,
-                  added_at: ((document.getElementById('subCatDate_' + leadId) || {}).value || todayISO()) };
-  if(tierKey) entry.tierKey = tierKey;
-  list.push(entry);
+  const added_at = ((document.getElementById('subCatDate_' + leadId) || {}).value || todayISO());
 
-  const patch = {}; patch[source] = list;
+  // One save for the lot: two arrays and a column can all change together,
+  // and three separate updates could leave half of it applied.
+  const patch = {};
+  const nextArrays = {
+    integrations_selected: (l.integrations_selected || []).slice(),
+    epay_apps_selected: (l.epay_apps_selected || []).slice(),
+  };
+
+  chosen.forEach(c => {
+    if(c.source === 'pos_plan'){
+      patch.pos_plan = c.key;
+      patch.system_choice = 'epay';
+      return;
+    }
+    // One entry per product: ticking another tier of the same integration
+    // is changing the tier, not buying it twice.
+    const list = nextArrays[c.source].filter(it => it.key !== c.key);
+    const entry = { key: c.key, name: c.name, price: c.price, added_at };
+    if(c.tierKey) entry.tierKey = c.tierKey;
+    list.push(entry);
+    nextArrays[c.source] = list;
+  });
+
+  ['integrations_selected', 'epay_apps_selected'].forEach(k => {
+    if(chosen.some(c => c.source === k)) patch[k] = nextArrays[k];
+  });
+
   const { error } = await supa.from('leads').update(patch).eq('id', leadId);
   if(error) return fail('Could not add: ' + error.message);
 
-  l[source] = list;
+  Object.assign(l, patch);
+  const sum = chosen.reduce((t, c) => t + c.price, 0);
   openLeadDetail(leadId);
   if(document.getElementById('view-reportsubs').style.display !== 'none') renderSubscriptionReport();
-  showToast(`${choice.name} added — $${choice.price.toFixed(2)}/mo`, 'success');
+  showToast(chosen.length === 1
+    ? `${chosen[0].name} added — $${sum.toFixed(2)}/mo`
+    : `${chosen.length} added — $${sum.toFixed(2)}/mo between them`, 'success');
 }
 
 async function addSubscriptionLine(leadId){
