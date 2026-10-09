@@ -1302,6 +1302,11 @@
     padding:12px 26px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13.5px;margin:6px 0 18px;}
   .email-preview-footer{background:var(--email-bg);padding:16px 24px;font-size:11px;color:var(--email-muted);text-align:center;}
 
+  /* An employee on the org chart. The left bar matches the board's
+     is-inhouse card, so the two kinds of person read the same way in both
+     views. */
+  .org-box-user{border-left:3px solid var(--brand-accent-2);}
+
   /* ---------- NOTES THAT SAVE THEMSELVES ---------- */
   .auto-notes{margin:0 0 20px;}
   .auto-notes-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:6px;}
@@ -11889,8 +11894,25 @@ function getBoxPos(kind, id, obj, defaults){
   return defaults[kind+':'+(id||'')] || { x: 40, y: 40 };
 }
 
+/* Everyone with a login, minus anyone already on the chart as an agent
+   box. A portal login usually HAS a partner record, and that record is
+   what gets drawn — putting the person up twice would be worse than
+   leaving them off. But an agent, ISO or referral partner whose record is
+   not an agent box (a referral partner, say) would otherwise appear
+   nowhere at all, which is the thing this is meant to stop. */
+function teamStructureStaff(partnersOnChart){
+  const onChart = new Set(partnersOnChart.map(p => p.id));
+  const q = ((document.getElementById('teamStructureSearch')||{}).value || '').trim().toLowerCase();
+  return USERS
+    .filter(u => roleOf(u).portal_scope === 'internal'
+              || !(u.linked_partner_id && onChart.has(u.linked_partner_id)))
+    .filter(u => !q || (u.name||'').toLowerCase().includes(q) || (u.email||'').toLowerCase().includes(q))
+    .sort((a, b) => (a.name||'').localeCompare(b.name||''));
+}
+
 function renderTeamStructureHierarchy(){
   const partners = teamStructurePartners();
+  const staff = teamStructureStaff(partners);
   const defaults = assignDefaultPositions(partners);
   const boxesHtml = [];
   const lines = [];
@@ -11917,9 +11939,34 @@ function renderTeamStructureHierarchy(){
     });
   }
 
+  // Employees, placed the same way agents are: under their office, and
+  // under whoever they report to. users.manager_id and users.office_id
+  // already carried both facts — the chart simply was not drawing them, so
+  // the picture of the organisation left out the organisation.
+  function addUserBox(u, officeId, seen){
+    if(seen.has(u.id)) return;   // a reporting loop must not recurse forever
+    seen.add(u.id);
+    const pos = getBoxPos('user', u.id, u, defaults);
+    const initials = (u.name || '?').split(' ').filter(Boolean).map(w=>w[0]).slice(0,2).join('').toUpperCase();
+    boxesHtml.push(`
+      <div class="org-box org-box-user" data-user-id="${u.id}" style="left:${pos.x}px;top:${pos.y}px;"
+           onmousedown="startBoxDrag(event, '${u.id}', 'user')">
+        <span class="tc-avatar tc-avatar-inhouse">${initials}</span>
+        <span class="org-box-name">${escAttr(u.name || '—')}</span>
+        <span class="pill pill-inhouse" style="font-size:9.5px;">${escAttr(roleOf(u).label)}</span>
+      </div>`);
+    const reports = staff.filter(x => x.manager_id === u.id && (x.office_id || null) === officeId)
+      .sort((a, b) => (a.name||'').localeCompare(b.name||''));
+    reports.forEach(r => {
+      lines.push({ fromType:'user', fromId:u.id, toType:'user', toId:r.id });
+      addUserBox(r, officeId, seen);
+    });
+  }
+
   [...OFFICES, { id: null, name: 'Unassigned' }].forEach(office => {
     const officePartners = partners.filter(p => (p.office_id || null) === office.id);
-    if(!officePartners.length && office.id === null) return;
+    const officeStaff = staff.filter(u => (u.office_id || null) === office.id);
+    if(!officePartners.length && !officeStaff.length && office.id === null) return;
     const opos = getBoxPos('office', office.id, office, defaults);
     boxesHtml.push(`
       <div class="org-box org-box-office" data-office-id="${office.id||''}" style="left:${opos.x}px;top:${opos.y}px;"
@@ -11927,6 +11974,32 @@ function renderTeamStructureHierarchy(){
         <span class="org-box-name">${office.name}</span>
         <span class="office-count">${officePartners.length}</span>
       </div>`);
+    // Staff first, so the chart reads top-down as office, then the people
+    // who run it, then the agents.
+    const staffSeen = new Set();
+    officeStaff.filter(u => {
+      if(!u.manager_id) return true;
+      const mgr = USERS.find(x => x.id === u.manager_id);
+      // Somebody whose manager sits in another office hangs off this one
+      // rather than disappearing from both.
+      return !mgr || (mgr.office_id || null) !== office.id;
+    }).sort((a, b) => (a.name||'').localeCompare(b.name||''))
+      .forEach(u => {
+        lines.push({ fromType:'office', fromId:office.id||'', toType:'user', toId:u.id });
+        addUserBox(u, office.id, staffSeen);
+      });
+
+    // Anyone still undrawn: two people set as each other's manager, or a
+    // chain that loops. Neither counts as a root, so without this they
+    // would be missing from the chart altogether — and "everyone is on it"
+    // is the whole point. They hang off the office instead.
+    officeStaff.filter(u => !staffSeen.has(u.id))
+      .sort((a, b) => (a.name||'').localeCompare(b.name||''))
+      .forEach(u => {
+        lines.push({ fromType:'office', fromId:office.id||'', toType:'user', toId:u.id });
+        addUserBox(u, office.id, staffSeen);
+      });
+
     const roots = officePartners.filter(p => {
       if(!p.parent_partner_id) return true;
       const parent = PARTNERS.find(x => x.id === p.parent_partner_id);
@@ -11939,7 +12012,7 @@ function renderTeamStructureHierarchy(){
   });
 
   if(!boxesHtml.length){
-    document.getElementById('teamStructureHierarchy').innerHTML = `<p style="color:var(--slate-500);font-size:13px;">No agents or resellers yet.</p>`;
+    document.getElementById('teamStructureHierarchy').innerHTML = `<p style="color:var(--slate-500);font-size:13px;">Nobody to chart yet — add a user or an agent.</p>`;
     return;
   }
 
@@ -12027,6 +12100,13 @@ function startBoxDrag(e, id, type){
 }
 
 async function persistBoxPosition(id, type, x, y){
+  if(type === 'user'){
+    const u = USERS.find(x2 => x2.id === id);
+    const { error } = await supa.from('users').update({ canvas_x: x, canvas_y: y }).eq('id', id);
+    if(error){ alert('Could not save position: ' + error.message); return; }
+    if(u){ u.canvas_x = x; u.canvas_y = y; }
+    return;
+  }
   if(type === 'person'){
     const p = PARTNERS.find(x2 => x2.id === id);
     const { error } = await supa.from('partners').update({ canvas_x: x, canvas_y: y }).eq('id', id);
@@ -12078,6 +12158,11 @@ function cancelLinkMode(){
 function handleBoxClick(id, type){
   if(_linkSourceId){
     if(id === _linkSourceId){ cancelLinkMode(); return; }
+    if(type === 'user'){
+      showToast('Who an employee reports to is set in Settings → Users, under "Reports to".', 'error');
+      cancelLinkMode();
+      return;
+    }
     if(type === 'person'){
       const targetPartner = PARTNERS.find(x => x.id === id);
       reparentInHierarchy(_linkSourceId, id, targetPartner ? targetPartner.office_id : null);
@@ -12087,7 +12172,8 @@ function handleBoxClick(id, type){
     cancelLinkMode();
     return;
   }
-  if(type === 'person') openReferralDetail(id);
+  if(type === 'user') openUserForm(id);
+  else if(type === 'person') openReferralDetail(id);
   else if(id) openOfficeMenu(id);
 }
 
