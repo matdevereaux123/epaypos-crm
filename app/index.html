@@ -1306,6 +1306,12 @@
      is-inhouse card, so the two kinds of person read the same way in both
      views. */
   .org-box-user{border-left:3px solid var(--brand-accent-2);}
+  /* The job title on a chart tile. Quieter than the name, louder than the
+     role pill — it is the line people actually read second. */
+  .org-box-title{
+    display:block;font-size:10px;color:var(--slate-500);line-height:1.3;
+    max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
 
   /* ---------- NOTES THAT SAVE THEMSELVES ---------- */
   .auto-notes{margin:0 0 20px;}
@@ -10570,6 +10576,8 @@ async function openReferralDetail(id){
             parse: v => { const t = String(v||'').trim().toUpperCase(); return t || null; },
             onSaved: () => { renderReferralTable(); renderAgentsTable();
                              if(document.getElementById('view-residuals').style.display !== 'none') renderResidualsReport(); } })}
+        ${editableRow('Job title', p.job_title, { table:'partners', id:p.id, column:'job_title', record:base, can: canEditPartners,
+            onSaved: () => { if(document.getElementById('view-teamstructure').style.display !== 'none') renderTeamStructure(); } })}
         ${editableRow('Website', p.website, { table:'partners', id:p.id, column:'website', record:base, can: canEditPartners })}
         ${editableRow('Street', p.address, { table:'partners', id:p.id, column:'address', record:base, can: canEditPartners })}
         ${editableRow('City', p.city, { table:'partners', id:p.id, column:'city', record:base, can: canEditPartners })}
@@ -11623,7 +11631,7 @@ function teamInhouseCardHtml(u){
         <span class="tc-avatar tc-avatar-inhouse">${initials}</span>
         <div>
           <div class="tc-name">${u.name || '—'}</div>
-          <div class="tc-sub">${u.email || ''}</div>
+          <div class="tc-sub">${u.job_title ? escAttr(u.job_title) : (u.email || '')}</div>
         </div>
       </div>
       <div class="tc-badges">
@@ -11929,6 +11937,7 @@ function renderTeamStructureHierarchy(){
         <button type="button" class="org-box-link-btn" title="Link to another box" onmousedown="event.stopPropagation();" onclick="event.stopPropagation(); startLinkMode('${p.id}', 'person', '${p.name.replace(/'/g,"\\'")}')">🔗</button>
         <span class="tc-avatar" style="background:linear-gradient(135deg, var(--brand-accent-2), var(--brand-accent));">${initials}</span>
         <span class="org-box-name">${p.name}</span>
+        ${p.job_title ? `<span class="org-box-title">${escAttr(p.job_title)}</span>` : ''}
         <span class="pill ${p.reseller_type==='authorized_reseller' ? 'pill-agent-auth' : 'pill-agent-basic'}" style="font-size:9.5px;">${p.reseller_type==='authorized_reseller' ? 'Auth. Reseller' : 'Basic Payments'}</span>
         ${p.residual_percentage ? `<span class="org-box-residual">${p.residual_percentage} residual</span>` : ''}
       </div>`);
@@ -11953,6 +11962,7 @@ function renderTeamStructureHierarchy(){
            onmousedown="startBoxDrag(event, '${u.id}', 'user')">
         <span class="tc-avatar tc-avatar-inhouse">${initials}</span>
         <span class="org-box-name">${escAttr(u.name || '—')}</span>
+        ${u.job_title ? `<span class="org-box-title">${escAttr(u.job_title)}</span>` : ''}
         <span class="pill pill-inhouse" style="font-size:9.5px;">${escAttr(roleOf(u).label)}</span>
       </div>`);
     const reports = staff.filter(x => x.manager_id === u.id && (x.office_id || null) === officeId)
@@ -12490,6 +12500,9 @@ function openUserForm(userId){
     <div class="drawer-body">
       <div class="field"><label>Name</label><input id="uName" value="${editing ? editing.name : ''}" placeholder="e.g. Jordan Reyes"></div>
       <div class="field"><label>Email</label><input id="uEmail" type="email" value="${editing ? editing.email : ''}" placeholder="name@epaypos.net"></div>
+      <div class="field"><label>Job title <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
+        <input id="uJobTitle" value="${editing ? escAttr(editing.job_title || '') : ''}" placeholder="e.g. Regional Sales Director">
+        <p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">What they do, shown on their tile in Team Structure. Separate from the classification below, which is what they can see and change.</p></div>
       <div class="field">
         <label>Classification</label>
         <select id="uRole" onchange="document.getElementById('uRoleDesc').textContent = ROLES[this.value].description;">
@@ -12537,7 +12550,8 @@ function readUserFormFields(){
   const manager_id = document.getElementById('uManager').value || null;
   if(!name || !email) return null;
   const brands = access === 'both' ? ['epay','atm'] : [access];
-  const fields = { name, email, brands, role, manager_id };
+  const fields = { name, email, brands, role, manager_id,
+    job_title: ((document.getElementById('uJobTitle') || {}).value || '').trim() || null };
   // Absent unless the grants block was actually on screen — a user edited by
   // someone without manageUsers must not have their grants wiped to {}.
   const grants = readExtraPermsFields('extraPermsBox');
@@ -22205,7 +22219,7 @@ function renderInternalSales(){
     <tr style="cursor:pointer;${inactive ? 'opacity:.6;' : ''}" onclick="openInternalSalesDrawer('${u.id}')">
       <td class="name-cell"><b>${escAttr(u.name)}</b>${inactive ? ' <span class="integration-status not-connected">Inactive</span>' : ''}
         <div class="sub">${escAttr(u.email)}</div></td>
-      <td>${c && c.title ? escAttr(c.title) : '—'}</td>
+      <td>${(u.job_title || (c && c.title)) ? escAttr(u.job_title || c.title) : '—'}</td>
       <td><span class="pill ${rolePillClass(u.role)}">${roleOf(u).label}</span></td>
       <td>${paySummary(c)}</td>
       <td>${performanceCellHtml('internal', Object.assign({}, c || {}, { id: u.id }))}</td>
@@ -22285,7 +22299,7 @@ function openInternalSalesDrawerImpl(userId){
         <input id="isEmail" type="email" value="${escAttr(v(u,'email'))}" placeholder="name@epaypos.net"></div>
       <div class="ai-search-grid">
         <div class="field"><label>Job title <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
-          <input id="isTitle" value="${escAttr(v(c,'title'))}" placeholder="e.g. Senior Account Executive"></div>
+          <input id="isTitle" value="${escAttr(v(u,'job_title') || v(c,'title'))}" placeholder="e.g. Senior Account Executive"></div>
         <div class="field"><label>Start date <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
           <input id="isStart" type="date" value="${escAttr(v(c,'start_date'))}"></div>
       </div>
@@ -22627,6 +22641,10 @@ async function saveInternalSalesPerson(userId){
     brands: access === 'both' ? ['epay','atm'] : [access],
     role: val('isRole') || 'in_house_sales',
     manager_id: val('isManager') || null,
+    // On the person rather than the pay record (database/89_job_titles.sql):
+    // everyone can have one, and it is not salary data to be kept behind
+    // the comp table's policy.
+    job_title: val('isTitle') || null,
   };
   const grants = readExtraPermsFields('isExtraPermsBox');
   if(grants) userFields.extra_perms = grants;
