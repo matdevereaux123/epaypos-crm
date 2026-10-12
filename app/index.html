@@ -4117,17 +4117,6 @@ async function loadLendingLeadsFromSupabase(){
   if(error){ reportLoadFailure('lending leads from Supabase', error); return []; }
   return data;
 }
-async function loadLendingLeadNotesFromSupabase(){
-  const { data, error } = await supa.from('lending_lead_notes').select('*').order('created_at', { ascending: false });
-  if(error){ reportLoadFailure('lending lead notes from Supabase', error); return []; }
-  return data;
-}
-async function loadLendingLeadCallNotesFromSupabase(){
-  const { data, error } = await supa.from('lending_lead_call_notes').select('*').order('created_at', { ascending: false });
-  if(error){ reportLoadFailure('lending lead call notes from Supabase', error); return []; }
-  return data;
-}
-
 /* =========================================================================
    ENVISION ISO LEADS — another fully separate, deliberately basic pipeline,
    same shape as Lending above, for leads sourced through independent ISOs
@@ -4161,17 +4150,6 @@ async function loadIsoLeadsFromSupabase(){
   if(error){ reportLoadFailure('ISO leads from Supabase', error); return []; }
   return data;
 }
-async function loadIsoLeadNotesFromSupabase(){
-  const { data, error } = await supa.from('iso_lead_notes').select('*').order('created_at', { ascending: false });
-  if(error){ reportLoadFailure('ISO lead notes from Supabase', error); return []; }
-  return data;
-}
-async function loadIsoLeadCallNotesFromSupabase(){
-  const { data, error } = await supa.from('iso_lead_call_notes').select('*').order('created_at', { ascending: false });
-  if(error){ reportLoadFailure('ISO lead call notes from Supabase', error); return []; }
-  return data;
-}
-
 // Reference data pulled from epaypos.net — kept in one place so the
 // dropdowns in Initial Outreach / Equipment & Pricing Confirm stay accurate.
 const POS_SYSTEM_PLANS = [
@@ -4426,18 +4404,6 @@ async function loadLeadsFromSupabase(){
 }
 
 function saveLeadNotes(list){ localStorage.setItem(LS_LEAD_NOTES_KEY, JSON.stringify(list)); }
-async function loadLeadNotesFromSupabase(){
-  const { data, error } = await supa.from('lead_notes').select('*').order('created_at', { ascending: false });
-  if(error){ reportLoadFailure('lead notes from Supabase', error); return []; }
-  return data;
-}
-
-async function loadLeadCallNotesFromSupabase(){
-  const { data, error } = await supa.from('lead_call_notes').select('*').order('created_at', { ascending: false });
-  if(error){ reportLoadFailure('lead call notes from Supabase', error); return []; }
-  return data;
-}
-
 async function loadLeadDocumentsFromSupabase(){
   const { data, error } = await supa.from('lead_documents').select('*').order('uploaded_at', { ascending: false });
   if(error){ reportLoadFailure('lead documents from Supabase', error); return []; }
@@ -4917,16 +4883,9 @@ async function loadPartnersFromSupabase(){
 
 // Real data layer — reads the Supabase `partner_notes` table.
 function saveNotes(list){ localStorage.setItem(LS_NOTES_KEY, JSON.stringify(list)); }
-async function loadNotesFromSupabase(){
-  const { data, error } = await supa.from('partner_notes').select('*').order('created_at', { ascending: false });
-  if(error){ reportLoadFailure('partner notes from Supabase', error); return []; }
-  return data;
-}
-
 // Populated for real from Supabase in enterAppAsAuthUser(), same as USERS.
 let PARTNERS = [];
 let referralActivityFilter = 'all';
-let NOTES = [];
 // Populated for real from Supabase in enterAppAsAuthUser(), before enterApp()
 // runs — empty here just so nothing throws on code that references USERS
 // before login resolves.
@@ -4940,14 +4899,8 @@ let currentBrand = 'epay';
 let LEADS = [];
 // Populated for real from Supabase in enterAppAsAuthUser().
 let LENDING_LEADS = [];
-let LENDING_LEAD_NOTES = [];
-let LENDING_LEAD_CALL_NOTES = [];
 let ISO_LEADS = [];
-let ISO_LEAD_NOTES = [];
-let ISO_LEAD_CALL_NOTES = [];
 // Populated for real from Supabase in enterAppAsAuthUser().
-let LEAD_NOTES = [];
-let LEAD_CALL_NOTES = [];
 let LEAD_DOCUMENTS = [];
 let PARTNER_DOCUMENTS = [];
 // Populated for real from Supabase in enterAppAsAuthUser().
@@ -5605,19 +5558,13 @@ async function enterAppAsAuthUser(authUser){
     loadUsersFromSupabase(),
     loadPartnersFromSupabase(),
     loadLeadsFromSupabase(),
+    loadAllNotesFromSupabase(),
     loadApplicationsFromSupabase(),
     loadColdLeadsFromSupabase(),
-    loadNotesFromSupabase(),
-    loadLeadNotesFromSupabase(),
-    loadLeadCallNotesFromSupabase(),
     loadLeadDocumentsFromSupabase(),
     loadOfficesFromSupabase(),
     loadLendingLeadsFromSupabase(),
-    loadLendingLeadNotesFromSupabase(),
-    loadLendingLeadCallNotesFromSupabase(),
     loadIsoLeadsFromSupabase(),
-    loadIsoLeadNotesFromSupabase(),
-    loadIsoLeadCallNotesFromSupabase(),
     loadNewslettersFromSupabase(),
     loadNlTemplatesFromSupabase(),
     loadConnectedCalendarsFromSupabase(),
@@ -5662,9 +5609,9 @@ async function enterAppAsAuthUser(authUser){
   rebuildRoles();
 
   const [
-    users, partners, leads, applications, coldLeads, notes, leadNotes,
-    leadCallNotes, leadDocuments, offices, lendingLeads, lendingLeadNotes,
-    lendingLeadCallNotes, isoLeads, isoLeadNotes, isoLeadCallNotes,
+    users, partners, leads, allNotes, applications, coldLeads,
+    leadDocuments, offices, lendingLeads,
+    isoLeads,
     newsletters, nlTemplates, connectedCalendars,
     calendarEvents, bookingLinks, bookingAvailability, notifications, tasks, coldOutreach, residualPayouts, atmLoaders, instantlyContacts, partnerDocuments, applicationLinks,
     integrationsFromDb, contacts, marketingProducts, marketingMaterials, internalSalesComp,
@@ -5679,19 +5626,13 @@ async function enterAppAsAuthUser(authUser){
   SIGNATURE_REQUESTS = signatureRequests;
   PARTNERS = partners;
   LEADS = leads;
+  ALL_NOTES = allNotes;
   APPLICATIONS = applications;
   COLD_LEADS = coldLeads;
-  NOTES = notes;
-  LEAD_NOTES = leadNotes;
-  LEAD_CALL_NOTES = leadCallNotes;
   LEAD_DOCUMENTS = leadDocuments;
   OFFICES = offices;
   LENDING_LEADS = lendingLeads;
-  LENDING_LEAD_NOTES = lendingLeadNotes;
-  LENDING_LEAD_CALL_NOTES = lendingLeadCallNotes;
   ISO_LEADS = isoLeads;
-  ISO_LEAD_NOTES = isoLeadNotes;
-  ISO_LEAD_CALL_NOTES = isoLeadCallNotes;
   NEWSLETTERS = newsletters;
   NL_TEMPLATES = nlTemplates;
   CONNECTED_CALENDARS = connectedCalendars;
@@ -10538,7 +10479,6 @@ async function openReferralDetail(id){
     }
   }
   const baseUrl = referralLinkBase();
-  const notesForPartner = NOTES.filter(n=>n.partner_id===id).sort((a,b)=> new Date(b.created_at)-new Date(a.created_at));
   const bank = p.banking || { bank_name:'', account_holder:'', account_type:'checking', routing_number:'', account_number:'' };
   const linkedLeads = scopedLeads().filter(l => l.linked_partner_id === id && !l.converted_to_account);
   const linkedAccounts = scopedLeads().filter(l => l.linked_partner_id === id && l.converted_to_account);
@@ -10556,7 +10496,7 @@ async function openReferralDetail(id){
     <div class="drawer-body">
       ${performancePanelHtml('partner', base)}
 
-      ${partnerNotesWidgetHtml(p.id)}
+      ${recordNotesWidgetHtml('partner', p.id, 'general', { label:'Notes' })}
 
       ${editableRow('Contact', p.contact, { table:'partners', id:p.id, column:'contact', record:base, can: canEditPartners })}
       ${editableRow('Email', p.email, { table:'partners', id:p.id, column:'email', type:'email', record:base, can: canEditPartners,
@@ -10733,7 +10673,6 @@ async function openReferralDetail(id){
     </div>
   `;
   document.getElementById('referralOverlay').classList.add('open');
-  drawPartnerNotes(p.id);
 }
 
 // The follow-up date used to ride along with the Save note button; the note
@@ -10749,14 +10688,6 @@ async function savePartnerFollowUp(partnerId){
   renderReferralTable();
   if(document.getElementById('view-agents').style.display !== 'none') renderAgentsTable();
   showToast(next_follow_up ? 'Follow-up set for ' + formatDate(next_follow_up) : 'Follow-up cleared', 'success');
-}
-
-async function deletePartnerNote(noteId, partnerId){
-  if(!confirm("Delete this note? This can't be undone.")) return;
-  const { error } = await supa.from('partner_notes').delete().eq('id', noteId);
-  if(error){ alert('Could not delete: ' + error.message); return; }
-  NOTES = NOTES.filter(n => n.id !== noteId);
-  openReferralDetail(partnerId);
 }
 
 async function deletePartner(id){
@@ -10808,35 +10739,6 @@ async function savePartnerParent(id, parentId){
   p.parent_partner_id = parent_partner_id;
   refreshActiveView();
   openReferralDetail(id);
-}
-
-async function addNote(partnerId){
-  const text = document.getElementById('newNoteText').value.trim();
-  const date = document.getElementById('newNoteDate').value;
-  if(!text){ return; }
-  // follow_up_date was never actually a partner_notes column (schema never
-  // had it, and nothing reads it off a note — the real follow-up date
-  // lives on partners.next_follow_up, set below) — dropped rather than
-  // carried forward as dead data.
-  const { data: note, error } = await supa.from('partner_notes').insert({
-    partner_id: partnerId,
-    text,
-    created_by: actingUser().email,
-  }).select().single();
-  if(error){ alert('Could not save note: ' + error.message); return; }
-  NOTES.unshift(note);
-
-  const partner = PARTNERS.find(p=>p.id===partnerId);
-  if(date){
-    const { error } = await supa.from('partners').update({ next_follow_up: date }).eq('id', partnerId);
-    if(error){ alert('Note saved, but could not update the follow-up date: ' + error.message); }
-    else partner.next_follow_up = date;
-  }
-
-  openReferralDetail(partnerId); // re-render drawer
-  renderReferralTable();
-  renderFollowups();
-  renderDashboard();
 }
 
 async function saveBankingInfo(partnerId){
@@ -11270,7 +11172,7 @@ function collectAllFollowups(){
   const items = [];
   scopedPartnersForCurrentUser().forEach(p => {
     if(p.next_follow_up){
-      const latestNote = NOTES.filter(n=>n.partner_id===p.id).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))[0];
+      const latestNote = notesFor('partner', p.id).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))[0];
       items.push({
         recordType:'partner', id:p.id, name:p.name, typeLabel:'Referral Partner',
         detail: p.auto_followup_days ? `Auto every ${p.auto_followup_days}d` : 'Manual',
@@ -11309,9 +11211,10 @@ document.getElementById('fuSaveBtn').addEventListener('click', async function(){
     if(error){ alert('Could not save: ' + error.message); return; }
     p.next_follow_up = date;
     if(note){
-      const { data: newNote, error: noteErr } = await supa.from('partner_notes').insert({ partner_id: p.id, text: note, created_by: actingUser().email }).select().single();
+      const { data: newNote, error: noteErr } = await supa.from('record_notes')
+        .insert({ entity_type:'partner', entity_id: p.id, kind:'general', text: note }).select().single();
       if(noteErr){ alert('Follow-up date saved, but could not save the note: ' + noteErr.message); }
-      else NOTES.unshift(newNote);
+      else upsertNote(newNote);
     }
   } else {
     const l = LEADS.find(x=>x.id===recordId);
@@ -12860,7 +12763,7 @@ function leadCardHtml(l, phaseColor){
   // the other, and one shared date would misreport both.
   const age = daysSince(l[leadStageEnteredField(effectiveBrand(l))] || l.stage_entered_at);
   const hasMeeting = CALENDAR_EVENTS.some(e => e.linked_lead_id === l.id);
-  const noteCount = LEAD_NOTES.filter(n => n.lead_id === l.id).length + LEAD_CALL_NOTES.filter(n => n.lead_id === l.id).length;
+  const noteCount = noteCountFor('lead', l.id);
   const initials = l.business_name.split(' ').filter(Boolean).map(w=>w[0]).slice(0,2).join('').toUpperCase();
   const assignee = l.assigned_to ? USERS.find(u => u.id === l.assigned_to) : null;
   const assigneeInitials = assignee ? assignee.name.split(' ').filter(Boolean).map(w=>w[0]).slice(0,2).join('').toUpperCase() : '';
@@ -12994,7 +12897,7 @@ function getStageRequirementError(lead, stageKey){
       // Must be a call note logged since the lead actually landed in this
       // stage — an old note from earlier in the pipeline doesn't count as
       // the 1 month follow-up call itself.
-      if(!LEAD_CALL_NOTES.some(n => n.lead_id === lead.id && n.created_at >= lead.stage_entered_at)){
+      if(!notesFor('lead', lead.id, 'call').some(n => n.created_at >= lead.stage_entered_at)){
         return "Add a 1 month follow-up call note before converting this account.";
       }
       return null;
@@ -14478,7 +14381,7 @@ async function saveFollowupFields(id, n){
 }
 function generateFollowupIdea(id, n){
   const l = LEADS.find(x=>x.id===id); if(!l) return;
-  const notes = LEAD_NOTES.filter(nt=>nt.lead_id===id).concat(LEAD_CALL_NOTES.filter(nt=>nt.lead_id===id))
+  const notes = notesFor('lead', id)
     .sort((a,b)=> new Date(b.created_at)-new Date(a.created_at));
   const planLabel = l.pos_plan ? (POS_SYSTEM_PLANS.find(p=>p.key===l.pos_plan)||{}).label
     : (l.clover_device || l.nrs_device || l.third_party_name || (l.system_choice==='ncr' ? 'NCR' : ''));
@@ -15009,8 +14912,6 @@ async function openLeadDetail(id){
     if(cached.business_tax_id) l.business_tax_id = cached.business_tax_id;
     if(cached.banking) l.banking = cached.banking;
   }
-  const notesForLead = LEAD_NOTES.filter(n => n.lead_id === id).sort((a,b)=> new Date(b.created_at)-new Date(a.created_at));
-  const callNotesForLead = LEAD_CALL_NOTES.filter(n => n.lead_id === id).sort((a,b)=> new Date(b.created_at)-new Date(a.created_at));
   const leadStages = stagesForBrand(l.brand || 'epay');
   const currentIdx = stageIndex(leadStage(l));
   const nextStage = currentIdx > -1 && currentIdx < leadStages.length - 1 ? leadStages[currentIdx + 1] : null;
@@ -15075,39 +14976,8 @@ async function openLeadDetail(id){
     </div>` : ''}
   `;
 
-  const callNotesBody = `
-    <div class="field">
-      <textarea id="newLeadCallNoteText" placeholder="What was discussed on the call..."></textarea>
-    </div>
-    ${noteTaskOptionHtml('leadCallNote', 'newLeadCallNoteText', 'first')}
-    <button class="btn btn-accent" style="width:100%;" onclick="addLeadCallNote('${l.id}')">Save call note</button>
-    <div style="margin-top:14px;">
-      ${callNotesForLead.length ? callNotesForLead.map(n => `
-        <div class="note-item">
-          <button class="note-del" onclick="deleteLeadCallNote('${n.id}','${l.id}')" title="Delete">Delete</button>
-          <div class="meta">${formatDate(n.created_at)} · ${n.created_by}</div>
-          <div class="txt">${n.text}</div>
-        </div>
-      `).join('') : '<p style="color:var(--slate-500);font-size:13px;">No call notes yet.</p>'}
-    </div>
-  `;
-
-  const notesBody = `
-    <div class="field">
-      <textarea id="newLeadNoteText" placeholder="What happened, what's next..."></textarea>
-    </div>
-    ${noteTaskOptionHtml('leadNote', 'newLeadNoteText', 'first')}
-    <button class="btn btn-accent" style="width:100%;" onclick="addLeadNote('${l.id}')">Save note</button>
-    <div style="margin-top:14px;">
-      ${notesForLead.length ? notesForLead.map(n => `
-        <div class="note-item">
-          <button class="note-del" onclick="deleteLeadNote('${n.id}','${l.id}')" title="Delete">Delete</button>
-          <div class="meta">${formatDate(n.created_at)} · ${n.created_by}</div>
-          <div class="txt">${n.text}</div>
-        </div>
-      `).join('') : '<p style="color:var(--slate-500);font-size:13px;">No notes yet. This log is a shared archive across every user, dated, and entries can be deleted but never edited.</p>'}
-    </div>
-  `;
+  const callNotesBody = recordNotesWidgetHtml('lead', l.id, 'call');
+  const notesBody = recordNotesWidgetHtml('lead', l.id, 'general');
 
   const shipmentsBody = `
     <p style="font-size:11.5px;color:var(--slate-500);margin:0 0 12px;">Every shipment sent for this lead/account, with the date and time it was logged. Use this for the initial equipment plus anything shipped later — replacement parts, additional terminals, etc.</p>
@@ -18123,55 +17993,6 @@ async function deleteLead(id){
   if(document.getElementById('view-accounts').style.display !== 'none') renderAccountsTable();
 }
 
-async function addLeadNote(leadId){
-  const text = document.getElementById('newLeadNoteText').value.trim();
-  // An empty box with the task option ticked still means something: the task
-  // was the point, and silently doing nothing would be the wrong answer.
-  if(!text){
-    if(noteTaskIsOn('leadNote') && await createTaskFromNote('leadNote', 'lead', leadId, '', 'first')) openLeadDetail(leadId);
-    return;
-  }
-  const { data: note, error } = await supa.from('lead_notes').insert({
-    lead_id: leadId,
-    text,
-    created_by: actingUser().email,
-  }).select().single();
-  if(error){ alert('Could not save note: ' + error.message); return; }
-  LEAD_NOTES.unshift(note);
-  await createTaskFromNote('leadNote', 'lead', leadId, text, 'first');
-  openLeadDetail(leadId);
-}
-async function deleteLeadNote(noteId, leadId){
-  if(!confirm('Delete this note? This can\'t be undone.')) return;
-  const { error } = await supa.from('lead_notes').delete().eq('id', noteId);
-  if(error){ alert('Could not delete: ' + error.message); return; }
-  LEAD_NOTES = LEAD_NOTES.filter(n => n.id !== noteId);
-  openLeadDetail(leadId);
-}
-async function addLeadCallNote(leadId){
-  const text = document.getElementById('newLeadCallNoteText').value.trim();
-  if(!text){
-    if(noteTaskIsOn('leadCallNote') && await createTaskFromNote('leadCallNote', 'lead', leadId, '', 'first')) openLeadDetail(leadId);
-    return;
-  }
-  const { data: note, error } = await supa.from('lead_call_notes').insert({
-    lead_id: leadId,
-    text,
-    created_by: actingUser().email,
-  }).select().single();
-  if(error){ alert('Could not save note: ' + error.message); return; }
-  LEAD_CALL_NOTES.unshift(note);
-  await createTaskFromNote('leadCallNote', 'lead', leadId, text, 'first');
-  openLeadDetail(leadId);
-}
-async function deleteLeadCallNote(noteId, leadId){
-  if(!confirm('Delete this call note? This can\'t be undone.')) return;
-  const { error } = await supa.from('lead_call_notes').delete().eq('id', noteId);
-  if(error){ alert('Could not delete: ' + error.message); return; }
-  LEAD_CALL_NOTES = LEAD_CALL_NOTES.filter(n => n.id !== noteId);
-  openLeadDetail(leadId);
-}
-
 /* =========================================================================
    ACCOUNTS — every lead that has converted out of Inbound. Same underlying
    record as a lead; converted_to_account flips true the moment it leaves
@@ -19623,8 +19444,7 @@ async function returnLeadToCold(leadId){
     ? COLD_LEADS.find(c => c.id === l.from_cold_lead_id)
     : null;
 
-  const noteCount = LEAD_NOTES.filter(n => n.lead_id === leadId).length
-                  + LEAD_CALL_NOTES.filter(n => n.lead_id === leadId).length;
+  const noteCount = noteCountFor('lead', leadId);
   const docCount = LEAD_DOCUMENTS.filter(d => d.lead_id === leadId).length;
   const keeps = [];
   if(noteCount) keeps.push(noteCount + (noteCount === 1 ? ' note' : ' notes'));
@@ -21686,7 +21506,37 @@ async function createTaskFromNote(prefix, kind, recordId, noteText, mode){
    Add forms keep a plain box for the first note and noteOnCreate() turns it
    into the first log entry once the record has an id.
    ========================================================================= */
-const RECORD_NOTES = {};   // 'type:id' -> entries, newest first
+/* Every note in the CRM, in one array, loaded once at login — the single
+   query that replaced seven (database/91_one_notes_table.sql).
+
+   It is held whole rather than per record because the things that count
+   notes need all of them at once: the badge on a lead card, the stage rule
+   that wants a call note logged since the lead entered this stage. The
+   per-record widget refreshes its own slice on open, so another user's
+   note appears without a reload. */
+let ALL_NOTES = [];
+
+async function loadAllNotesFromSupabase(){
+  const { data, error } = await supa.from('record_notes').select('*')
+    .order('created_at', { ascending: false });
+  if(error){ reportLoadFailure('notes', error); return []; }
+  return data || [];
+}
+
+function notesFor(type, id, kind){
+  return ALL_NOTES.filter(n => n.entity_type === type && n.entity_id === id
+    && (!kind || (n.kind || 'general') === kind));
+}
+
+function noteCountFor(type, id){ return notesFor(type, id).length; }
+
+// Keeps the one array in step after a save or a delete, so a badge counts
+// the note somebody just wrote without waiting for a reload.
+function upsertNote(row){
+  const at = ALL_NOTES.findIndex(n => n.id === row.id);
+  if(at === -1) ALL_NOTES.unshift(row); else ALL_NOTES[at] = row;
+}
+function removeNote(noteId){ ALL_NOTES = ALL_NOTES.filter(n => n.id !== noteId); }
 
 function formatDateTime(ts){
   const d = new Date(ts);
@@ -21777,162 +21627,130 @@ function flushNoteAutosave(cfg, close){
 }
 
 /* ---- record_notes (cold leads, contacts, internal sales, …) ------------ */
-function recordNoteAutosaveCfg(type, id){
-  const dom = type + '-' + id;
+function noteDom(type, id, kind){ return type + '-' + id + '-' + (kind || 'general'); }
+
+function recordNoteAutosaveCfg(type, id, kind){
+  kind = kind || 'general';
+  const dom = noteDom(type, id, kind);
   return {
     key: 'record:' + dom,
     boxId: 'rn-text-' + dom,
     statusId: 'rn-status-' + dom,
     insert: text => supa.from('record_notes')
-      .insert({ entity_type: type, entity_id: id, text }).select().single(),
+      .insert({ entity_type: type, entity_id: id, kind, text }).select().single(),
     update: (noteId, text) => supa.from('record_notes')
       .update({ text }).eq('id', noteId).select().single(),
-    onSaved: row => {
-      const key = type + ':' + id;
-      const list = RECORD_NOTES[key] || (RECORD_NOTES[key] = []);
-      const at = list.findIndex(n => n.id === row.id);
-      if(at === -1) list.unshift(row); else list[at] = row;
-      drawRecordNotes(type, id);
-    },
+    onSaved: row => { upsertNote(row); drawRecordNotes(type, id, kind); },
   };
 }
-function recordNoteTyped(type, id){ queueNoteAutosave(recordNoteAutosaveCfg(type, id)); }
-function recordNoteDone(type, id){ return flushNoteAutosave(recordNoteAutosaveCfg(type, id), true); }
+function recordNoteTyped(type, id, kind){ queueNoteAutosave(recordNoteAutosaveCfg(type, id, kind)); }
+function recordNoteDone(type, id, kind){ return flushNoteAutosave(recordNoteAutosaveCfg(type, id, kind), true); }
 
 /* ---- partner_notes (referral partners, agents, ISOs) ------------------- */
-function partnerNoteAutosaveCfg(partnerId){
-  return {
-    key: 'partner:' + partnerId,
-    boxId: 'pn-text-' + partnerId,
-    statusId: 'pn-status-' + partnerId,
-    insert: text => supa.from('partner_notes')
-      .insert({ partner_id: partnerId, text, created_by: actingUser().email }).select().single(),
-    update: (noteId, text) => supa.from('partner_notes')
-      .update({ text }).eq('id', noteId).select().single(),
-    onSaved: row => {
-      const at = NOTES.findIndex(n => n.id === row.id);
-      if(at === -1) NOTES.unshift(row); else NOTES[at] = row;
-      drawPartnerNotes(partnerId);
-    },
-  };
-}
-function partnerNoteTyped(id){ queueNoteAutosave(partnerNoteAutosaveCfg(id)); }
-function partnerNoteDone(id){ return flushNoteAutosave(partnerNoteAutosaveCfg(id), true); }
-
-function partnerNotesWidgetHtml(partnerId){
-  return `
-    <div class="auto-notes">
-      <div class="auto-notes-head">
-        <label>Notes</label>
-        <span class="auto-notes-status" id="pn-status-${partnerId}">Saves as you type</span>
-      </div>
-      <textarea id="pn-text-${partnerId}" rows="3" placeholder="What was discussed, decided, or needs to happen next..."
-        oninput="partnerNoteTyped('${partnerId}')" onblur="partnerNoteDone('${partnerId}')"></textarea>
-      <button type="button" class="btn btn-sm" style="width:100%;margin-top:7px;" onclick="partnerNoteDone('${partnerId}')">Save and start a new note</button>
-      <div id="pn-list-${partnerId}" class="auto-notes-log"></div>
-    </div>`;
-}
-
-// Redraws the log alone — re-rendering the drawer would take the cursor out
-// of the box somebody is still typing in.
-function drawPartnerNotes(partnerId){
-  const el = document.getElementById('pn-list-' + partnerId);
-  if(!el) return;
-  const rows = NOTES.filter(n => n.partner_id === partnerId)
-    .slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-  el.innerHTML = rows.length ? rows.map(n => `
-    <div class="note-item">
-      <button class="note-del" onclick="deletePartnerNoteInline('${n.id}','${partnerId}')" title="Delete">Delete</button>
-      <div class="meta">${formatDateTime(n.created_at)} &middot; ${escAttr(n.created_by || 'Unknown')}</div>
-      <div class="txt">${escAttr(n.text).replace(/\n/g, '<br>')}</div>
-    </div>`).join('')
-    : '<p style="color:var(--slate-500);font-size:13px;margin:12px 0 0;">No notes yet. Every note is dated and shows who wrote it.</p>';
-}
-
-async function deletePartnerNoteInline(noteId, partnerId){
-  if(!confirm("Delete this note? This can't be undone.")) return;
-  const { error } = await supa.from('partner_notes').delete().eq('id', noteId);
-  if(error){ showToast('Could not delete: ' + error.message, 'error'); return; }
-  NOTES = NOTES.filter(n => n.id !== noteId);
-  // Deleting the row the box is still editing would otherwise leave it
-  // updating something that no longer exists.
-  if(noteDraft.id === noteId) noteDraft = { key: null, id: null, timer: null, saving: false, pending: false };
-  drawPartnerNotes(partnerId);
-}
 
 function recordNotesFieldHtml(type, id, o){
   o = o || {};
   const label = o.label || 'Notes';
   if(id){
-    return `<div class="field"><label>${label} <span style="color:var(--slate-300);font-weight:400;">(dated log)</span></label>${recordNotesWidgetHtml(type, id)}</div>`;
+    return recordNotesWidgetHtml(type, id, 'general', { label, placeholder: o.placeholder });
   }
   return `<div class="field"><label>${label}</label><textarea id="${o.textareaId}" rows="${o.rows || 3}" placeholder="${escAttr(o.placeholder || '')}"></textarea></div>`;
 }
 
-function recordNotesWidgetHtml(type, id){
-  const dom = type + '-' + id;
+/* One widget for every dated log in the CRM. `kind` separates call notes
+   from the general one — they were separate tables until
+   database/91_one_notes_table.sql, and keeping them as separate streams is
+   the point of that column.
+
+   Notes load once per record and are filtered per kind on draw, so a
+   drawer showing both lists costs one query rather than two. */
+function recordNotesWidgetHtml(type, id, kind, o){
+  kind = kind || 'general';
+  o = o || {};
+  const dom = noteDom(type, id, kind);
   loadRecordNotes(type, id);
+  // The task option belongs on the kinds of record somebody works from a
+  // note — a lead or a cold lead. Offering it on a partner's log would be
+  // a task with nothing to attach to.
+  const taskKind = (type === 'cold_lead' || type === 'lead') ? type : null;
+  const taskPrefix = 'noteTask-' + dom;
   return `
     <div class="record-notes">
       <div class="auto-notes-head">
-        <label>Notes</label>
+        <label>${escAttr(o.label || (kind === 'call' ? 'Call notes' : 'Notes'))}</label>
         <span class="auto-notes-status" id="rn-status-${dom}">Saves as you type</span>
       </div>
-      <textarea id="rn-text-${dom}" rows="3" placeholder="What happened, what's next..."
-        oninput="recordNoteTyped('${type}','${id}')"
-        onblur="${type === 'cold_lead' ? '' : `recordNoteDone('${type}','${id}')`}"></textarea>
-      ${type === 'cold_lead' ? noteTaskOptionHtml('clNote', 'rn-text-' + dom, 'first') : ''}
-      <button type="button" class="btn btn-accent" style="width:100%;margin-top:8px;" onclick="addRecordNote('${type}','${id}')">${type === 'cold_lead' ? 'Save note' : 'Save and start a new note'}</button>
-      <div id="rn-list-${dom}" style="margin-top:14px;"><p style="color:var(--slate-500);font-size:13px;">Loading notes…</p></div>
+      <textarea id="rn-text-${dom}" rows="3" placeholder="${escAttr(o.placeholder || (kind === 'call' ? 'What was discussed on the call...' : "What happened, what's next..."))}"
+        oninput="recordNoteTyped('${type}','${id}','${kind}')"
+        onblur="${taskKind ? '' : `recordNoteDone('${type}','${id}','${kind}')`}"></textarea>
+      ${taskKind ? noteTaskOptionHtml(taskPrefix, 'rn-text-' + dom, 'first') : ''}
+      <button type="button" class="btn btn-accent" style="width:100%;margin-top:8px;" onclick="addRecordNote('${type}','${id}','${kind}')">Save and start a new note</button>
+      <div id="rn-list-${dom}" class="auto-notes-log"><p style="color:var(--slate-500);font-size:13px;">Loading notes…</p></div>
     </div>`;
 }
 
+// Refreshes one record's slice, so opening a drawer shows what somebody
+// else added since login. The rest of the array is left alone.
 async function loadRecordNotes(type, id){
-  const key = type + ':' + id;
   const { data, error } = await supa.from('record_notes').select('*')
     .eq('entity_type', type).eq('entity_id', id).order('created_at', { ascending:false });
   if(error){
-    RECORD_NOTES[key] = [];
-    drawRecordNotes(type, id, 'Could not load notes: ' + error.message);
+    drawRecordNotes(type, id, null, 'Could not load notes: ' + error.message);
     return;
   }
-  RECORD_NOTES[key] = data || [];
+  ALL_NOTES = ALL_NOTES.filter(n => !(n.entity_type === type && n.entity_id === id))
+    .concat(data || []);
   drawRecordNotes(type, id);
 }
 
 // Called while the drawer's HTML is still being assembled, so the list box
 // does not exist yet on the first attempts — wait for it rather than assume.
-function drawRecordNotes(type, id, errorText, attempt){
-  const el = document.getElementById('rn-list-' + type + '-' + id);
+// With no kind, every list on screen for this record is redrawn.
+function drawRecordNotes(type, id, kind, errorText, attempt){
+  if(!kind){
+    ['general','call'].forEach(k => drawRecordNotes(type, id, k, errorText, attempt));
+    return;
+  }
+  const dom = noteDom(type, id, kind);
+  const el = document.getElementById('rn-list-' + dom);
   if(!el){
-    if((attempt || 0) < 20) setTimeout(() => drawRecordNotes(type, id, errorText, (attempt || 0) + 1), 50);
+    // Only chase a list that is actually coming: the general one always is,
+    // a call list only on the records that show one.
+    if(kind === 'general' && (attempt || 0) < 20){
+      setTimeout(() => drawRecordNotes(type, id, kind, errorText, (attempt || 0) + 1), 50);
+    }
     return;
   }
   if(errorText){ el.innerHTML = `<p style="color:var(--red);font-size:13px;">${escAttr(errorText)}</p>`; return; }
-  const rows = RECORD_NOTES[type + ':' + id] || [];
+  const rows = notesFor(type, id, kind).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   const isAdmin = !!roleOf(currentUser).perms.manageUsers;
   el.innerHTML = rows.length ? rows.map(n => `
     <div class="note-item">
-      ${(isAdmin || n.created_by_id === currentUser.id) ? `<button class="note-del" onclick="deleteRecordNote('${n.id}','${type}','${id}')" title="Delete">Delete</button>` : ''}
+      ${(isAdmin || n.created_by_id === currentUser.id) ? `<button class="note-del" onclick="deleteRecordNote('${n.id}','${type}','${id}','${kind}')" title="Delete">Delete</button>` : ''}
       <div class="meta">${formatDateTime(n.created_at)} · ${escAttr(n.created_by || 'Unknown')}</div>
       <div class="txt">${escAttr(n.text).replace(/\n/g, '<br>')}</div>
     </div>`).join('')
-    : '<p style="color:var(--slate-500);font-size:13px;">No notes yet. Every note is dated and shows who wrote it; entries can be deleted but never edited.</p>';
+    : `<p style="color:var(--slate-500);font-size:13px;">No ${kind === 'call' ? 'call notes' : 'notes'} yet. Every note is dated and shows who wrote it; entries can be deleted.</p>`;
 }
 
-async function addRecordNote(type, id){
-  const dom = type + '-' + id;
+async function addRecordNote(type, id, kind){
+  kind = kind || 'general';
+  const dom = noteDom(type, id, kind);
   const box = document.getElementById('rn-text-' + dom);
   const text = (box.value || '').trim();
+  const taskKind = (type === 'cold_lead' || type === 'lead') ? type : null;
+  const taskPrefix = 'noteTask-' + dom;
+
   if(!text){
     // A task ticked on an empty note still means something.
-    if(type === 'cold_lead' && noteTaskIsOn('clNote')) await createTaskFromNote('clNote', 'cold_lead', id, '', 'first');
+    if(taskKind && noteTaskIsOn(taskPrefix)) await createTaskFromNote(taskPrefix, taskKind, id, '', 'first');
     else showToast('Write the note first.', 'error');
     return;
   }
+
   // Autosave may already have written this note. Finishing the draft
   // updates that row; inserting here as well would put it in the log twice.
-  await recordNoteDone(type, id);
+  await recordNoteDone(type, id, kind);
 
   if(type === 'cold_lead'){
     // The cold lead list previews the latest note from the notes column.
@@ -21942,21 +21760,21 @@ async function addRecordNote(type, id){
       supa.from('cold_leads').update({ notes: text }).eq('id', id).then(() => {});
       renderColdLeadsTable();
     }
-    if(await createTaskFromNote('clNote', 'cold_lead', id, text, 'first')){
-      const on = document.getElementById('clNoteTaskOn');
-      if(on){ on.checked = false; toggleNoteTask('clNote', 'rn-text-' + dom, 'first'); }
-    }
+  }
+  if(taskKind && await createTaskFromNote(taskPrefix, taskKind, id, text, 'first')){
+    const on = document.getElementById(taskPrefix + 'TaskOn');
+    if(on){ on.checked = false; toggleNoteTask(taskPrefix, 'rn-text-' + dom, 'first'); }
   }
   showToast('Note saved.', 'success');
 }
 
-async function deleteRecordNote(noteId, type, id){
+async function deleteRecordNote(noteId, type, id, kind){
   if(!confirm('Delete this note? This can\'t be undone.')) return;
   const { error } = await supa.from('record_notes').delete().eq('id', noteId);
   if(error){ showToast('Could not delete: ' + error.message, 'error'); return; }
-  const key = type + ':' + id;
-  RECORD_NOTES[key] = (RECORD_NOTES[key] || []).filter(n => n.id !== noteId);
-  drawRecordNotes(type, id);
+  removeNote(noteId);
+  if(noteDraft.id === noteId) noteDraft = { key: null, id: null, timer: null, saving: false, pending: false };
+  drawRecordNotes(type, id, kind);
 }
 
 // First note typed into an Add form, filed as the first log entry once the
@@ -21964,8 +21782,10 @@ async function deleteRecordNote(noteId, type, id){
 async function noteOnCreate(type, id, text){
   text = (text || '').trim();
   if(!text || !id) return;
-  const { error } = await supa.from('record_notes').insert({ entity_type: type, entity_id: id, text });
-  if(error) showToast('Saved, but the note did not: ' + error.message, 'error');
+  const { data, error } = await supa.from('record_notes')
+    .insert({ entity_type: type, entity_id: id, text }).select().single();
+  if(error){ showToast('Saved, but the note did not: ' + error.message, 'error'); return; }
+  upsertNote(data);
 }
 
 /* =========================================================================
@@ -24408,7 +24228,7 @@ function lendingLeadCardHtml(l, stageColor){
   const idx = lendingStageIndex(l.stage);
   const isLast = idx === LENDING_STAGES.length - 1;
   const age = daysSince(l.stage_entered_at);
-  const noteCount = LEAD_NOTES.filter(n => n.lead_id === l.id).length + LEAD_CALL_NOTES.filter(n => n.lead_id === l.id).length;
+  const noteCount = noteCountFor('lead', l.id);
   const initials = l.business_name.split(' ').filter(Boolean).map(w=>w[0]).slice(0,2).join('').toUpperCase();
 
   return `
@@ -24490,8 +24310,6 @@ function closeLendingLeadDrawer(){
 function openLendingLeadDetail(id){
   const l = LENDING_LEADS.find(x => x.id === id);
   if(!l) return;
-  const notesForLead = LENDING_LEAD_NOTES.filter(n => n.lending_lead_id === id).sort((a,b)=> new Date(b.created_at)-new Date(a.created_at));
-  const callNotesForLead = LENDING_LEAD_CALL_NOTES.filter(n => n.lending_lead_id === id).sort((a,b)=> new Date(b.created_at)-new Date(a.created_at));
 
   document.getElementById('lendingLeadDrawer').innerHTML = `
     <div class="drawer-head">
@@ -24521,33 +24339,11 @@ function openLendingLeadDetail(id){
 
       <hr style="border:none;border-top:1px solid var(--line);margin:20px 0;">
 
-      <h3 style="font-size:14px;margin:0 0 12px;">Call notes</h3>
-      <div class="field"><textarea id="newLendingCallNoteText" placeholder="What was discussed on the call..."></textarea></div>
-      <button class="btn btn-accent" style="width:100%;" onclick="addLendingLeadCallNote('${l.id}')">Save call note</button>
-      <div style="margin-top:14px;">
-        ${callNotesForLead.length ? callNotesForLead.map(n => `
-          <div class="note-item">
-            <button class="note-del" onclick="deleteLendingLeadCallNote('${n.id}','${l.id}')" title="Delete">Delete</button>
-            <div class="meta">${formatDate(n.created_at)} · ${n.created_by}</div>
-            <div class="txt">${n.text}</div>
-          </div>
-        `).join('') : '<p style="color:var(--slate-500);font-size:13px;">No call notes yet.</p>'}
-      </div>
+      ${recordNotesWidgetHtml('lending_lead', l.id, 'call')}
 
       <hr style="border:none;border-top:1px solid var(--line);margin:20px 0;">
 
-      <h3 style="font-size:14px;margin:0 0 12px;">Notes / activity log</h3>
-      <div class="field"><textarea id="newLendingNoteText" placeholder="What happened, what's next..."></textarea></div>
-      <button class="btn btn-accent" style="width:100%;" onclick="addLendingLeadNote('${l.id}')">Save note</button>
-      <div style="margin-top:14px;">
-        ${notesForLead.length ? notesForLead.map(n => `
-          <div class="note-item">
-            <button class="note-del" onclick="deleteLendingLeadNote('${n.id}','${l.id}')" title="Delete">Delete</button>
-            <div class="meta">${formatDate(n.created_at)} · ${n.created_by}</div>
-            <div class="txt">${n.text}</div>
-          </div>
-        `).join('') : '<p style="color:var(--slate-500);font-size:13px;">No notes yet.</p>'}
-      </div>
+      ${recordNotesWidgetHtml('lending_lead', l.id, 'general')}
 
       <hr style="border:none;border-top:1px solid var(--line);margin:20px 0;">
       <button class="btn" style="width:100%;color:var(--red);" onclick="deleteLendingLead('${l.id}')">Delete lead</button>
@@ -24583,48 +24379,6 @@ async function deleteLendingLead(id){
   LENDING_LEADS = LENDING_LEADS.filter(x => x.id !== id);
   closeLendingLeadDrawer();
   renderLendingLeadsBoard();
-}
-
-// Fixed bug: these used to write into LEAD_NOTES/LEAD_CALL_NOTES (the
-// regular Leads' notes) keyed by the lending lead's id — harmless under
-// localStorage since nothing enforced the relationship, but lead_notes.lead_id
-// has a real foreign key to `leads` now, so that would fail outright. These
-// now correctly use lending_lead_notes/lending_lead_call_notes.
-async function addLendingLeadNote(leadId){
-  const text = document.getElementById('newLendingNoteText').value.trim();
-  if(!text) return;
-  const { data: note, error } = await supa.from('lending_lead_notes').insert({
-    lending_lead_id: leadId, text, created_by: actingUser().email,
-  }).select().single();
-  if(error){ alert('Could not save note: ' + error.message); return; }
-  LENDING_LEAD_NOTES.unshift(note);
-  renderLendingLeadsBoard();
-  openLendingLeadDetail(leadId);
-}
-async function deleteLendingLeadNote(noteId, leadId){
-  if(!confirm("Delete this note? This can't be undone.")) return;
-  const { error } = await supa.from('lending_lead_notes').delete().eq('id', noteId);
-  if(error){ alert('Could not delete: ' + error.message); return; }
-  LENDING_LEAD_NOTES = LENDING_LEAD_NOTES.filter(n => n.id !== noteId);
-  openLendingLeadDetail(leadId);
-}
-async function addLendingLeadCallNote(leadId){
-  const text = document.getElementById('newLendingCallNoteText').value.trim();
-  if(!text) return;
-  const { data: note, error } = await supa.from('lending_lead_call_notes').insert({
-    lending_lead_id: leadId, text, created_by: actingUser().email,
-  }).select().single();
-  if(error){ alert('Could not save note: ' + error.message); return; }
-  LENDING_LEAD_CALL_NOTES.unshift(note);
-  renderLendingLeadsBoard();
-  openLendingLeadDetail(leadId);
-}
-async function deleteLendingLeadCallNote(noteId, leadId){
-  if(!confirm("Delete this call note? This can't be undone.")) return;
-  const { error } = await supa.from('lending_lead_call_notes').delete().eq('id', noteId);
-  if(error){ alert('Could not delete: ' + error.message); return; }
-  LENDING_LEAD_CALL_NOTES = LENDING_LEAD_CALL_NOTES.filter(n => n.id !== noteId);
-  openLendingLeadDetail(leadId);
 }
 
 /* =========================================================================
@@ -24713,7 +24467,7 @@ function isoLeadCardHtml(l, stageColor){
   const idx = isoStageIndex(l.stage);
   const isLast = idx === ISO_LEAD_STAGES.length - 1;
   const age = daysSince(l.stage_entered_at);
-  const noteCount = ISO_LEAD_NOTES.filter(n => n.iso_lead_id === l.id).length + ISO_LEAD_CALL_NOTES.filter(n => n.iso_lead_id === l.id).length;
+  const noteCount = noteCountFor('iso_lead', l.id);
   const initials = l.business_name.split(' ').filter(Boolean).map(w=>w[0]).slice(0,2).join('').toUpperCase();
   const iso = l.linked_partner_id ? PARTNERS.find(p => p.id === l.linked_partner_id) : null;
 
@@ -24802,11 +24556,11 @@ async function saveNewIsoLead(){
   // creation shows up in the same dated, attributed list as every note
   // added afterward — one notes system, not two.
   if(notes){
-    const { data: note, error: noteErr } = await supa.from('iso_lead_notes').insert({
-      iso_lead_id: lead.id, text: notes, created_by: actingUser().email,
+    const { data: note, error: noteErr } = await supa.from('record_notes').insert({
+      entity_type:'iso_lead', entity_id: lead.id, kind:'general', text: notes,
     }).select().single();
     if(noteErr){ alert('Lead saved, but the note could not be added: ' + noteErr.message); }
-    else ISO_LEAD_NOTES.unshift(note);
+    else upsertNote(note);
   }
   closeIsoLeadDrawer();
   renderIsoLeadsBoard();
@@ -24819,8 +24573,6 @@ function closeIsoLeadDrawer(){
 function openIsoLeadDetail(id){
   const l = ISO_LEADS.find(x => x.id === id);
   if(!l) return;
-  const notesForLead = ISO_LEAD_NOTES.filter(n => n.iso_lead_id === id).sort((a,b)=> new Date(b.created_at)-new Date(a.created_at));
-  const callNotesForLead = ISO_LEAD_CALL_NOTES.filter(n => n.iso_lead_id === id).sort((a,b)=> new Date(b.created_at)-new Date(a.created_at));
   const isoPartners = PARTNERS.filter(p => p.type === 'iso').sort((a,b)=>a.name.localeCompare(b.name));
   const internalUsers = USERS.filter(u => roleOf(u).portal_scope === 'internal').slice().sort((a,b)=> a.name.localeCompare(b.name));
 
@@ -24866,33 +24618,11 @@ function openIsoLeadDetail(id){
 
       <hr style="border:none;border-top:1px solid var(--line);margin:20px 0;">
 
-      <h3 style="font-size:14px;margin:0 0 12px;">Call notes</h3>
-      <div class="field"><textarea id="newIsoCallNoteText" placeholder="What was discussed on the call..."></textarea></div>
-      <button class="btn btn-accent" style="width:100%;" onclick="addIsoLeadCallNote('${l.id}')">Save call note</button>
-      <div style="margin-top:14px;">
-        ${callNotesForLead.length ? callNotesForLead.map(n => `
-          <div class="note-item">
-            <button class="note-del" onclick="deleteIsoLeadCallNote('${n.id}','${l.id}')" title="Delete">Delete</button>
-            <div class="meta">${formatDate(n.created_at)} · ${n.created_by}</div>
-            <div class="txt">${n.text}</div>
-          </div>
-        `).join('') : '<p style="color:var(--slate-500);font-size:13px;">No call notes yet.</p>'}
-      </div>
+      ${recordNotesWidgetHtml('iso_lead', l.id, 'call')}
 
       <hr style="border:none;border-top:1px solid var(--line);margin:20px 0;">
 
-      <h3 style="font-size:14px;margin:0 0 12px;">Notes / activity log</h3>
-      <div class="field"><textarea id="newIsoNoteText" placeholder="What happened, what's next..."></textarea></div>
-      <button class="btn btn-accent" style="width:100%;" onclick="addIsoLeadNote('${l.id}')">Save note</button>
-      <div style="margin-top:14px;">
-        ${notesForLead.length ? notesForLead.map(n => `
-          <div class="note-item">
-            <button class="note-del" onclick="deleteIsoLeadNote('${n.id}','${l.id}')" title="Delete">Delete</button>
-            <div class="meta">${formatDate(n.created_at)} · ${n.created_by}</div>
-            <div class="txt">${n.text}</div>
-          </div>
-        `).join('') : '<p style="color:var(--slate-500);font-size:13px;">No notes yet.</p>'}
-      </div>
+      ${recordNotesWidgetHtml('iso_lead', l.id, 'general')}
 
       <hr style="border:none;border-top:1px solid var(--line);margin:20px 0;">
       <button class="btn" style="width:100%;color:var(--red);" onclick="deleteIsoLead('${l.id}')">Delete lead</button>
@@ -24932,42 +24662,6 @@ async function deleteIsoLead(id){
   renderIsoLeadsBoard();
 }
 
-async function addIsoLeadNote(leadId){
-  const text = document.getElementById('newIsoNoteText').value.trim();
-  if(!text) return;
-  const { data: note, error } = await supa.from('iso_lead_notes').insert({
-    iso_lead_id: leadId, text, created_by: actingUser().email,
-  }).select().single();
-  if(error){ alert('Could not save note: ' + error.message); return; }
-  ISO_LEAD_NOTES.unshift(note);
-  renderIsoLeadsBoard();
-  openIsoLeadDetail(leadId);
-}
-async function deleteIsoLeadNote(noteId, leadId){
-  if(!confirm("Delete this note? This can't be undone.")) return;
-  const { error } = await supa.from('iso_lead_notes').delete().eq('id', noteId);
-  if(error){ alert('Could not delete: ' + error.message); return; }
-  ISO_LEAD_NOTES = ISO_LEAD_NOTES.filter(n => n.id !== noteId);
-  openIsoLeadDetail(leadId);
-}
-async function addIsoLeadCallNote(leadId){
-  const text = document.getElementById('newIsoCallNoteText').value.trim();
-  if(!text) return;
-  const { data: note, error } = await supa.from('iso_lead_call_notes').insert({
-    iso_lead_id: leadId, text, created_by: actingUser().email,
-  }).select().single();
-  if(error){ alert('Could not save note: ' + error.message); return; }
-  ISO_LEAD_CALL_NOTES.unshift(note);
-  renderIsoLeadsBoard();
-  openIsoLeadDetail(leadId);
-}
-async function deleteIsoLeadCallNote(noteId, leadId){
-  if(!confirm("Delete this call note? This can't be undone.")) return;
-  const { error } = await supa.from('iso_lead_call_notes').delete().eq('id', noteId);
-  if(error){ alert('Could not delete: ' + error.message); return; }
-  ISO_LEAD_CALL_NOTES = ISO_LEAD_CALL_NOTES.filter(n => n.id !== noteId);
-  openIsoLeadDetail(leadId);
-}
 </script>
 </body>
 </html>
