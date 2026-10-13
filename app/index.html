@@ -1934,16 +1934,6 @@
           Internal Sales
         </button>
 
-        <button class="nav-section-toggle" id="prospectingSectionToggle" type="button">
-          <span>Prospecting</span>
-          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-        </button>
-        <div class="nav-collapsible" id="prospectingSectionItems">
-          <button class="nav-item" data-view="coldoutreach">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-            Cold Outreach
-          </button>
-        </div>
 
         <button class="nav-section-toggle" id="marketingSectionToggle" type="button">
           <span>Marketing</span>
@@ -2880,35 +2870,6 @@
       </section>
 
       <!-- COLD OUTREACH (Prospecting) -->
-      <section id="view-coldoutreach" class="view" style="display:none;">
-        <div class="topbar">
-          <div>
-            <h1>Cold Outreach</h1>
-            <p class="subtext">A basic log of places you've physically been to — business, address, and a contact if you got one. Not a pipeline, just the visit log.</p>
-          </div>
-          <div class="topbar-actions">
-            <button class="btn btn-accent btn-sm" id="addColdOutreachBtn">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              Log a Visit
-            </button>
-          </div>
-        </div>
-
-        <div class="panel">
-          <div class="panel-head">
-            <h2>All visits</h2>
-            <div style="display:flex;align-items:center;gap:10px;">
-              <button class="btn btn-sm" id="deleteSelectedColdOutreachBtn" style="display:none;color:var(--red);">Delete selected</button>
-              <input class="search-input" placeholder="Search by business or address..." id="coldOutreachSearch">
-            </div>
-          </div>
-          <table>
-            <thead><tr><th style="width:34px;"><input type="checkbox" id="coldOutreachSelectAll"></th><th>Business</th><th>Address</th><th>Contact</th><th>Added</th><th></th></tr></thead>
-            <tbody id="coldOutreachTableBody"></tbody>
-          </table>
-          <div id="coldOutreachEmptyState" class="empty-state" style="display:none;">No visits logged yet.</div>
-        </div>
-      </section>
 
       <!-- LEADS PIPELINE -->
       <section id="view-leads" class="view" style="display:none;">
@@ -3467,9 +3428,6 @@
 </div>
 
 <!-- ================= DRAWER: LOG COLD OUTREACH VISIT ================= -->
-<div class="overlay" id="coldOutreachOverlay">
-  <div class="drawer" id="coldOutreachDrawer"></div>
-</div>
 
 <!-- ================= DRAWER: SCHEDULE / EDIT MEETING ================= -->
 <div class="modal-overlay" id="trainingOverlay">
@@ -4551,12 +4509,6 @@ async function loadColdLeadsFromSupabase(){
   return data;
 }
 
-async function loadColdOutreachFromSupabase(){
-  const { data, error } = await supa.from('cold_outreach').select('*').order('created_at', { ascending: false });
-  if(error){ reportLoadFailure('cold outreach from Supabase', error); return []; }
-  return data;
-}
-
 /* =========================================================================
    COLD EMAIL (Instantly tracking)
    Mirrors what Instantly's webhooks would report per contact. status moves
@@ -4922,7 +4874,6 @@ let NOTIFICATIONS = [];
 let notifPollTimer = null;
 let TASKS = [];
 let taskFilter = 'open';
-let COLD_OUTREACH = [];
 // Set by openPaperApplicationForLink(), consumed once by saveNewApplication()
 // — carries which Lead/Account/Cold Lead a quick "Mark as Physical
 // Application" was opened from, so the new row links straight to it.
@@ -5573,7 +5524,6 @@ async function enterAppAsAuthUser(authUser){
     loadBookingAvailabilityFromSupabase(),
     loadNotificationsFromSupabase(),
     loadTasksFromSupabase(),
-    loadColdOutreachFromSupabase(),
     loadResidualsFromSupabase(),
     loadLoadersFromSupabase(),
     loadInstantlyContactsFromSupabase(),
@@ -5613,7 +5563,7 @@ async function enterAppAsAuthUser(authUser){
     leadDocuments, offices, lendingLeads,
     isoLeads,
     newsletters, nlTemplates, connectedCalendars,
-    calendarEvents, bookingLinks, bookingAvailability, notifications, tasks, coldOutreach, residualPayouts, atmLoaders, instantlyContacts, partnerDocuments, applicationLinks,
+    calendarEvents, bookingLinks, bookingAvailability, notifications, tasks, residualPayouts, atmLoaders, instantlyContacts, partnerDocuments, applicationLinks,
     integrationsFromDb, contacts, marketingProducts, marketingMaterials, internalSalesComp,
     agreementTemplates, signatureRequests
   ] = await tablesPromise;
@@ -5641,7 +5591,6 @@ async function enterAppAsAuthUser(authUser){
   BOOKING_AVAILABILITY = bookingAvailability;
   NOTIFICATIONS = notifications;
   TASKS = tasks;
-  COLD_OUTREACH = coldOutreach;
   calFilter = defaultCalendarFilter();
   RESIDUALS = residualPayouts;
   LOADERS = atmLoaders;
@@ -8784,9 +8733,6 @@ function trainingSteps(){
       'Anything not yet in the pipeline. Convert turns one into a real lead, carrying the details across. The Added column shows New, Medium or Old so a list that has gone stale is obvious at a glance.'
       + (portal ? ' Yours only — cold leads are not shared between agents.' : '') },
 
-    { view:'coldoutreach', title:'Log a visit when you call on somewhere', body:
-      'Somewhere you physically went. If it turns into something, Convert makes it a cold lead or a pipeline lead without retyping anything. The visit stays in the log either way.' },
-
     { view:'applications', title:'Applications arrive here', body:
       portal
         ? 'Applications from the links you send land here. Each shows whether the voided check and driver’s licence came with it, so you know what is still to be chased. Sending a link is how you start one — head office enters the paper ones.'
@@ -8970,7 +8916,6 @@ function showView(view, fromHistory){
   if(view === 'contacts') renderContacts();
   if(view === 'authresellers') renderResellersTable();
   if(view === 'coldleads') renderColdLeadsTable();
-  if(view === 'coldoutreach') renderColdOutreachTable();
   if(view === 'leads') renderLeadsBoard();
   if(view === 'accounts') renderAccountsTable();
   if(view === 'applications') renderApplicationsTable();
@@ -9184,14 +9129,6 @@ function scopedApplications(){
 
    Keep each one next to the migration it copies. If a policy changes and
    its twin here does not, the preview starts lying again. */
-
-// cold_outreach_select, database/65_cold_outreach.sql
-function scopedColdOutreach(){
-  const perms = roleOf(currentUser).perms;
-  if(perms.fullDashboard) return COLD_OUTREACH.slice();
-  return COLD_OUTREACH.filter(o =>
-    o.assigned_to === currentUser.id || o.created_by === currentUser.id);
-}
 
 // lending_leads_all, database/57_portal_users_can_add_records.sql
 function scopedLendingLeads(){
@@ -13924,24 +13861,34 @@ function readSystemPricingFields(l){
   l.system_choice = document.getElementById('spSystemChoice').value;
   l.pos_plan = l.system_choice === 'epay' ? document.getElementById('spPosPlan').value : '';
 
-  // Additional plans, rebuilt from the ticks. Only the entries that came
-  // from a plan are replaced — anything typed in by hand on the
-  // Subscriptions section stays exactly where it was.
-  const keptSubscriptions = (l.extra_subscriptions || []).filter(x => !x.plan_key);
-  const tickedPlans = Array.from(document.querySelectorAll('.sp-extra-plan:checked'))
-    .map(cb => cb.value)
-    // The primary plan is held in pos_plan; carrying it here as well would
-    // charge it twice.
-    .filter(key => key !== l.pos_plan)
-    .map(key => {
-      const was = (l.extra_subscriptions || []).find(x => x.plan_key === key);
-      const plan = POS_SYSTEM_PLANS.find(pl => pl.key === key) || {};
-      return was || { plan_key: key, name: plan.label, price: planMonthlyPrice(key) || 0,
-                      category: 'EPAY software', added_at: todayISO() };
-    });
-  l.extra_subscriptions = l.system_choice === 'epay'
-    ? keptSubscriptions.concat(tickedPlans)
-    : keptSubscriptions;
+  // Additional plans, rebuilt from the ticks — but ONLY when that list is
+  // actually on screen. This reader runs from more than one Save button,
+  // and rebuilding a list that was never rendered meant reading zero ticks
+  // and writing an empty answer, which deleted every plan somebody had
+  // added from the Subscriptions section.
+  //
+  // It also used to clear them whenever system_choice was not exactly
+  // 'epay'. That is how a second subscription disappeared on refresh: the
+  // checkbox was ticked on screen and the save threw it away anyway. What
+  // is ticked is what they have; the system dropdown does not get a vote.
+  const planList = document.getElementById('spExtraPlans');
+  if(planList){
+    // Only entries that came from a plan are replaced — anything typed in
+    // by hand on the Subscriptions section stays exactly where it was.
+    const keptSubscriptions = (l.extra_subscriptions || []).filter(x => !x.plan_key);
+    const tickedPlans = Array.from(planList.querySelectorAll('.sp-extra-plan:checked'))
+      .map(cb => cb.value)
+      // The primary plan is held in pos_plan; carrying it here as well
+      // would charge it twice.
+      .filter(key => key !== l.pos_plan)
+      .map(key => {
+        const was = (l.extra_subscriptions || []).find(x => x.plan_key === key);
+        const plan = POS_SYSTEM_PLANS.find(pl => pl.key === key) || {};
+        return was || { plan_key: key, name: plan.label, price: planMonthlyPrice(key) || 0,
+                        category: 'EPAY software', added_at: todayISO() };
+      });
+    l.extra_subscriptions = keptSubscriptions.concat(tickedPlans);
+  }
   l.clover_device = l.system_choice === 'clover' ? document.getElementById('spCloverDevice').value : '';
   l.nrs_device = l.system_choice === 'nrs' ? document.getElementById('spNrsDevice').value : '';
   const ncrPriceVal = document.getElementById('spNcrPrice').value;
@@ -17769,78 +17716,6 @@ function openRecordMenu(ev, kind, id){
    somewhere a person actually went, which stays true regardless of what came
    of it. Marking it is also what stops one visit becoming two cold leads.
    ------------------------------------------------------------------------- */
-function openConvertVisitMenu(ev, id){
-  const v = COLD_OUTREACH.find(x => x.id === id);
-  if(!v) return;
-  openMiniMenu(ev, id, `
-    <button onclick="convertVisit('${id}', 'cold_lead')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18"/><path d="M12 3v18"/></svg>
-      To a cold lead
-    </button>
-    <button onclick="convertVisit('${id}', 'lead')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><polyline points="12 5 19 12 12 19"/></svg>
-      Straight into the pipeline
-    </button>`);
-}
-
-async function convertVisit(id, target){
-  closeLeadCardMenu();
-  const v = COLD_OUTREACH.find(x => x.id === id);
-  if(!v) return;
-  if(v.converted_to){ showToast('That visit has already been converted.', 'info'); return; }
-
-  const asLead = target === 'lead';
-  const where = asLead ? 'the ' + brandLabel(currentBrand) + ' pipeline' : 'Cold Leads';
-  if(!confirm(`Convert “${v.business_name}” into ${where}?\n\nThe visit stays in the log, marked as converted.`)) return;
-
-  // Everything the visit knows, carried across. The address goes into the
-  // field each table actually uses for one, which is not the same column.
-  const common = {
-    business_name: v.business_name,
-    contact_name:  v.contact_name || '—',
-    phone:         v.contact_phone || '—',
-    email:         v.contact_email || '—',
-    brand:         currentBrand,
-    assigned_to:   v.assigned_to || currentUser.id
-  };
-
-  let created, error;
-  if(asLead){
-    ({ data: created, error } = await supa.from('leads').insert(Object.assign({}, common, {
-      stage: defaultStageFor(currentBrand),
-      atm_stage: 'inbound_placement',
-      business_address: v.address || null,
-      lead_source: 'In-person visit',
-      est_volume: '',
-      converted_to_account: false
-    })).select().single());
-  } else {
-    ({ data: created, error } = await supa.from('cold_leads').insert(Object.assign({}, common, {
-      address: v.address || null,
-      temperature: 'warm',          // someone has already stood in front of them
-      source_category: 'hand_entered',
-      source: 'In-person visit',
-      notes: v.notes || null,
-      promoted: false
-    })).select().single());
-  }
-  if(error){ showToast('Could not convert: ' + error.message, 'error'); return; }
-
-  // Marked only after the new record exists. The other order would leave a
-  // visit claiming a conversion that never happened, and no way to retry it.
-  const stamp = { converted_to: target, converted_record_id: created.id, converted_at: new Date().toISOString() };
-  const { error: markErr } = await supa.from('cold_outreach').update(stamp).eq('id', id);
-  if(markErr){
-    showToast(`Created, but the visit still shows as unconverted: ${markErr.message}`, 'error');
-  } else {
-    Object.assign(v, stamp);
-  }
-
-  if(asLead) LEADS.unshift(created); else COLD_LEADS.unshift(created);
-  renderColdOutreachTable();
-  showToast(`“${v.business_name}” added to ${where}.`, 'success');
-}
-
 function openApplicationMenu(ev, id){
   const a = APPLICATIONS.find(x => x.id === id);
   if(!a) return;
@@ -18052,7 +17927,7 @@ document.getElementById('deleteSelectedAccountsBtn').addEventListener('click', a
 
 function updateBulkDeleteBar(kind){
   const checked = document.querySelectorAll('.row-check-'+kind+':checked').length;
-  const btnIdMap = { coldLeads:'deleteSelectedColdLeadsBtn', accounts:'deleteSelectedAccountsBtn', referrals:'deleteSelectedReferralsBtn', coldOutreach:'deleteSelectedColdOutreachBtn' };
+  const btnIdMap = { coldLeads:'deleteSelectedColdLeadsBtn', accounts:'deleteSelectedAccountsBtn', referrals:'deleteSelectedReferralsBtn' };
   const btn = document.getElementById(btnIdMap[kind]);
   if(!btn) return;
   btn.style.display = checked > 0 ? 'inline-flex' : 'none';
@@ -18940,218 +18815,6 @@ document.getElementById('deleteSelectedColdLeadsBtn').addEventListener('click', 
   COLD_LEADS = COLD_LEADS.filter(c => !ids.includes(c.id));
   renderColdLeadsTable();
 });
-
-/* =========================================================================
-   COLD OUTREACH (Prospecting) — a basic visit log, deliberately simpler
-   than Cold Leads: no temperature, no stages, no follow-up scheduling.
-   Business name, address, and a contact if one was actually picked up.
-   ========================================================================= */
-function renderColdOutreachTable(filterText){
-  const q = (filterText || (document.getElementById('coldOutreachSearch') ? document.getElementById('coldOutreachSearch').value : '') || '').toLowerCase();
-  let rows = scopedColdOutreach().sort((a,b)=> new Date(b.created_at) - new Date(a.created_at));
-  if(q) rows = rows.filter(c => (c.business_name||'').toLowerCase().includes(q) || (c.address||'').toLowerCase().includes(q));
-
-  document.getElementById('coldOutreachSelectAll').checked = false;
-  updateBulkDeleteBar('coldOutreach');
-
-  if(rows.length === 0){
-    document.getElementById('coldOutreachTableBody').innerHTML = '';
-    document.getElementById('coldOutreachEmptyState').style.display = 'block';
-    return;
-  }
-  document.getElementById('coldOutreachEmptyState').style.display = 'none';
-
-  const __pg_coldOutreach = paginateRows('coldOutreach', rows);
-  renderPager('coldOutreach', __pg_coldOutreach, function(){ renderColdOutreachTable(); });
-  document.getElementById('coldOutreachTableBody').innerHTML = __pg_coldOutreach.rows.map(c => `
-    <tr onclick="openColdOutreachDetail('${c.id}')">
-      <td onclick="event.stopPropagation();"><input type="checkbox" class="row-check-coldOutreach" data-id="${c.id}" onchange="updateBulkDeleteBar('coldOutreach')"></td>
-      <td class="name-cell">${c.business_name}</td>
-      <td>${c.address || '—'}</td>
-      <td>${c.contact_name ? `${c.contact_name}<div class="sub">${[c.contact_phone, c.contact_email].filter(Boolean).join(' &middot; ')}</div>` : '—'}</td>
-      <td>${formatDate(c.created_at)}</td>
-      <td style="text-align:right;white-space:nowrap;">
-        ${c.converted_to
-          ? `<span class="pill pill-status-active" title="Converted ${c.converted_at ? formatDate(c.converted_at) : ''}">Converted &rarr; ${c.converted_to === 'lead' ? 'Lead' : 'Cold Lead'}</span>`
-          : `<button class="btn btn-xs btn-accent" onclick="event.stopPropagation(); openConvertVisitMenu(event, '${c.id}');">Convert &rarr;</button>`}
-        <button class="btn btn-xs" onclick="event.stopPropagation(); deleteColdOutreach('${c.id}');" style="color:var(--red);">Delete</button>
-      </td>
-    </tr>`).join('');
-}
-document.addEventListener('input', function(e){
-  if(e.target && e.target.id === 'coldOutreachSearch') renderColdOutreachTable(e.target.value);
-});
-document.getElementById('coldOutreachSelectAll').addEventListener('change', function(){
-  document.querySelectorAll('.row-check-coldOutreach').forEach(cb => cb.checked = this.checked);
-  updateBulkDeleteBar('coldOutreach');
-});
-document.getElementById('deleteSelectedColdOutreachBtn').addEventListener('click', async function(){
-  const ids = Array.from(document.querySelectorAll('.row-check-coldOutreach:checked')).map(cb => cb.dataset.id);
-  if(ids.length === 0) return;
-  if(!confirm(`Delete ${ids.length} visit${ids.length===1?'':'s'}? This can't be undone.`)) return;
-  const { error } = await supa.from('cold_outreach').delete().in('id', ids);
-  if(error){ alert('Could not delete: ' + error.message); return; }
-  COLD_OUTREACH = COLD_OUTREACH.filter(c => !ids.includes(c.id));
-  renderColdOutreachTable();
-});
-
-async function deleteColdOutreach(id){
-  if(!confirm('Delete this visit?')) return;
-  const { error } = await supa.from('cold_outreach').delete().eq('id', id);
-  if(error){ showToast('Could not delete: ' + error.message, 'error'); return; }
-  COLD_OUTREACH = COLD_OUTREACH.filter(c => c.id !== id);
-  closeColdOutreachDrawer();
-  renderColdOutreachTable();
-}
-
-// Logging visits is almost always a batch after a day of door-knocking, not
-// one at a time — this is the whole reason "+ Log a Visit" opens several
-// blank rows instead of a single form. 5 keeps it fitting in the drawer
-// without heavy scrolling; editing an existing one (below) stays single-row.
-const COLD_OUTREACH_BATCH_MAX = 5;
-
-function coldOutreachBatchRowHtml(){
-  return `
-    <div class="co-batch-row" style="border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:10px;position:relative;">
-      <button type="button" class="co-row-remove" onclick="removeColdOutreachRow(this)" title="Remove this one"
-              style="display:none;position:absolute;top:8px;right:8px;background:none;border:none;color:var(--slate-400);cursor:pointer;font-size:18px;line-height:1;">&times;</button>
-      <div class="field" style="margin-bottom:8px;"><label>Business name</label><input data-field="business_name" placeholder="e.g. Riverside Diner"></div>
-      <div class="field" style="margin-bottom:8px;"><label>Address</label><input data-field="address" placeholder="Street, city, state"></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-        <div class="field" style="margin-bottom:8px;"><label>Contact name</label><input data-field="contact_name"></div>
-        <div class="field" style="margin-bottom:8px;"><label>Contact phone</label><input data-field="contact_phone" type="tel"></div>
-      </div>
-      <div class="field" style="margin-bottom:0;"><label>Contact email</label><input data-field="contact_email" type="email"></div>
-    </div>`;
-}
-
-// Shows each row's remove button only once there's more than one row (no
-// point offering to remove the only row left), and hides "+ Add another"
-// once the cap is reached rather than letting it silently no-op.
-function syncColdOutreachRowControls(){
-  const rows = document.querySelectorAll('#coBatchRows .co-batch-row');
-  rows.forEach(row => {
-    const x = row.querySelector('.co-row-remove');
-    if(x) x.style.display = rows.length > 1 ? '' : 'none';
-  });
-  const addBtn = document.getElementById('coAddRowBtn');
-  if(addBtn) addBtn.style.display = rows.length >= COLD_OUTREACH_BATCH_MAX ? 'none' : '';
-}
-
-function addColdOutreachRow(){
-  const wrap = document.getElementById('coBatchRows');
-  if(wrap.querySelectorAll('.co-batch-row').length >= COLD_OUTREACH_BATCH_MAX) return;
-  wrap.insertAdjacentHTML('beforeend', coldOutreachBatchRowHtml());
-  syncColdOutreachRowControls();
-}
-
-function removeColdOutreachRow(btn){
-  const row = btn.closest('.co-batch-row');
-  if(row) row.remove();
-  syncColdOutreachRowControls();
-}
-
-function openAddColdOutreachDrawer(){
-  document.getElementById('coldOutreachDrawer').innerHTML = `
-    <div class="drawer-head">
-      <div>
-        <h2>Log visits</h2>
-        <p style="font-size:11.5px;color:var(--slate-500);margin:4px 0 0;">Add up to ${COLD_OUTREACH_BATCH_MAX} at once — rows left blank are skipped.</p>
-      </div>
-      <button class="drawer-close" onclick="closeColdOutreachDrawer()">&times;</button>
-    </div>
-    <div class="drawer-body">
-      <div id="coBatchRows">${coldOutreachBatchRowHtml()}</div>
-      <button type="button" class="btn btn-sm" id="coAddRowBtn" style="width:100%;" onclick="addColdOutreachRow()">+ Add another visit</button>
-    </div>
-    <div class="drawer-footer">
-      <button class="btn" style="flex:1;" onclick="closeColdOutreachDrawer()">Cancel</button>
-      <button class="btn btn-accent" style="flex:1;" onclick="saveColdOutreachBatch()">Save visits</button>
-    </div>
-  `;
-  document.getElementById('coldOutreachOverlay').classList.add('open');
-}
-
-async function saveColdOutreachBatch(){
-  const rows = Array.from(document.querySelectorAll('#coBatchRows .co-batch-row'));
-  const field = (row, name) => row.querySelector(`[data-field="${name}"]`).value.trim();
-  const payload = rows.map(row => ({
-    business_name: field(row, 'business_name'),
-    address: field(row, 'address') || null,
-    contact_name: field(row, 'contact_name') || null,
-    contact_phone: field(row, 'contact_phone') || null,
-    contact_email: field(row, 'contact_email') || null,
-  })).filter(r => r.business_name);
-
-  if(!payload.length){ showToast('Give at least one visit a business name.', 'error'); return; }
-
-  const { data, error } = await supa.from('cold_outreach').insert(payload).select();
-  if(error){ showToast('Could not save: ' + error.message, 'error'); return; }
-  COLD_OUTREACH = [...data, ...COLD_OUTREACH];
-  closeColdOutreachDrawer();
-  showToast(`${data.length} visit${data.length === 1 ? '' : 's'} logged.`, 'success');
-  renderColdOutreachTable();
-}
-
-function openColdOutreachDetail(id){
-  const c = COLD_OUTREACH.find(x => x.id === id);
-  if(!c) return;
-  document.getElementById('coldOutreachDrawer').innerHTML = coldOutreachFormHtml(c);
-  document.getElementById('coldOutreachOverlay').classList.add('open');
-}
-function closeColdOutreachDrawer(){
-  document.getElementById('coldOutreachOverlay').classList.remove('open');
-}
-
-function coldOutreachFormHtml(c){
-  return `
-    <div class="drawer-head">
-      <div><h2>${c ? 'Edit visit' : 'Log a visit'}</h2></div>
-      <button class="drawer-close" onclick="closeColdOutreachDrawer()">&times;</button>
-    </div>
-    <div class="drawer-body">
-      <div class="field"><label>Business name</label><input id="coBusinessName" value="${c ? escAttr(c.business_name) : ''}" placeholder="e.g. Riverside Diner"></div>
-      <div class="field"><label>Address</label><input id="coAddress" value="${c ? escAttr(c.address||'') : ''}" placeholder="Street, city, state"></div>
-      <div class="field"><label>Contact name <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label><input id="coContactName" value="${c ? escAttr(c.contact_name||'') : ''}"></div>
-      <div class="field"><label>Contact phone <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label><input id="coContactPhone" type="tel" value="${c ? escAttr(c.contact_phone||'') : ''}"></div>
-      <div class="field"><label>Contact email <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label><input id="coContactEmail" type="email" value="${c ? escAttr(c.contact_email||'') : ''}"></div>
-      ${recordNotesFieldHtml('cold_outreach', c && c.id, { label:'Notes', textareaId:'coNotes' })}
-    </div>
-    <div class="drawer-footer">
-      ${c ? `<button class="btn" style="flex:1;color:var(--red);" onclick="deleteColdOutreach('${c.id}')">Delete</button>` : `<button class="btn" style="flex:1;" onclick="closeColdOutreachDrawer()">Cancel</button>`}
-      <button class="btn btn-accent" style="flex:1;" onclick="saveColdOutreach(${c ? `'${c.id}'` : 'null'})">${c ? 'Save changes' : 'Save visit'}</button>
-    </div>
-  `;
-}
-
-async function saveColdOutreach(id){
-  const business_name = document.getElementById('coBusinessName').value.trim();
-  if(!business_name){ showToast('Give it a business name first.', 'error'); return; }
-  const fields = {
-    business_name,
-    address: document.getElementById('coAddress').value.trim() || null,
-    contact_name: document.getElementById('coContactName').value.trim() || null,
-    contact_phone: document.getElementById('coContactPhone').value.trim() || null,
-    contact_email: document.getElementById('coContactEmail').value.trim() || null,
-  };
-  const coNotesBox = document.getElementById('coNotes');
-  if(coNotesBox && !id) fields.notes = coNotesBox.value.trim() || null;
-  if(id){
-    const { error } = await supa.from('cold_outreach').update(fields).eq('id', id);
-    if(error){ showToast('Could not save: ' + error.message, 'error'); return; }
-    Object.assign(COLD_OUTREACH.find(c => c.id === id), fields);
-    showToast('Visit updated.', 'success');
-  } else {
-    const { data, error } = await supa.from('cold_outreach').insert(fields).select().single();
-    if(error){ showToast('Could not save: ' + error.message, 'error'); return; }
-    COLD_OUTREACH.unshift(data);
-    showToast('Visit logged.', 'success');
-  }
-  closeColdOutreachDrawer();
-  renderColdOutreachTable();
-}
-
-document.getElementById('addColdOutreachBtn').addEventListener('click', openAddColdOutreachDrawer);
 
 function openColdLeadDetail(id){
   const c = COLD_LEADS.find(x => x.id === id);
