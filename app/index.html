@@ -2065,6 +2065,23 @@
   .task-stat .n{ font-family:'Lato',system-ui,sans-serif;font-weight:800;font-variant-numeric:tabular-nums; }
   .task-group-head{ color:var(--ink);letter-spacing:.06em; }
 
+  /* ---------- SIDEBAR SPACING ----------
+     The header was holding a gap the menu did not need: Overview sat a long
+     way below the brand buttons for no reason other than stacked paddings.
+     Everything moves up. */
+  .sidebar-header{padding:18px 14px 10px;}
+  .sidebar-header .login-mark::after{margin:14px 0 12px;}
+  nav.nav-main{padding-top:6px;}
+  nav.nav-main > .nav-section-label:first-child,
+  nav.nav-main > .nav-section-toggle:first-child{margin-top:2px;}
+
+  /* A user with one brand has nothing to switch between. renderBrandSwitch
+     gives them a quiet label in place of the buttons — a <div> where the
+     others get <button>s, which is what this selector keys off. The logo
+     above already says which brand they are in, so the label goes and the
+     menu starts straight under the rule. */
+  .brand-switch > div{display:none;}
+
 </style>
 </head><body data-brand="epay">
 
