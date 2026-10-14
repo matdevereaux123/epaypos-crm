@@ -1994,6 +1994,17 @@
           </button>
         </div>
 
+        <button class="nav-section-toggle" id="backendSectionToggle" type="button" style="display:none;">
+          <span>EPAY Back End</span>
+          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="nav-collapsible" id="backendSectionItems" style="display:none;">
+          <button class="nav-item" data-view="backend">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+            Overview
+          </button>
+        </div>
+
         <button class="nav-section-toggle" id="paymentsSectionToggle" type="button">
           <span>Payments</span>
           <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
@@ -2631,6 +2642,27 @@
           </div>
         </div>
         <div id="marketingContent"></div>
+      </section>
+
+      <!-- EPAY BACK END -->
+      <section id="view-backend" class="view" style="display:none;">
+        <div class="topbar">
+          <div>
+            <h1>EPAY Back End</h1>
+            <p class="subtext">The operational side of EPAY POS, alongside the CRM rather than in a separate tool. Nothing in here yet.</p>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="stub-panel">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:42px;height:42px;opacity:.35;margin-bottom:14px;">
+              <rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+            <h3>Nothing here yet</h3>
+            <p style="max-width:460px;margin:0 auto;font-size:13px;line-height:1.6;">
+              This is where the existing EPAY POS back end will be brought in. The switch above keeps it separate from
+              the two brands — no lead, partner or account belongs to it, so nothing here changes what those boards show.
+            </p>
+          </div>
+        </div>
       </section>
 
       <!-- PAYMENTS: INVOICING (placeholder) -->
@@ -4253,7 +4285,7 @@ function emptyAccountFields(){
   return {
     // Which brand this lead/account belongs to — Leads/Accounts now exist
     // on both EPAY POS and Envision ATM, each brand only ever sees its own.
-    brand: currentBrand,
+    brand: recordBrand(),
 
     owner_first_name:'', owner_last_name:'', dob:'', ssn:'', drivers_license:'', drivers_license_state:'',
     legal_business_name:'', dba_name:'', business_address:'', business_email:'', business_phone:'',
@@ -4512,7 +4544,7 @@ function sourceCategoryLabel(key){ return (SOURCE_CATEGORIES.find(s=>s.key===key
 
 function emptyColdLeadEnrichment(){
   return { owner_name:'', owner_title:'', cell_phone:'', address:'', website:'', linkedin_url:'', facebook_url:'', instagram_url:'',
-    follow_up_date:null, follow_up_method:'none', follow_up_note:'', brand: currentBrand };
+    follow_up_date:null, follow_up_method:'none', follow_up_note:'', brand: recordBrand() };
 }
 
 // Real data layer — reads/writes the Supabase `cold_leads` table. Field
@@ -4976,15 +5008,40 @@ function renderBrandSwitch(){
     switchEl.innerHTML = `<div style="padding:6px 4px;font-size:11.5px;font-weight:600;color:var(--accent-text);">${access[0] === 'atm' ? 'Envision ATM' : 'EPAY POS'}</div>`;
     return;
   }
-  switchEl.innerHTML = access.map(b => `<button type="button" data-brand="${b}">${b === 'atm' ? 'Envision ATM' : 'EPAY POS'}</button>`).join('');
+  // EPAY Back End is a third position on the same switch, but it is not a
+  // third brand: no record belongs to it, and nothing is tagged with it.
+  // It is an internal area, so it is offered to staff rather than being
+  // driven by users.brands like the two real brands are.
+  const positions = access.slice();
+  if(hasStaffTools()) positions.push('backend');
+  switchEl.innerHTML = positions.map(b => `<button type="button" data-brand="${b}">${brandSwitchLabel(b)}</button>`).join('');
   switchEl.querySelectorAll('button').forEach(btn=>{
     btn.classList.toggle('active', btn.dataset.brand === currentBrand);
     btn.addEventListener('click', ()=> setBrand(btn.dataset.brand));
   });
 }
 
+function brandSwitchLabel(b){
+  return b === 'atm' ? 'Envision ATM' : (b === 'backend' ? 'EPAY Back End' : 'EPAY POS');
+}
+
+/* Which brand a NEW record should carry. The switch has three positions but
+   only two are brands — leads, partners and the rest are constrained to
+   epay/atm/both in the database, and Back End owns none of them. Anything
+   created while that position is active is filed under EPAY POS rather
+   than being stamped with a value the column will refuse. */
+function recordBrand(){
+  return currentBrand === 'backend' ? 'epay' : currentBrand;
+}
+
 function setBrand(brand){
+  const leavingBackend = currentBrand === 'backend' && brand !== 'backend';
   currentBrand = brand;
+  if(leavingBackend){
+    // Undo the blanket hide, then let the usual per-role and per-brand
+    // rules below decide what is actually shown.
+    document.querySelectorAll('[data-hidden-for-backend]').forEach(el => { el.style.display = ''; el.dataset.hiddenForBackend = ''; });
+  }
   document.body.setAttribute('data-brand', brand);
   document.getElementById('sidebarMarkWrap').innerHTML = markSVG(brand);
   renderBrandSwitch();
@@ -5002,6 +5059,25 @@ function setBrand(brand){
   // stay EPAY POS only. Calendar, EPAY Resellers, and Lending are hidden
   // entirely on the Envision ATM side per how that brand's nav is scoped —
   // Reports stays visible on both since Collections applies to ATM units too.
+  // Back End is its own area: the CRM's own tabs belong to the two brands,
+  // so they step aside rather than showing records that have nothing to do
+  // with what is on screen.
+  const inBackend = brand === 'backend';
+  const backendToggle = document.getElementById('backendSectionToggle');
+  const backendItems = document.getElementById('backendSectionItems');
+  if(backendToggle) backendToggle.style.display = inBackend ? 'flex' : 'none';
+  if(backendItems)  backendItems.style.display  = inBackend ? 'block' : 'none';
+  document.querySelectorAll('.sidebar .nav-item, .sidebar .nav-section-toggle, .sidebar .nav-section-label, .sidebar .nav-collapsible')
+    .forEach(el => {
+      if(el === backendToggle || el === backendItems || backendItems.contains(el)) return;
+      el.dataset.hiddenForBackend = inBackend ? '1' : '';
+      if(inBackend) el.style.display = 'none';
+    });
+  if(inBackend){
+    if(!document.getElementById('view-backend').style.display || document.getElementById('view-backend').style.display === 'none') showView('backend');
+    return;
+  }
+
   const navApplications = document.getElementById('navApplicationsItem');
   const navAiScraper = document.getElementById('navAiScraperItem');
   const navColdEmail = document.getElementById('navColdEmailItem');
@@ -8972,6 +9048,7 @@ function showView(view, fromHistory){
   if(INTERNAL_ONLY_VIEWS.includes(view) && !hasStaffTools()){
     view = 'dashboard';
   }
+  if(view === 'backend' && !hasStaffTools()) view = 'dashboard';
   if(view === 'internalsales' && !canSeeInternalSales()) view = 'dashboard';
   if(view === 'recruiting'    && !canSeeRecruiting())    view = 'dashboard';
   if(ATM_ONLY_VIEWS.includes(view) && currentBrand !== 'atm'){
@@ -11130,7 +11207,7 @@ async function quickCreateFuRecord(name){
           city: null, state: null, address: '', zip: '', website: '',
           lat: null, lng: null,
           link_slug: slugify(name) + '-' + Math.floor(Math.random()*9000+1000),
-          brand: currentBrand,
+          brand: recordBrand(),
           leads_submitted: 0, deals_closed: 0, link_clicks: 0,
           last_deal_date: null, status: 'active',
           next_follow_up: null, auto_followup_days: null, general_notes: '',
@@ -11153,7 +11230,7 @@ async function quickCreateFuRecord(name){
         contact_name: '\u2014', phone: '\u2014', email: '\u2014',
         est_volume: '',
         stage: defaultStageFor(currentBrand),
-        brand: currentBrand,
+        brand: recordBrand(),
         converted_to_account: false,
         converted_at: null,
         linked_partner_id: null,
@@ -13345,7 +13422,7 @@ async function saveNewAccount(){
     phone: document.getElementById('aaPhone').value.trim() || '—',
     email: document.getElementById('aaEmail').value.trim() || '—',
     est_volume: document.getElementById('aaVolume').value.trim(),
-    brand: currentBrand,
+    brand: recordBrand(),
     stage: currentBrand === 'atm' ? 'installation' : 'converted_active',
     installation_date: currentBrand === 'atm' ? today : null,
     converted_to_account: true,
@@ -19534,7 +19611,7 @@ function processBulkUpload(target){
             source: extra2 ? String(extra2) : 'Uploaded list',
             notes: extra3 ? String(extra3) : '',
             promoted: false,
-            brand: currentBrand,
+            brand: recordBrand(),
           });
         } else if(target === 'leads'){
           const uploadStages = stagesForBrand(currentBrand);
@@ -19585,7 +19662,7 @@ function processBulkUpload(target){
             lat: 39.5 + (Math.random()-0.5)*6,
             lng: -85 + (Math.random()-0.5)*10,
             link_slug: slugify(String(business_name)) + '-' + Math.floor(Math.random()*900+100),
-            brand: currentBrand,
+            brand: recordBrand(),
             leads_submitted: 0, deals_closed: 0, link_clicks: 0,
             last_deal_date: null, status: 'active',
             next_follow_up: null, auto_followup_days: null,
@@ -19981,7 +20058,7 @@ async function pushAiResults(checked){
       lat: 39.5 + (Math.random()-0.5)*6,
       lng: -85 + (Math.random()-0.5)*10,
       link_slug: slugify(r.name) + '-' + Math.floor(Math.random()*900+100),
-      brand: currentBrand,
+      brand: recordBrand(),
       leads_submitted: 0,
       deals_closed: 0,
       link_clicks: 0,
@@ -20348,7 +20425,7 @@ async function sendNewsletter(subject){
   const recipients = newsletterRecipients();
   const { data, error } = await supa.from('newsletters').insert({
     subject,
-    brand: currentBrand,
+    brand: recordBrand(),
     status: 'sent',
     sent_at: todayISO(),
     recipient_count: recipients.length,
@@ -20362,7 +20439,7 @@ async function sendNewsletter(subject){
 async function scheduleNewsletter(subject, body, scheduledFor, recipientMode, recipientIds){
   const { data, error } = await supa.from('newsletters').insert({
     subject, body,
-    brand: currentBrand,
+    brand: recordBrand(),
     status: 'scheduled',
     scheduled_for: scheduledFor,
     recipient_mode: recipientMode,
@@ -22210,7 +22287,7 @@ async function convertRecruit(id){
       address: '', zip: '', website: '',
       lat: 39.5 + (Math.random()-0.5)*6, lng: -85 + (Math.random()-0.5)*10,
       link_slug: slugify(r.company || r.name) + '-' + Math.floor(Math.random()*900+100),
-      brand: currentBrand,
+      brand: recordBrand(),
       leads_submitted: 0, deals_closed: 0, link_clicks: 0,
       last_deal_date: null, status: 'active', next_follow_up: null,
       auto_followup_days: null, general_notes: carriedNotes, parent_partner_id: null,
