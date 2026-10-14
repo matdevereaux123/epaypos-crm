@@ -2035,6 +2035,56 @@
     outline:2px solid var(--blue-600);outline-offset:1px;border-color:var(--blue-400);
   }
 
+  /* ---------- FINE TUNING ----------
+     One accent, not two. The old indigo was the accent everywhere this app
+     draws a border, an icon stroke or a link; left as it was, half the
+     screen pointed at indigo while the other half pointed at the portal's
+     teal. Re-pointing the token moves all of it at once, and the cyan stays
+     what it is in the portal: the bright state, for the thing you are on.
+     The ATM brand still overrides both on <body>, so its green is untouched. */
+  :root{ --brand-accent-2:#006A85; }
+  html[data-theme="dark"]{ --brand-accent-2:#0B7F9C; }
+
+  /* Tick boxes. The 44px minimum above is meant for fields you type in; it
+     caught checkboxes and radios as well and blew them up everywhere they
+     appear. They are small controls with a big label beside them — the label
+     is the hit area — so they go back to a normal size, in the accent. */
+  input[type="checkbox"], input[type="radio"],
+  .field input[type="checkbox"], .field input[type="radio"],
+  .drawer-body input[type="checkbox"], .drawer-body input[type="radio"]{
+    width:16px;height:16px;min-height:0;padding:0;margin:0;
+    accent-color:var(--blue-600);vertical-align:middle;flex:0 0 auto;
+  }
+
+  /* The quick-add button. Cyan with the navy mark, which is the same pair as
+     an active menu row and a primary button — the gradient read as a third
+     brand colour sitting on top of the page. */
+  #quickAddFabBtn{
+    background:var(--blue-400);
+    box-shadow:0 6px 20px -4px rgba(0,106,133,.45);
+  }
+  #quickAddFabBtn svg{ fill:#0B1B38; }
+  #quickAddFabBtn svg polygon{ stroke:#0B1B38; }
+  #quickAddFabBtn:hover{ background:var(--blue-300);box-shadow:0 8px 24px -4px rgba(0,106,133,.5); }
+  #quickAddFabBtn::after{ background:#0B1B38; }
+
+  /* and the buttons it opens */
+  .quick-add-menu button{
+    min-height:44px;padding:0 18px 0 14px;border:1px solid var(--blue-200);
+    background:var(--card);color:var(--navy-700);font-weight:700;
+    box-shadow:0 4px 14px -6px rgba(0,106,133,.35);
+  }
+  .quick-add-menu button:hover{ background:var(--blue-50);border-color:var(--blue-400); }
+  .quick-add-menu button svg{ stroke:var(--ink); }
+
+  /* Small in-row buttons, so a button inside a card or a table row matches
+     the ones in the toolbar above it. */
+  .btn-xs, .lc-advance, .row-edit-btn{ border-color:var(--blue-200);color:var(--ink); }
+  .lc-advance:hover, .row-edit-btn:hover{ background:var(--blue-50);border-color:var(--blue-400); }
+  .task-stat{ border-radius:12px; }
+  .task-stat .n{ font-family:'Lato',system-ui,sans-serif;font-weight:800;font-variant-numeric:tabular-nums; }
+  .task-group-head{ color:var(--ink);letter-spacing:.06em; }
+
 </style>
 </head><body data-brand="epay">
 
