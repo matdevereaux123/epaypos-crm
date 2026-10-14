@@ -12234,11 +12234,52 @@ async function deleteOffice(officeId){
 // dragged. Anything without a saved canvas_x/canvas_y yet gets a simple
 // auto-layout default (offices in a row, their people cascading below) —
 // purely a starting point, not persisted until actually dragged.
-function assignDefaultPositions(partners){
+/* Where a box sits before anyone has dragged it. Saved positions always
+   win (getBoxPos checks canvas_x/canvas_y first) — this is only the first
+   draw.
+
+   Staff are laid out here as well as agents. They were not, so every
+   employee without a saved position opened at the same 40,40 as each other
+   and as the first office: a pile of boxes, one of them clickable. That is
+   fine to miss while the chart was agents only; it is not once everyone
+   with a login is on it, and you cannot link boxes you cannot see. */
+function assignDefaultPositions(partners, staff){
+  const people = staff || [];
   const defaults = {};
   let officeX = 40;
   [...OFFICES, { id: null }].forEach(office => {
     defaults['office:'+(office.id||'')] = { x: officeX, y: 30 };
+
+    // Staff first, under the office box: the chart reads office, then the
+    // people who run it, then the agents.
+    const officeStaff = people.filter(u => (u.office_id || null) === office.id);
+    const staffRoots = officeStaff.filter(u => {
+      if(!u.manager_id) return true;
+      const mgr = USERS.find(x => x.id === u.manager_id);
+      return !mgr || (mgr.office_id || null) !== office.id;
+    });
+    let staffX = officeX;
+    let deepestStaff = -1;
+    const placed = new Set();
+    (function layoutStaff(list, depth){
+      list.forEach(u => {
+        if(placed.has(u.id)) return;           // a reporting loop stops here
+        placed.add(u.id);
+        deepestStaff = Math.max(deepestStaff, depth);
+        defaults['user:'+u.id] = { x: staffX, y: 130 + depth*120 };
+        staffX += 175;
+        layoutStaff(officeStaff.filter(r => r.manager_id === u.id), depth+1);
+      });
+    })(staffRoots, 0);
+    // Anyone left over (a loop, or a manager in another office) still needs
+    // somewhere to be, or they land back on the pile.
+    officeStaff.filter(u => !placed.has(u.id)).forEach(u => {
+      deepestStaff = Math.max(deepestStaff, 0);
+      defaults['user:'+u.id] = { x: staffX, y: 130 };
+      staffX += 175;
+    });
+
+    const partnerBaseY = 160 + (deepestStaff + 1) * 120;
     const officePartners = partners.filter(p => (p.office_id || null) === office.id);
     const roots = officePartners.filter(p => {
       if(!p.parent_partner_id) return true;
@@ -12248,13 +12289,13 @@ function assignDefaultPositions(partners){
     let cursorX = officeX;
     (function layout(list, depth){
       list.forEach(p => {
-        defaults['partner:'+p.id] = { x: cursorX, y: 160 + depth*130 };
+        defaults['partner:'+p.id] = { x: cursorX, y: partnerBaseY + depth*130 };
         cursorX += 175;
         const children = officePartners.filter(c => c.parent_partner_id === p.id);
         if(children.length) layout(children, depth+1);
       });
     })(roots, 0);
-    officeX = Math.max(officeX + 220, cursorX + 40);
+    officeX = Math.max(officeX + 220, cursorX + 40, staffX + 40);
   });
   return defaults;
 }
@@ -12394,7 +12435,7 @@ function toggleHierarchyOfficesOnly(){
 function renderTeamStructureHierarchy(){
   const partners = teamStructurePartners();
   const staff = teamStructureStaff(partners);
-  const defaults = assignDefaultPositions(partners);
+  const defaults = assignDefaultPositions(partners, staff);
   const boxesHtml = [];
   const lines = [];
 
@@ -12436,6 +12477,7 @@ function renderTeamStructureHierarchy(){
     boxesHtml.push(`
       <div class="org-box org-box-user" data-user-id="${u.id}" style="left:${pos.x}px;top:${pos.y}px;"
            onmousedown="startBoxDrag(event, '${u.id}', 'user')">
+        ${canRelinkUsers() ? `<button type="button" class="org-box-link-btn" title="Link to a manager or an office" onmousedown="event.stopPropagation();" onclick="event.stopPropagation(); startLinkMode('${u.id}', 'user', '${(u.name||'').replace(/'/g,"\\'")}')">&#128279;</button>` : ''}
         <span class="tc-avatar tc-avatar-inhouse">${initials}</span>
         <span class="org-box-name">${escAttr(u.name || '—')}</span>
         <span class="org-box-title${u.job_title ? '' : ' is-empty'}"
@@ -12676,21 +12718,86 @@ async function reparentInHierarchy(id, parentId, officeId){
 // then click any other box (person or office) to connect them; click the
 // same box again, or Cancel, to back out without changing anything. ---
 let _linkSourceId = null;
+let _linkSourceType = null;
+/* Who an employee reports to used to be settable only in Settings -> Users.
+   The chart is where people are looking when they notice it is wrong, so it
+   is settable here too — behind the same permission, because this writes the
+   same column that form does. */
+function canRelinkUsers(){
+  return roleOf(currentUser).perms.manageUsers === true;
+}
 function startLinkMode(id, type, name){
   _linkSourceId = id;
+  _linkSourceType = type;
   const banner = document.getElementById('linkModeBanner');
-  document.getElementById('linkModeBannerText').textContent = `Linking ${name} — click another box to connect them.`;
+  document.getElementById('linkModeBannerText').textContent = type === 'user'
+    ? `Linking ${name} — click the person they report to, or an office to put them at the top of it.`
+    : `Linking ${name} — click another box to connect them.`;
   banner.style.display = 'flex';
 }
 function cancelLinkMode(){
   _linkSourceId = null;
+  _linkSourceType = null;
   document.getElementById('linkModeBanner').style.display = 'none';
+}
+
+/* An employee's place on the chart: who they report to, and which office
+   they sit in. Both move together on purpose — the chart draws a reporting
+   line only between people in the same office, so setting a manager without
+   following them into their office would file someone under a manager whose
+   line to them is never drawn. */
+async function relinkUser(userId, managerId, officeId){
+  const u = USERS.find(x => x.id === userId);
+  if(!u) return;
+  if(managerId === userId){ cancelLinkMode(); return; }
+
+  if(managerId){
+    let cursor = USERS.find(x => x.id === managerId);
+    let depth = 0;
+    while(cursor && depth < 40){
+      if(cursor.id === userId){
+        showToast('That would make two people each other\'s manager — pick someone else.', 'error');
+        return;
+      }
+      cursor = cursor.manager_id ? USERS.find(x => x.id === cursor.manager_id) : null;
+      depth++;
+    }
+  }
+
+  const fields = { manager_id: managerId || null, office_id: officeId || null };
+  const { error } = await updateRow('users', userId, fields);
+  if(error){ showToast('Could not change that: ' + error.message, 'error'); return; }
+  Object.assign(u, fields);
+  const manager = managerId ? USERS.find(x => x.id === managerId) : null;
+  showToast(manager
+    ? `${u.name} now reports to ${manager.name}.`
+    : `${u.name} is now at the top of ${(OFFICES.find(o => o.id === officeId) || {}).name || 'Unassigned'}.`, 'success');
+  renderTeamStructureHierarchy();
 }
 function handleBoxClick(id, type){
   if(_linkSourceId){
     if(id === _linkSourceId){ cancelLinkMode(); return; }
+
+    // An employee being linked: to a person they report to, or to an office
+    // they sit at the top of.
+    if(_linkSourceType === 'user'){
+      if(type === 'person'){
+        showToast('An employee reports to another employee, not to an agent.', 'error');
+        cancelLinkMode();
+        return;
+      }
+      if(type === 'user'){
+        const mgr = USERS.find(x => x.id === id);
+        relinkUser(_linkSourceId, id, mgr ? (mgr.office_id || null) : null);
+      } else {
+        relinkUser(_linkSourceId, null, id || null);
+      }
+      cancelLinkMode();
+      return;
+    }
+
     if(type === 'user'){
-      showToast('Who an employee reports to is set in Settings → Users, under "Reports to".', 'error');
+      showToast('An agent is recruited by another agent, not by an employee — link them to an agent or an office.', 'error');
       cancelLinkMode();
       return;
     }
