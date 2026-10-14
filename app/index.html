@@ -1871,39 +1871,19 @@
   .nav-item.active .soon{background:#FFFFFF;color:#0B1B38;}
   .sidebar-footer{border-top:1px solid var(--line);}
 
-  /* The collapsed menu used to disappear to nothing. In the portal it
-     becomes an icon rail, which keeps the icons, the active marker and the
-     scroll position in place — the labels are what go, not the navigation.
-     Mobile is untouched: below 769px the sidebar is still off-canvas. */
+  /* The menu stays open on desktop. The collapse button, its handler and
+     the saved preference are all still in the app untouched — this only
+     pins the panel open and takes the button out of the top bar, so there
+     is nothing to press and nothing to come back to in a collapsed state.
+     Below 769px none of this applies: there the sidebar is an off-canvas
+     drawer and that same button is the only way to open it, so it stays. */
   @media (min-width:769px){
-    .shell.sidebar-collapsed{grid-template-columns:84px 1fr;}
+    .shell, .shell.sidebar-collapsed{grid-template-columns:252px 1fr;}
     .shell.sidebar-collapsed .sidebar{
-      width:84px;opacity:1;pointer-events:auto;border-right:1px solid var(--line);
+      width:252px;opacity:1;pointer-events:auto;border-right:1px solid var(--line);
     }
-    .shell.sidebar-collapsed .sidebar-header{padding:14px 10px 10px;}
-    /* Cropped to the mark: the full lockup at rail width is unreadable,
-       and the triangle alone is the half people recognise. */
-    .shell.sidebar-collapsed .sidebar-header img.full-logo,
-    .shell.sidebar-collapsed .sidebar-header img.logo-epay,
-    .shell.sidebar-collapsed .sidebar-header img.logo-atm{
-      width:34px;height:34px;object-fit:cover;object-position:left center;
-    }
-    .shell.sidebar-collapsed .sidebar-header .login-mark::after{margin:12px 0 0;}
-    .shell.sidebar-collapsed .sidebar-header .login-mark::after{margin:10px 0 0;}
-    /* One tap on the menu button brings the brand switch back; three long
-       labels stacked in a 84px rail would only be guesswork. */
-    .shell.sidebar-collapsed .brand-switch{display:none;}
-    .shell.sidebar-collapsed nav.nav-main{padding:10px 8px 16px;}
-    /* font-size:0 is what hides the label: it is a bare text node inside
-       the button, so there is no element to set display:none on. The icon
-       keeps its own width and height and is unaffected. */
-    .shell.sidebar-collapsed .nav-item{justify-content:center;padding:0;gap:0;font-size:0;}
-    .shell.sidebar-collapsed .nav-item .soon{display:none;}
-    .shell.sidebar-collapsed .nav-section-label,
-    .shell.sidebar-collapsed .nav-section-toggle{
-      font-size:0;min-height:0;margin:10px 6px 6px;padding:8px 0 0;border-top:1px solid var(--line);
-    }
-    .shell.sidebar-collapsed .nav-section-toggle .chevron{display:none;}
+    .sidebar{width:252px;}
+    #sidebarToggleBtn{display:none;}
   }
 
   /* ---------- TOP BAR ---------- */
