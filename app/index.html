@@ -1821,13 +1821,21 @@
   .panel-head h2{font-size:17px;}
 
   /* ---------- SIDEBAR ---------- */
-  .sidebar-header{padding:16px 14px 14px;border-bottom:none;}
-  .sidebar-header .login-mark{margin-bottom:0;}
-  /* The portal's hairline: it separates the logo from the brand switch
-     without the hard rule a border would draw across the whole panel. */
+  .sidebar-header{padding:18px 14px 16px;border-bottom:none;}
+  /* .login-mark is a flex ROW (it has to be on the login screen, where a
+     mark and a wordmark sit side by side). In the sidebar it holds one
+     image, and leaving it as a row put the hairline below BESIDE the logo
+     instead of under it, which is what squeezed the two together. Here it
+     is a block, so logo, rule and brand switch stack in that order. */
+  .sidebar-header .login-mark{display:block;text-align:center;margin:0;}
+  .sidebar-header .login-mark img.full-logo{display:block;margin:0 auto;}
+  .sidebar-header .login-mark img.logo-epay{width:122px;}
+  .sidebar-header .login-mark img.logo-atm{width:142px;}
+  /* The portal's rule: the full width of the panel, under the logo and
+     above the brand switch, cyan running into the deep blue. */
   .sidebar-header .login-mark::after{
-    content:"";display:block;height:2px;margin:12px 0;border-radius:2px;
-    background:linear-gradient(90deg,var(--blue-400),var(--indigo-500) 60%,transparent);
+    content:"";display:block;height:3px;margin:16px 0 14px;border-radius:2px;
+    background:linear-gradient(90deg,var(--blue-400),var(--indigo-500));
   }
   /* Pills, and they wrap: three brand names do not fit across a 248px
      sidebar on one row, and a squeezed row broke "EPAY Back End" over three
@@ -1875,9 +1883,12 @@
     .shell.sidebar-collapsed .sidebar-header{padding:14px 10px 10px;}
     /* Cropped to the mark: the full lockup at rail width is unreadable,
        and the triangle alone is the half people recognise. */
-    .shell.sidebar-collapsed .sidebar-header img.full-logo{
+    .shell.sidebar-collapsed .sidebar-header img.full-logo,
+    .shell.sidebar-collapsed .sidebar-header img.logo-epay,
+    .shell.sidebar-collapsed .sidebar-header img.logo-atm{
       width:46px;height:46px;object-fit:cover;object-position:left center;
     }
+    .shell.sidebar-collapsed .sidebar-header .login-mark::after{margin:12px 0 0;}
     .shell.sidebar-collapsed .sidebar-header .login-mark::after{margin:10px 0 0;}
     /* One tap on the menu button brings the brand switch back; three long
        labels stacked in a 84px rail would only be guesswork. */
@@ -1941,6 +1952,88 @@
     border-bottom:1px solid var(--line-strong);background:var(--surface-3);padding:11px 20px;
   }
   tbody td{padding:14px 20px;}
+
+  /* ---------- THE PAGES ----------
+     Same rule as above: this is paint, not plumbing. Every button, field,
+     column and record on these screens is the one that was already there —
+     what changes is the surface it sits on. */
+
+  /* Page headings and the little section labels above each group. */
+  .dash-section-label{color:var(--ink);letter-spacing:.06em;font-weight:800;}
+  .dash-section-label-secondary{color:var(--slate-500);}
+  .section-label{color:var(--ink);letter-spacing:.06em;font-weight:800;}
+  .panel-head{padding:16px 20px;border-bottom:1px solid var(--line);}
+
+  /* The pipeline board. The column head carries the portal's pale blue so a
+     column reads as a container at a glance, and the count sits in the same
+     outlined pill the nav uses. */
+  .stage-column{border-radius:var(--radius);}
+  .stage-head{background:var(--blue-50);padding:13px 14px;}
+  .stage-head:hover{background:var(--blue-100);}
+  .stage-head .stage-name{font-size:13px;font-weight:800;}
+  .stage-head .stage-count{
+    background:var(--card);border:1px solid var(--blue-200);color:var(--ink);
+    font-size:11.5px;font-weight:800;padding:2px 9px;
+  }
+  .stage-body.drag-over{background:var(--blue-50);}
+  .lead-card{border-radius:12px;padding:12px 13px;}
+  .lead-card:hover{border-color:var(--blue-400);box-shadow:0 6px 18px -6px rgba(0,145,179,.28);}
+  .lead-card .lc-badge{border-radius:999px;font-weight:800;}
+  .stage-chip{
+    display:inline-flex;align-items:center;min-height:30px;padding:0 11px;
+    font-size:11.5px;font-weight:700;border:1px solid var(--blue-200);
+    background:var(--card);color:var(--navy-700);
+  }
+  .stage-chip.current{background:var(--blue-400);border-color:var(--blue-500);color:#0B1B38;}
+  .office-head{background:var(--blue-50);}
+  .office-count{background:var(--card);border:1px solid var(--blue-200);color:var(--ink);font-weight:800;}
+  .team-card.is-inhouse{border-left:3px solid var(--blue-400);}
+  .pipeline-snap-card{border-radius:12px;}
+
+  /* Record drawers. The label tier matches the portal's small caps in ink,
+     and fields are the same 44px as everywhere else so a drawer is not a
+     denser form than the page behind it. */
+  .drawer-head{padding:20px 24px;}
+  .drawer-head h2{font-size:19px;}
+  .drawer-body label{font-size:12px;font-weight:800;letter-spacing:.06em;color:var(--ink);}
+  .drawer-section-toggle{color:var(--ink);font-weight:800;letter-spacing:.06em;}
+  .drawer-body input, .drawer-body select, .drawer-body textarea{padding:0 12px;}
+  .drawer-body textarea{padding:11px 12px;}
+  .note-item{
+    border-left:3px solid var(--blue-400);background:var(--surface-2);
+    border-radius:0 10px 10px 0;padding:10px 12px;
+  }
+  .note-item .meta{font-weight:700;}
+  .row-edit-btn:hover{background:var(--blue-50);}
+
+  /* Modals, paging, menus, chips. */
+  .modal-card{border-radius:14px;}
+  .pager-btn{
+    min-height:40px;padding:0 14px;border-radius:10px;
+    border:1px solid var(--blue-200);color:var(--ink);font-weight:700;
+  }
+  .pager-btn:hover:not(:disabled){background:var(--blue-50);border-color:var(--blue-400);color:var(--ink);}
+  .profile-btn{min-height:44px;border-radius:999px;border-color:var(--blue-200);}
+  .profile-btn:hover{border-color:var(--blue-400);background:var(--blue-50);}
+  .notif-bell-btn{min-height:44px;min-width:44px;border-radius:10px;border:1px solid var(--blue-200);color:var(--ink);}
+  .notif-bell-btn:hover{background:var(--blue-50);border-color:var(--blue-400);}
+  .quick-action-btn{border-radius:12px;}
+  .quick-action-btn .qa-icon{background:var(--blue-400);color:#0B1B38;}
+  .view-toggle{background:var(--blue-50);border-color:var(--line);}
+  .select-search-opt.sel{background:var(--blue-50);}
+  .link-chip, .merge-chip, .standing-chip{border-color:var(--blue-200);}
+  .toast{border-radius:12px;}
+  .cal-event-chip{border-radius:999px;font-weight:700;}
+  .cal-day{border-color:var(--line);}
+
+  /* A visible focus ring on fields, not just on buttons: these screens are
+     worked through the keyboard all day. */
+  .search-input:focus-visible,
+  .field input:focus-visible, .field select:focus-visible,
+  .drawer-body input:focus-visible, .drawer-body select:focus-visible,
+  .drawer-body textarea:focus-visible{
+    outline:2px solid var(--blue-600);outline-offset:1px;border-color:var(--blue-400);
+  }
 
 </style>
 </head><body data-brand="epay">
