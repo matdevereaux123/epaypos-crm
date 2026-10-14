@@ -3241,6 +3241,9 @@
             <h2>All cold leads</h2>
             <div style="display:flex;align-items:center;gap:10px;">
               <button class="btn btn-sm" id="deleteSelectedColdLeadsBtn" style="display:none;color:var(--red);">Delete selected</button>
+              <select id="coldLeadsAddedBy" style="padding:8px 10px;border-radius:7px;border:1px solid var(--line);font-size:12.5px;"
+                      title="Filter by who added the lead"
+                      onchange="coldLeadsAddedByFilter = this.value; renderColdLeadsTable();"></select>
               <select id="coldLeadsSort" style="padding:8px 10px;border-radius:7px;border:1px solid var(--line);font-size:12.5px;">
                 <option value="followup">Sort: Follow-up date</option>
                 <option value="added">Sort: Date added</option>
@@ -19500,6 +19503,38 @@ function setColdLeadsFollowupFilter(key){ coldLeadsFollowupFilter = key; renderC
 function setColdLeadsTempFilter(key){ coldLeadsTempFilter = key; renderColdLeadsTable(); }
 function setColdLeadsSourceFilter(key){ coldLeadsSourceFilter = key; renderColdLeadsTable(); }
 
+/* Who put the lead in. cold_leads.created_by is stamped by a trigger, so
+   it is on every row added since that went in; rows older than it, and
+   anything imported before, have none — those get their own option rather
+   than being quietly dropped from a filter that claims to cover everyone.
+
+   The options are built from every cold lead in view, NOT from the rows
+   left after filtering, or picking a person would empty the list of
+   everyone else and strand the dropdown on one name. */
+let coldLeadsAddedByFilter = 'all';
+function renderColdLeadsAddedByOptions(pool){
+  const sel = document.getElementById('coldLeadsAddedBy');
+  if(!sel) return;
+  const counts = new Map();
+  pool.forEach(c => { const k = c.created_by || ''; counts.set(k, (counts.get(k) || 0) + 1); });
+  const named = [...counts.entries()]
+    .filter(([id]) => id)
+    .map(([id, n]) => ({
+      id, n,
+      name: (USERS.find(u => u.id === id) || {}).name || 'Someone no longer here'
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const unknown = counts.get('') || 0;
+
+  sel.innerHTML = `<option value="all">Added by: anyone (${pool.length})</option>`
+    + named.map(u => `<option value="${u.id}">${u.name} (${u.n})</option>`).join('')
+    + (unknown ? `<option value="none">Not recorded (${unknown})</option>` : '');
+
+  // A name can disappear between renders — a lead converted, a user removed.
+  if(![...sel.options].some(o => o.value === coldLeadsAddedByFilter)) coldLeadsAddedByFilter = 'all';
+  sel.value = coldLeadsAddedByFilter;
+}
+
 function renderColdLeadsTable(filterText){
   renderColdLeadsStats();
   renderColdLeadsFilters();
@@ -19508,6 +19543,12 @@ function renderColdLeadsTable(filterText){
   const sortBy = document.getElementById('coldLeadsSort') ? document.getElementById('coldLeadsSort').value : 'followup';
 
   let rows = scopedColdLeads().filter(c => !c.promoted && leadInBrand(c));
+  renderColdLeadsAddedByOptions(rows);
+  if(coldLeadsAddedByFilter !== 'all'){
+    rows = coldLeadsAddedByFilter === 'none'
+      ? rows.filter(c => !c.created_by)
+      : rows.filter(c => c.created_by === coldLeadsAddedByFilter);
+  }
   if(q) rows = rows.filter(c => c.business_name.toLowerCase().includes(q) || c.contact_name.toLowerCase().includes(q));
   if(coldLeadsFollowupFilter !== 'all') rows = rows.filter(c => coldLeadFollowupStatus(c).key === coldLeadsFollowupFilter);
   if(coldLeadsTempFilter !== 'all') rows = rows.filter(c => c.temperature === coldLeadsTempFilter);
@@ -19550,7 +19591,9 @@ function renderColdLeadsTable(filterText){
       <td><span class="pill" style="background:${temp.color}22;color:${temp.color};">${temp.label}</span></td>
       <td>
         <span class="pill" style="background:${age.color}22;color:${age.color};">${age.label}</span>
-        <div class="sub">${c.created_at ? formatDate(c.created_at) : '—'}${ageSub ? ' · ' + ageSub : ''}</div>
+        <div class="sub">${c.created_at ? formatDate(c.created_at) : '—'}${ageSub ? ' · ' + ageSub : ''}${
+          c.created_by ? ' · ' + ((USERS.find(u => u.id === c.created_by) || {}).name || 'someone no longer here') : ''
+        }</div>
       </td>
       <td>
         <span class="pill" style="background:${fu.color}22;color:${fu.color};">${fu.label}</span>
