@@ -40,7 +40,7 @@
 <meta name="theme-color" content="#0B1B38">
 <meta name="apple-mobile-web-app-title" content="EPAY CRM">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Lato:wght@700;900&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
   :root{
@@ -1775,6 +1775,173 @@
   .dash-task-due.overdue{ background:var(--err-bg); color:var(--err-text); }
   .dash-task-due.today{ background:var(--warn-bg); color:var(--warn-text); }
   .dash-tasks-empty{ padding:22px 18px; text-align:center; font-size:13px; color:var(--slate-500); }
+
+  /* =====================================================================
+     MERCHANT PORTAL SKIN
+     The EPAY POS merchant back end and this CRM looked like two different
+     products. This block re-skins the CRM in the portal's own language —
+     its blue ramp, 44px controls, cyan active state and Lato headings — so
+     someone moving between the two is not relearning a tool.
+
+     It is deliberately the LAST thing in this stylesheet, and it is only a
+     skin: no rule here changes what an element does, no markup or script
+     was touched for it, and deleting this block puts the old look back
+     exactly. Everything is written against tokens, so the dark theme keeps
+     working; the tokens this block introduces are redefined for dark below.
+     ===================================================================== */
+  :root{
+    --blue-50:#EBFBFF;  --blue-100:#D1F6FF; --blue-200:#A3EEFF;
+    --blue-300:#5CE3FF; --blue-400:#00D5FF; --blue-500:#00B4DB;
+    --blue-600:#0091B3; --ink:#006A85;
+    --radius-sm:8px;
+
+    /* Re-pointed rather than renamed: every rule already reading these
+       picks up the portal's rules and tints without being edited. */
+    --line:#D8E8F2;
+    --line-strong:#B6D3E6;
+    --hover:#EBFBFF;
+    --accent-soft:#D1F6FF;
+    --accent-text:#006A85;
+  }
+  html[data-theme="dark"]{
+    /* Dark keeps its own surfaces — the portal's pale blues would glow on
+       them. Only the accents carry over, dialled to sit on a dark panel.
+       --accent-text stays white, as set in the dark block above. */
+    --blue-50:#16283C;  --blue-100:#1B3550; --blue-200:#2B4D6B;
+    --blue-300:#3FA9C9; --blue-400:#00B4DB; --blue-500:#0091B3;
+    --blue-600:#5CE3FF; --ink:#7FE4FF;
+  }
+
+  /* Type. The portal sets headings in Lato and leaves body copy to the
+     system face, which is what makes its screens feel lighter than this
+     CRM's did at the same sizes. */
+  body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;}
+  h1,h2,h3,.display{font-family:'Lato',system-ui,sans-serif;font-weight:800;letter-spacing:-.01em;}
+  .topbar h1{font-size:24px;}
+  .panel-head h2{font-size:17px;}
+
+  /* ---------- SIDEBAR ---------- */
+  .sidebar-header{padding:16px 14px 14px;border-bottom:none;}
+  .sidebar-header .login-mark{margin-bottom:0;}
+  /* The portal's hairline: it separates the logo from the brand switch
+     without the hard rule a border would draw across the whole panel. */
+  .sidebar-header .login-mark::after{
+    content:"";display:block;height:2px;margin:12px 0;border-radius:2px;
+    background:linear-gradient(90deg,var(--blue-400),var(--indigo-500) 60%,transparent);
+  }
+  /* Pills, and they wrap: three brand names do not fit across a 248px
+     sidebar on one row, and a squeezed row broke "EPAY Back End" over three
+     lines. Wrapping gives each one its natural width instead. */
+  .brand-switch{background:transparent;padding:0;gap:6px;font-size:11.5px;flex-wrap:wrap;}
+  .brand-switch button{
+    flex:1 1 auto;min-height:36px;padding:0 11px;border-radius:999px;border:1px solid var(--blue-200);
+    background:var(--card);color:var(--navy-700);font-weight:700;white-space:nowrap;
+  }
+  .brand-switch button:hover{background:var(--blue-50);border-color:var(--blue-400);}
+  /* Dark text on the cyan fill in both themes: the fill is bright either
+     way, so this one colour is a literal rather than a token. */
+  .brand-switch button.active{background:var(--blue-400);border-color:var(--blue-500);color:#0B1B38;}
+
+  nav.nav-main{padding:12px 12px 18px;}
+  .nav-section-label,
+  .nav-section-toggle{
+    font-size:11.5px;font-weight:800;letter-spacing:.07em;color:var(--ink);
+    margin:14px 2px 4px;padding:0 10px;
+  }
+  .nav-section-toggle{min-height:34px;}
+  .nav-section-toggle:hover{color:var(--navy-700);}
+  .nav-section-toggle .chevron{width:14px;height:14px;stroke:currentColor;stroke-width:2.6;}
+  .nav-item{
+    min-height:44px;padding:0 12px;border-radius:10px;margin-bottom:2px;
+    font-size:14px;font-weight:700;color:var(--navy-700);
+  }
+  .nav-item svg{width:19px;height:19px;opacity:1;stroke:var(--ink);stroke-width:1.7;}
+  .nav-item:hover{background:var(--blue-50);color:var(--navy-700);}
+  .nav-item.active{background:var(--blue-400);color:#0B1B38;box-shadow:none;}
+  .nav-item.active svg{stroke:#0B1B38;}
+  .nav-item .soon{background:var(--blue-100);color:var(--ink);font-size:9.5px;font-weight:800;}
+  .nav-item.active .soon{background:#FFFFFF;color:#0B1B38;}
+  .sidebar-footer{border-top:1px solid var(--line);}
+
+  /* The collapsed menu used to disappear to nothing. In the portal it
+     becomes an icon rail, which keeps the icons, the active marker and the
+     scroll position in place — the labels are what go, not the navigation.
+     Mobile is untouched: below 769px the sidebar is still off-canvas. */
+  @media (min-width:769px){
+    .shell.sidebar-collapsed{grid-template-columns:84px 1fr;}
+    .shell.sidebar-collapsed .sidebar{
+      width:84px;opacity:1;pointer-events:auto;border-right:1px solid var(--line);
+    }
+    .shell.sidebar-collapsed .sidebar-header{padding:14px 10px 10px;}
+    /* Cropped to the mark: the full lockup at rail width is unreadable,
+       and the triangle alone is the half people recognise. */
+    .shell.sidebar-collapsed .sidebar-header img.full-logo{
+      width:46px;height:46px;object-fit:cover;object-position:left center;
+    }
+    .shell.sidebar-collapsed .sidebar-header .login-mark::after{margin:10px 0 0;}
+    /* One tap on the menu button brings the brand switch back; three long
+       labels stacked in a 84px rail would only be guesswork. */
+    .shell.sidebar-collapsed .brand-switch{display:none;}
+    .shell.sidebar-collapsed nav.nav-main{padding:10px 8px 16px;}
+    /* font-size:0 is what hides the label: it is a bare text node inside
+       the button, so there is no element to set display:none on. The icon
+       keeps its own width and height and is unaffected. */
+    .shell.sidebar-collapsed .nav-item{justify-content:center;padding:0;gap:0;font-size:0;}
+    .shell.sidebar-collapsed .nav-item .soon{display:none;}
+    .shell.sidebar-collapsed .nav-section-label,
+    .shell.sidebar-collapsed .nav-section-toggle{
+      font-size:0;min-height:0;margin:10px 6px 6px;padding:8px 0 0;border-top:1px solid var(--line);
+    }
+    .shell.sidebar-collapsed .nav-section-toggle .chevron{display:none;}
+  }
+
+  /* ---------- TOP BAR ---------- */
+  .topnav{height:60px;border-bottom:1px solid var(--line);}
+  .sidebar-toggle-btn{width:40px;height:40px;border-radius:10px;border-color:var(--blue-200);color:var(--ink);}
+  .sidebar-toggle-btn:hover{border-color:var(--blue-400);background:var(--blue-50);color:var(--ink);}
+  .sidebar-toggle-btn.active{background:var(--blue-100);border-color:var(--blue-400);color:var(--ink);}
+
+  /* ---------- CONTROLS ---------- */
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:8px;
+    min-height:44px;padding:0 16px;border-radius:10px;
+    border:1px solid var(--blue-200);background:var(--card);color:var(--ink);font-weight:700;
+  }
+  .btn:hover{background:var(--blue-50);border-color:var(--blue-400);}
+  .btn-sm{min-height:38px;padding:0 13px;}
+  .btn-xs{min-height:32px;padding:0 11px;border-radius:999px;}
+  .btn-accent{background:var(--blue-400);border:1px solid var(--blue-500);color:#0B1B38;}
+  .btn-accent:hover{background:var(--blue-300);filter:none;}
+  .btn-primary{background:var(--blue-400);border:1px solid var(--blue-500);color:#0B1B38;border-radius:10px;}
+  .btn-primary:hover{background:var(--blue-300);filter:none;}
+  .search-input{min-height:44px;border-radius:var(--radius-sm);border:1px solid var(--line-strong);}
+  .field input, .field select,
+  .drawer-body input, .drawer-body select, .drawer-body textarea{
+    min-height:44px;border-radius:var(--radius-sm);border:1px solid var(--line-strong);
+  }
+  .phase-toggle button{min-height:42px;border-radius:999px;font-weight:700;}
+  .phase-toggle button.active{background:var(--blue-400);color:#0B1B38;box-shadow:none;}
+  .phase-toggle button.active .count-badge{background:#FFFFFF;color:#0B1B38;}
+  .view-toggle-btn{min-height:38px;font-weight:700;}
+  .view-toggle-btn.active{background:var(--blue-400);color:#0B1B38;box-shadow:none;}
+
+  /* ---------- CARDS, PANELS, TABLES ---------- */
+  .stat-card{border-top:5px solid var(--blue-400);padding:16px 18px;}
+  .cards-row .stat-card:nth-child(2){border-top-color:var(--blue-500);}
+  .cards-row .stat-card:nth-child(3),
+  .cards-row .stat-card:nth-child(4){border-top-color:var(--blue-300);}
+  .stat-card .label{font-size:12.5px;font-weight:700;letter-spacing:0;text-transform:none;}
+  .stat-card .value{font-family:'Lato',system-ui,sans-serif;font-size:28px;font-weight:800;font-variant-numeric:tabular-nums;}
+  .stat-card.clickable:hover{border-color:var(--blue-400);box-shadow:0 6px 16px -6px rgba(0,145,179,.28);}
+  .pipeline-snap-card .psc-value{font-family:'Lato',system-ui,sans-serif;font-weight:800;font-variant-numeric:tabular-nums;}
+  .pipeline-snap-card:hover,
+  .quick-action-btn:hover{border-color:var(--blue-400);box-shadow:0 6px 16px -6px rgba(0,145,179,.28);}
+  thead th{
+    font-size:11px;letter-spacing:.05em;color:var(--slate-500);
+    border-bottom:1px solid var(--line-strong);background:var(--surface-3);padding:11px 20px;
+  }
+  tbody td{padding:14px 20px;}
+
 </style>
 </head><body data-brand="epay">
 
