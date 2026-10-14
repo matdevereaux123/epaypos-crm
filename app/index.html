@@ -1885,6 +1885,11 @@
     .sidebar{width:252px;}
     #sidebarToggleBtn{display:none;}
   }
+  /* .topnav is a space-between row whose left item is that collapse button.
+     With the button gone it had one child left, and space-between parked
+     the bell and the profile menu on the LEFT. This pins that group to the
+     right whether or not anything sits beside it. */
+  .topnav-right{margin-left:auto;}
 
   /* ---------- TOP BAR ---------- */
   .topnav{height:60px;border-bottom:1px solid var(--line);}
