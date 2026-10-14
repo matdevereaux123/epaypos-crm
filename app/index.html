@@ -11251,7 +11251,7 @@ document.getElementById('fuSaveBtn').addEventListener('click', async function(){
   } else {
     const l = LEADS.find(x=>x.id===recordId);
     if(!l) return;
-    const { error } = await supa.from('leads').update({ general_follow_up_date: date, general_follow_up_note: note }).eq('id', recordId);
+    const { error } = updateRow('leads', recordId, { general_follow_up_date: date, general_follow_up_note: note });
     if(error){ alert('Could not save: ' + error.message); return; }
     l.general_follow_up_date = date;
     l.general_follow_up_note = note;
@@ -13493,7 +13493,7 @@ async function toggleAccountCollections(id, checked){
     fields.collections_marked_at = new Date().toISOString().slice(0,10);
     fields.collections_marked_by = currentUser.email;
   }
-  const { error } = await supa.from('leads').update(fields).eq('id', id);
+  const { error } = updateRow('leads', id, fields);
   if(error){ alert('Could not update collections status: ' + error.message); return; }
   Object.assign(l, fields);
   openLeadDetail(id);
@@ -13504,7 +13504,7 @@ async function saveAccountCollectionsNote(id){
   if(!l) return;
   const noteInput = document.getElementById('acCollectionsNote');
   const note = noteInput ? noteInput.value.trim() : '';
-  const { error } = await supa.from('leads').update({ collections_note: note }).eq('id', id);
+  const { error } = updateRow('leads', id, { collections_note: note });
   if(error){ alert('Could not save collections note: ' + error.message); return; }
   l.collections_note = note;
   refreshActiveView();
@@ -13595,7 +13595,7 @@ async function saveAccountDetails(id){
   // set_lead_dob with the other sensitive fields instead.
   const dobInput = document.getElementById('acDob');
 
-  const { error } = await supa.from('leads').update(fields).eq('id', id);
+  const { error } = updateRow('leads', id, fields);
   if(error){ alert('Could not save: ' + error.message); return; }
   Object.assign(l, fields);
 
@@ -14072,7 +14072,7 @@ function atmStagePanelHtml(l){
 async function saveAtmTid(id){
   const l = LEADS.find(x=>x.id===id); if(!l) return;
   const tid = document.getElementById('atmTid').value.trim();
-  const { error } = await supa.from('leads').update({ tid }).eq('id', id);
+  const { error } = updateRow('leads', id, { tid });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.tid = tid;
   renderLeadsBoard();
@@ -14082,7 +14082,7 @@ async function saveAtmCommission(id){
   const l = LEADS.find(x=>x.id===id); if(!l) return;
   const commission_type = document.getElementById('atmCommissionType').value;
   const commission_value = document.getElementById('atmCommissionValue').value.trim();
-  const { error } = await supa.from('leads').update({ commission_type, commission_value }).eq('id', id);
+  const { error } = updateRow('leads', id, { commission_type, commission_value });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.commission_type = commission_type;
   l.commission_value = commission_value;
@@ -14102,7 +14102,7 @@ async function saveAtmInstallDate(id){
     converted_to_account = true;
     converted_at = new Date().toISOString().slice(0,10);
   }
-  const { error } = await supa.from('leads').update({ installation_date, converted_to_account, converted_at }).eq('id', id);
+  const { error } = updateRow('leads', id, { installation_date, converted_to_account, converted_at });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.installation_date = installation_date;
   l.converted_to_account = converted_to_account;
@@ -14271,7 +14271,7 @@ function followupStagePanel(l, n){
 async function saveLeadPartnerLink(id, partnerId){
   const l = LEADS.find(x=>x.id===id); if(!l) return;
   const linked_partner_id = partnerId || null;
-  const { error } = await supa.from('leads').update({ linked_partner_id }).eq('id', id);
+  const { error } = updateRow('leads', id, { linked_partner_id });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.linked_partner_id = linked_partner_id;
   refreshActiveView();
@@ -14302,7 +14302,7 @@ async function saveLeadBrand(id, brand){
     }
   }
 
-  const { error } = await supa.from('leads').update({ brand }).eq('id', id);
+  const { error } = updateRow('leads', id, { brand });
   if(error){
     alert('Could not change the brand: ' + error.message);
     const sel = document.getElementById('leadBrandSelect');
@@ -14319,12 +14319,30 @@ async function saveLeadBrand(id, brand){
     : `${l.business_name} moved to ${brandLabel(brand)}.`, 'success');
 }
 
+/* An UPDATE that matches no rows is NOT an error. PostgREST answers with
+   success and an empty result, so a save blocked by a row-level policy
+   looks identical to one that worked: the screen updates, the toast says
+   "Saved", and the row never changed. Nobody finds out until the next
+   refresh — which is exactly how the lost assignments and subscriptions
+   were reported.
+
+   Asking for the updated row back and checking it came is the only way to
+   tell the two apart. Every write that matters goes through here. */
+async function updateRow(table, id, fields){
+  const res = await supa.from(table).update(fields).eq('id', id).select();
+  if(res.error) return { error: res.error };
+  if(!res.data || !res.data.length){
+    return { error: { message: 'Nothing was saved — this record is not yours to change. ' +
+      'Ask an admin to assign it to you, then try again.' } };
+  }
+  return { data: res.data[0] };
+}
+
 async function savePartnerAssignment(id){
   const p = PARTNERS.find(x => x.id === id); if(!p) return;
   const ids = getMultiAssignIds('partnerAssignedTo_' + id);
   const assigned_to = ids[0] || null;
-  const { error } = await supa.from('partners')
-    .update({ assigned_to, assigned_to_ids: ids }).eq('id', id);
+  const { error } = await updateRow('partners', id, { assigned_to, assigned_to_ids: ids });
   if(error){ showToast('Could not save: ' + error.message, 'error'); return; }
   p.assigned_to = assigned_to;
   p.assigned_to_ids = ids;
@@ -14341,7 +14359,7 @@ async function saveLeadAssignment(id, fieldId){
   const l = LEADS.find(x=>x.id===id); if(!l) return;
   const ids = getMultiAssignIds(fieldId);
   const assigned_to = ids[0] || null;
-  const { error } = await supa.from('leads').update({ assigned_to, assigned_to_ids: ids }).eq('id', id);
+  const { error } = await updateRow('leads', id, { assigned_to, assigned_to_ids: ids });
   if(error){ showToast('Could not save: ' + error.message, 'error'); return; }
   l.assigned_to = assigned_to;
   l.assigned_to_ids = ids;
@@ -14354,7 +14372,7 @@ async function saveColdLeadAssignment(id, fieldId){
   const c = COLD_LEADS.find(x=>x.id===id); if(!c) return;
   const ids = getMultiAssignIds(fieldId);
   const assigned_to = ids[0] || null;
-  const { error } = await supa.from('cold_leads').update({ assigned_to, assigned_to_ids: ids }).eq('id', id);
+  const { error } = await updateRow('cold_leads', id, { assigned_to, assigned_to_ids: ids });
   if(error){ showToast('Could not save: ' + error.message, 'error'); return; }
   c.assigned_to = assigned_to;
   c.assigned_to_ids = ids;
@@ -14366,7 +14384,7 @@ async function saveApplicationAssignment(id, fieldId){
   const a = APPLICATIONS.find(x=>x.id===id); if(!a) return;
   const ids = getMultiAssignIds(fieldId);
   const assigned_to = ids[0] || null;
-  const { error } = await supa.from('applications').update({ assigned_to, assigned_to_ids: ids }).eq('id', id);
+  const { error } = await updateRow('applications', id, { assigned_to, assigned_to_ids: ids });
   if(error){ showToast('Could not save: ' + error.message, 'error'); return; }
   a.assigned_to = assigned_to;
   a.assigned_to_ids = ids;
@@ -14382,7 +14400,7 @@ async function saveInboundLeadFields(id){
     const other = (document.getElementById('spLeadSourceOtherInput') || {}).value || '';
     if(other.trim()) lead_source = 'Other \u2014 ' + other.trim();
   }
-  const { error } = await supa.from('leads').update({ lead_source }).eq('id', id);
+  const { error } = updateRow('leads', id, { lead_source });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.lead_source = lead_source;
   unlockedLeadSourceIds.delete(id);
@@ -14396,7 +14414,7 @@ function unlockLeadSource(id){
 async function saveOutreachFields(id){
   const l = LEADS.find(x=>x.id===id); if(!l) return;
   readSystemPricingFields(l);
-  const { error } = await supa.from('leads').update({
+  const { error } = await updateRow('leads', id, {
     system_choice: l.system_choice, pos_plan: l.pos_plan, clover_device: l.clover_device,
     nrs_device: l.nrs_device, ncr_price: l.ncr_price,
     third_party_name: l.third_party_name, third_party_price: l.third_party_price,
@@ -14404,7 +14422,7 @@ async function saveOutreachFields(id){
     equipment_free: l.equipment_free, integrations_selected: l.integrations_selected,
     integrations_note: l.integrations_note, epay_apps_selected: l.epay_apps_selected,
     extra_subscriptions: l.extra_subscriptions,
-  }).eq('id', id);
+  });
   if(error){ alert('Could not save: ' + error.message); return; }
   refreshActiveView();
   openLeadDetail(id);
@@ -14414,7 +14432,7 @@ async function saveFollowupFields(id, n){
   const dateField = 'followup'+n+'_date', ideaField = 'followup'+n+'_idea';
   const dateVal = document.getElementById('spFuDate').value || null;
   const ideaVal = document.getElementById('spFuIdea').value.trim();
-  const { error } = await supa.from('leads').update({ [dateField]: dateVal, [ideaField]: ideaVal }).eq('id', id);
+  const { error } = updateRow('leads', id, { [dateField]: dateVal, [ideaField]: ideaVal });
   if(error){ alert('Could not save: ' + error.message); return; }
   l[dateField] = dateVal;
   l[ideaField] = ideaVal;
@@ -14441,7 +14459,7 @@ async function savePendingCadence(id){
   const val = document.getElementById('spPendingCadence').value;
   const pending_cadence_days = val ? parseInt(val,10) : null;
   const pending_next_reminder = pending_cadence_days ? addDays(null, pending_cadence_days) : null;
-  const { error } = await supa.from('leads').update({ pending_cadence_days, pending_next_reminder }).eq('id', id);
+  const { error } = updateRow('leads', id, { pending_cadence_days, pending_next_reminder });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.pending_cadence_days = pending_cadence_days;
   l.pending_next_reminder = pending_next_reminder;
@@ -14453,7 +14471,7 @@ async function saveEquipmentConfirm(id){
   readSystemPricingFields(l);
   const equipment_pricing_confirmed = document.getElementById('epConfirmed').checked;
   const equipment_pricing_confirmed_at = equipment_pricing_confirmed ? new Date().toISOString().slice(0,10) : null;
-  const { error } = await supa.from('leads').update({
+  const { error } = await updateRow('leads', id, {
     system_choice: l.system_choice, pos_plan: l.pos_plan, clover_device: l.clover_device,
     nrs_device: l.nrs_device, ncr_price: l.ncr_price,
     third_party_name: l.third_party_name, third_party_price: l.third_party_price,
@@ -14462,7 +14480,7 @@ async function saveEquipmentConfirm(id){
     integrations_note: l.integrations_note, epay_apps_selected: l.epay_apps_selected,
     extra_subscriptions: l.extra_subscriptions,
     equipment_pricing_confirmed, equipment_pricing_confirmed_at,
-  }).eq('id', id);
+  });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.equipment_pricing_confirmed = equipment_pricing_confirmed;
   l.equipment_pricing_confirmed_at = equipment_pricing_confirmed_at;
@@ -14473,7 +14491,7 @@ async function saveApplicationLinkChoice(id){
   const l = LEADS.find(x=>x.id===id); if(!l) return;
   const application_link_choice = document.getElementById('spAppLinkChoice').value;
   const application_link_custom = document.getElementById('spAppLinkCustomInput') ? document.getElementById('spAppLinkCustomInput').value.trim() : '';
-  const { error } = await supa.from('leads').update({ application_link_choice, application_link_custom }).eq('id', id);
+  const { error } = updateRow('leads', id, { application_link_choice, application_link_custom });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.application_link_choice = application_link_choice;
   l.application_link_custom = application_link_custom;
@@ -14483,7 +14501,7 @@ async function saveApplicationLinkChoice(id){
 async function saveAppId(id){
   const l = LEADS.find(x=>x.id===id); if(!l) return;
   const app_id = document.getElementById('spAppId').value.trim();
-  const { error } = await supa.from('leads').update({ app_id }).eq('id', id);
+  const { error } = updateRow('leads', id, { app_id });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.app_id = app_id;
   refreshActiveView();
@@ -14495,7 +14513,7 @@ async function convertToPostBoarding(id){
 async function saveMid(id){
   const l = LEADS.find(x=>x.id===id); if(!l) return;
   const mid = document.getElementById('spMid').value.trim();
-  const { error } = await supa.from('leads').update({ mid }).eq('id', id);
+  const { error } = updateRow('leads', id, { mid });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.mid = mid;
   refreshActiveView();
@@ -14511,7 +14529,7 @@ async function saveEquipmentShipment(id){
     tracking_number: in_person_install ? '' : document.getElementById('spTrackingNumber').value.trim(),
   };
   if(in_person_install){ fields.tracking_email_sent = false; fields.tracking_email_sent_at = null; }
-  const { error } = await supa.from('leads').update(fields).eq('id', id);
+  const { error } = updateRow('leads', id, fields);
   if(error){ alert('Could not save: ' + error.message); return; }
   Object.assign(l, fields);
   refreshActiveView();
@@ -14559,7 +14577,7 @@ async function sendTrackingEmail(id){
   if(!l) return;
   const tracking_email_sent = true;
   const tracking_email_sent_at = new Date().toISOString().slice(0,10);
-  const { error } = await supa.from('leads').update({ tracking_email_sent, tracking_email_sent_at }).eq('id', id);
+  const { error } = updateRow('leads', id, { tracking_email_sent, tracking_email_sent_at });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.tracking_email_sent = tracking_email_sent;
   l.tracking_email_sent_at = tracking_email_sent_at;
@@ -14634,7 +14652,7 @@ async function sendAccountWelcomeEmail(id){
 
   const welcome_email_sent = true;
   const welcome_email_sent_at = new Date().toISOString().slice(0,10);
-  const { error } = await supa.from('leads').update({ welcome_email_sent, welcome_email_sent_at }).eq('id', id);
+  const { error } = updateRow('leads', id, { welcome_email_sent, welcome_email_sent_at });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.welcome_email_sent = welcome_email_sent;
   l.welcome_email_sent_at = welcome_email_sent_at;
@@ -14671,7 +14689,7 @@ async function addShipment(id){
     emailed: false,
     emailed_at: null,
   }, ...(l.shipments || [])];
-  const { error } = await supa.from('leads').update({ shipments }).eq('id', id);
+  const { error } = updateRow('leads', id, { shipments });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.shipments = shipments;
   openLeadDetail(id);
@@ -14682,7 +14700,7 @@ async function removeShipment(id, shipmentId){
   if(!l || !l.shipments) return;
   if(!confirm('Delete this shipment entry? This can\'t be undone.')) return;
   const shipments = l.shipments.filter(s => s.id !== shipmentId);
-  const { error } = await supa.from('leads').update({ shipments }).eq('id', id);
+  const { error } = updateRow('leads', id, { shipments });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.shipments = shipments;
   openLeadDetail(id);
@@ -14730,7 +14748,7 @@ async function markShipmentEmailed(id, shipmentId){
   const l = LEADS.find(x => x.id === id);
   if(!l || !l.shipments) return;
   const shipments = l.shipments.map(s => s.id === shipmentId ? Object.assign({}, s, { emailed: true, emailed_at: new Date().toISOString().slice(0,10) }) : s);
-  const { error } = await supa.from('leads').update({ shipments }).eq('id', id);
+  const { error } = updateRow('leads', id, { shipments });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.shipments = shipments;
   closeEmailPreviewDrawer();
@@ -14907,7 +14925,7 @@ async function sendApplicationEmail(id){
   if(!l) return;
   const application_email_sent = true;
   const application_email_sent_at = new Date().toISOString().slice(0,10);
-  const { error } = await supa.from('leads').update({ application_email_sent, application_email_sent_at }).eq('id', id);
+  const { error } = updateRow('leads', id, { application_email_sent, application_email_sent_at });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.application_email_sent = application_email_sent;
   l.application_email_sent_at = application_email_sent_at;
@@ -23652,7 +23670,7 @@ async function addCatalogueSubscription(leadId){
   });
   if(extrasChanged) patch.extra_subscriptions = extras;
 
-  const { error } = await supa.from('leads').update(patch).eq('id', leadId);
+  const { error } = await updateRow('leads', leadId, patch);
   if(error) return fail('Could not add: ' + error.message);
 
   Object.assign(l, patch);
@@ -23685,7 +23703,7 @@ async function addSubscriptionLine(leadId){
     added_at: val('subDate') || todayISO(),
   }]);
 
-  const { error } = await supa.from('leads').update({ extra_subscriptions: next }).eq('id', leadId);
+  const { error } = await updateRow('leads', leadId, { extra_subscriptions: next });
   if(error) return fail('Could not save: ' + error.message);
 
   l.extra_subscriptions = next;
@@ -23702,7 +23720,7 @@ async function removeSubscriptionLine(leadId, source, index){
 
   if(source === 'pos_plan'){
     if(!confirm('Take this account off its EPAY software plan?\n\nIt stops counting toward the monthly total and the subscription report. The plan can be set again from the list above.')) return;
-    const { error } = await supa.from('leads').update({ pos_plan: '' }).eq('id', leadId);
+    const { error } = await updateRow('leads', leadId, { pos_plan: '' });
     if(error){ showToast('Could not remove: ' + error.message, 'error'); return; }
     l.pos_plan = '';
     openLeadDetail(leadId);
@@ -23719,7 +23737,7 @@ async function removeSubscriptionLine(leadId, source, index){
 
   list.splice(index, 1);
   const patch = {}; patch[source] = list;
-  const { error } = await supa.from('leads').update(patch).eq('id', leadId);
+  const { error } = await updateRow('leads', leadId, patch);
   if(error){ showToast('Could not remove: ' + error.message, 'error'); return; }
   l[source] = list;
   openLeadDetail(leadId);
