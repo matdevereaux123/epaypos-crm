@@ -2087,6 +2087,37 @@
      menu starts straight under the rule. */
   .brand-switch > div{display:none;}
 
+
+  /* ---------- WHO IS IN AN OFFICE ---------- */
+  /* The filter chip on the chart. .chip did not exist in this app before —
+     the skin styles one, so here is the control it styles. */
+  .chips{display:flex;gap:8px;flex-wrap:wrap;}
+  .chip{
+    min-height:36px;padding:0 14px;border-radius:999px;border:1px solid var(--blue-200);
+    background:var(--card);color:var(--navy-700);font-weight:700;font-size:13px;cursor:pointer;
+  }
+  .chip[aria-pressed="true"]{background:var(--blue-400);border-color:var(--blue-500);color:#0B1B38;}
+
+  /* The office name on a board column: a button, so it is reachable by
+     keyboard, but it has to keep looking like the heading it replaced. */
+  .office-open-btn{
+    display:flex;align-items:center;gap:8px;flex:1;min-width:0;
+    border:none;background:none;padding:0;text-align:left;cursor:pointer;border-radius:6px;
+  }
+  .office-open-btn:hover .office-name{text-decoration:underline;}
+
+  /* A person in the drawer. */
+  .office-person{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;
+    min-height:52px;padding:10px 12px;margin-bottom:8px;text-align:left;cursor:pointer;
+    background:var(--card);border:1px solid var(--line);border-radius:10px;
+  }
+  .office-person:hover{border-color:var(--blue-400);background:var(--blue-50);}
+  .office-person .op-text{display:flex;flex-direction:column;gap:2px;min-width:0;}
+  .office-person .op-name{font-size:13.5px;font-weight:700;color:var(--navy-700);}
+  .office-person .op-sub{font-size:11.5px;color:var(--slate-500);overflow:hidden;text-overflow:ellipsis;}
+  .office-empty{font-size:12.5px;color:var(--slate-500);margin:0 0 4px;}
+
 </style>
 </head><body data-brand="epay">
 
@@ -3763,6 +3794,11 @@
 <!-- ================= DRAWER: ADD USER ================= -->
 <div class="overlay" id="userOverlay">
   <div class="drawer" id="userDrawer"></div>
+</div>
+
+<!-- ================= DRAWER: WHO IS IN AN OFFICE ================= -->
+<div class="overlay" id="officeOverlay">
+  <div class="drawer" id="officeDrawer"></div>
 </div>
 
 <!-- ================= DRAWER: CREATE ROLE ================= -->
@@ -12048,8 +12084,10 @@ function renderTeamStructureBoard(){
     return `
       <div class="office-column">
         <div class="office-head">
-          <span class="office-name">${office.name}</span>
-          <span class="office-count">${officePartners.length}</span>
+          <button type="button" class="office-open-btn" onclick="openOfficeDrawer('${office.id}')" title="See everyone in this office">
+            <span class="office-name">${office.name}</span>
+            <span class="office-count">${officePartners.length}</span>
+          </button>
           <button type="button" class="office-menu-btn" onclick="event.stopPropagation(); openOfficeMenu('${office.id}')" title="Office options">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="width:15px;height:15px;"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
           </button>
@@ -12063,8 +12101,10 @@ function renderTeamStructureBoard(){
   const unassignedColumn = `
     <div class="office-column">
       <div class="office-head">
-        <span class="office-name">Unassigned</span>
-        <span class="office-count">${unassigned.length}</span>
+        <button type="button" class="office-open-btn" onclick="openOfficeDrawer('')" title="See everyone without an office">
+          <span class="office-name">Unassigned</span>
+          <span class="office-count">${unassigned.length}</span>
+        </button>
       </div>
       <div class="office-body" data-office-id="" ondragover="handleOfficeDragOver(event)" ondragleave="handleOfficeDragLeave(event)" ondrop="handleOfficeDrop(event)">
         ${unassigned.length ? unassigned.map(teamPersonCardHtml).join('') : `<div class="kanban-empty">Everyone's assigned</div>`}
@@ -12246,6 +12286,111 @@ function teamStructureStaff(partnersOnChart){
     .sort((a, b) => (a.name||'').localeCompare(b.name||''));
 }
 
+/* =========================================================================
+   WHO IS IN AN OFFICE
+   Opened by clicking an office on the board or on the chart, including the
+   Unassigned column — officeId '' is "nobody's office", which is a real
+   answer people want ("who still needs placing?").
+
+   Read-only on purpose. Moving somebody between offices is the drag on the
+   board, and keeping that in one place is what stops two ways of doing it
+   drifting apart. Rename and delete are still the office's own menu.
+
+   The search box above the board filters the board; it deliberately does
+   NOT filter this. "Everyone in this office" means everyone, or the count
+   in the header would not match the list under it. Scope still applies:
+   these are the same two sources the board draws from, so nobody sees a
+   person here they cannot see anywhere else.
+   ========================================================================= */
+function officePeople(officeId){
+  const id = officeId || null;
+  const staff = internalTeamMembers()
+    .filter(u => (u.office_id || null) === id)
+    .sort((a, b) => (a.name||'').localeCompare(b.name||''));
+  const agents = scopedPartnersForCurrentUser()
+    .filter(p => p.type === 'agent' && (p.office_id || null) === id)
+    .sort((a, b) => (a.name||'').localeCompare(b.name||''));
+  return { staff, agents };
+}
+
+function officePersonRowHtml(name, sub, pill, onclick){
+  return `
+    <button type="button" class="office-person" onclick="${onclick}">
+      <span class="op-text">
+        <span class="op-name">${name || '—'}</span>
+        ${sub ? `<span class="op-sub">${sub}</span>` : ''}
+      </span>
+      ${pill || ''}
+    </button>`;
+}
+
+function openOfficeDrawer(officeId){
+  const id = officeId || null;
+  const office = id ? OFFICES.find(o => o.id === id) : null;
+  if(id && !office) return;
+
+  const { staff, agents } = officePeople(id);
+  const total = staff.length + agents.length;
+
+  const staffHtml = staff.length
+    ? staff.map(u => officePersonRowHtml(
+        u.name,
+        [u.job_title, u.email].filter(Boolean).join(' · '),
+        `<span class="pill ${rolePillClass(u.role)}">${roleOf(u).label}</span>`,
+        `closeOfficeDrawer(); openUserForm('${u.id}')`
+      )).join('')
+    : `<p class="office-empty">No one on the internal team is in this office.</p>`;
+
+  const agentsHtml = agents.length
+    ? agents.map(a => officePersonRowHtml(
+        a.name,
+        [a.contact, [a.city, a.state].filter(Boolean).join(', ')].filter(Boolean).join(' · '),
+        `<span class="pill pill-commission">Agent/ISO</span>`,
+        `closeOfficeDrawer(); openReferralDetail('${a.id}')`
+      )).join('')
+    : `<p class="office-empty">No agents or ISOs are in this office.</p>`;
+
+  document.getElementById('officeDrawer').innerHTML = `
+    <div class="drawer-head">
+      <div>
+        <h2>${office ? office.name : 'Unassigned'}</h2>
+        <p class="subtext" style="margin:2px 0 0;font-size:12.5px;">
+          ${total} ${total === 1 ? 'person' : 'people'} ·
+          ${staff.length} internal · ${agents.length} agent${agents.length === 1 ? '' : 's'}
+        </p>
+      </div>
+      <button class="drawer-close" onclick="closeOfficeDrawer()">&times;</button>
+    </div>
+    <div class="drawer-body">
+      <div class="section-label" style="margin-bottom:8px;">Internal team</div>
+      ${staffHtml}
+      <div class="section-label" style="margin:18px 0 8px;">Agents and ISOs</div>
+      ${agentsHtml}
+      <p style="font-size:11.5px;color:var(--slate-500);margin:18px 0 0;">
+        Click anyone to open their record. To move someone into another office, drag their card on the board.
+      </p>
+    </div>
+    <div class="drawer-footer">
+      <button class="btn" style="flex:1;" onclick="closeOfficeDrawer()">Close</button>
+      ${office ? `<button class="btn" style="flex:1;" onclick="closeOfficeDrawer(); openOfficeMenu('${office.id}')">Office options</button>` : ''}
+    </div>
+  `;
+  document.getElementById('officeOverlay').classList.add('open');
+}
+
+function closeOfficeDrawer(){
+  document.getElementById('officeOverlay').classList.remove('open');
+}
+
+/* The chart with the people taken off it. On a big team the boxes are the
+   point; on a bigger one they are the noise, and what you actually want to
+   see is the offices and how many are in each — then click one. */
+let hierarchyOfficesOnly = false;
+function toggleHierarchyOfficesOnly(){
+  hierarchyOfficesOnly = !hierarchyOfficesOnly;
+  renderTeamStructureHierarchy();
+}
+
 function renderTeamStructureHierarchy(){
   const partners = teamStructurePartners();
   const staff = teamStructureStaff(partners);
@@ -12316,8 +12461,11 @@ function renderTeamStructureHierarchy(){
       <div class="org-box org-box-office" data-office-id="${office.id||''}" style="left:${opos.x}px;top:${opos.y}px;"
            onmousedown="startBoxDrag(event, '${office.id||''}', 'office')">
         <span class="org-box-name">${office.name}</span>
-        <span class="office-count">${officePartners.length}</span>
+        <span class="office-count">${hierarchyOfficesOnly ? (officeStaff.length + officePartners.length) : officePartners.length}</span>
       </div>`);
+    // Offices only: the box is the whole entry for this office, and the
+    // people behind it are one click away in the drawer.
+    if(hierarchyOfficesOnly) return;
     // Staff first, so the chart reads top-down as office, then the people
     // who run it, then the agents.
     const staffSeen = new Set();
@@ -12363,13 +12511,25 @@ function renderTeamStructureHierarchy(){
   const linesHtml = lines.map(l => `<line data-connector data-from-type="${l.fromType}" data-from-id="${l.fromId}" data-to-type="${l.toType}" data-to-id="${l.toId}" stroke="var(--line-strong)" stroke-width="2"></line>`).join('');
 
   document.getElementById('teamStructureHierarchy').innerHTML = `
+    <div class="chips" style="margin-bottom:12px;">
+      <button type="button" class="chip" aria-pressed="${hierarchyOfficesOnly}" onclick="toggleHierarchyOfficesOnly()">
+        Offices only
+      </button>
+      <span style="font-size:12px;color:var(--slate-500);align-self:center;">
+        ${hierarchyOfficesOnly
+          ? 'Click an office to see who is in it.'
+          : 'Showing every person. Switch to offices only for the shape of the company.'}
+      </span>
+    </div>
     <div class="canvas-wrap" id="teamCanvasWrap">
       <div class="canvas-inner" id="teamCanvasInner">
         <svg class="canvas-svg" id="teamCanvasSvg">${linesHtml}</svg>
         ${boxesHtml.join('')}
       </div>
     </div>
-    <p style="font-size:11.5px;color:var(--slate-500);margin-top:10px;">Drag any box anywhere you want. Use a box's 🔗 button to change who it connects to (that's what controls the reporting structure — position is just visual).</p>
+    <p style="font-size:11.5px;color:var(--slate-500);margin-top:10px;">${hierarchyOfficesOnly
+      ? 'Drag an office box anywhere you want — position is just visual. Click one to see everyone in it.'
+      : "Drag any box anywhere you want. Use a box's \u{1F517} button to change who it connects to (that's what controls the reporting structure — position is just visual)."}</p>
   `;
   sizeCanvasToContent();
   redrawConnectorLines();
@@ -12545,7 +12705,7 @@ function handleBoxClick(id, type){
   }
   if(type === 'user') openUserForm(id);
   else if(type === 'person') openReferralDetail(id);
-  else if(id) openOfficeMenu(id);
+  else openOfficeDrawer(id || '');
 }
 
 document.getElementById('downloadHierarchyBtn').addEventListener('click', function(){
