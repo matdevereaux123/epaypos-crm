@@ -13068,6 +13068,18 @@ function duplicateUserBadge(u){
   return ` <span class="esign-status declined" title="Another record uses this name. Assigning work to the wrong one is invisible to the person.">duplicate name</span>`;
 }
 
+/*
+ * Marked in the list, not only in the drawer.
+ *
+ * Who can reach every merchant on the platform is a thing to be able to scan
+ * down a column and check, rather than something you have to open five
+ * people to discover.
+ */
+function epayAdminBadge(u){
+  if(!u.epay_admin) return '';
+  return ` <span class="pill pill-inhouse" title="May open the EPAY admin portal at /admin.">EPAY admin</span>`;
+}
+
 function renderUsersTable(){
   const toggleBtn = document.getElementById('usersViewToggleBtn');
   if(toggleBtn) toggleBtn.textContent = usersViewMode === 'flat' ? 'View as hierarchy' : 'View as list';
@@ -13107,7 +13119,7 @@ function renderUsersTable(){
 
   document.getElementById('usersTableBody').innerHTML = USERS.map(u => `
     <tr onclick="openUserForm('${u.id}')">
-      <td class="name-cell">${u.name}${duplicateUserBadge(u)}<div class="sub">${u.email}</div></td>
+      <td class="name-cell">${u.name}${duplicateUserBadge(u)}${epayAdminBadge(u)}<div class="sub">${u.email}</div></td>
       <td><span class="pill ${rolePillClass(u.role)}">${roleOf(u).label}</span></td>
       <td><span class="pill ${u.brands.length>1 ? 'pill-agent-auth' : (u.brands[0]==='atm' ? 'pill-referral' : 'pill-agent-basic')}">${brandAccessLabel(u.brands)}</span></td>
       <td>${loginStateHtml(u)}</td>
@@ -13159,6 +13171,7 @@ function openUserForm(userId){
       </div>
 
       ${roleOf(currentUser).perms.manageUsers ? extraPermsFieldHtml(editing) : ''}
+      ${roleOf(currentUser).perms.manageUsers ? epayAdminFieldHtml(editing) : ''}
     </div>
     <div class="drawer-footer">
       ${editing ? `<button class="btn" style="flex:1;color:var(--red);" onclick="deleteUser('${editing.id}')">Delete</button>` : `<button class="btn" style="flex:1;" onclick="closeUserDrawer()">Cancel</button>`}
@@ -13187,7 +13200,48 @@ function readUserFormFields(){
   // someone without manageUsers must not have their grants wiped to {}.
   const grants = readExtraPermsFields('extraPermsBox');
   if(grants) fields.extra_perms = grants;
+  // Absent unless the block was on screen, for the same reason as grants: a
+  // user edited by somebody without manageUsers must not lose their access
+  // because the tick that would have said so was never rendered.
+  const epayBox = document.getElementById('uEpayAdmin');
+  if(epayBox) fields.epay_admin = epayBox.checked;
   return fields;
+}
+
+/* -------------------------------------------------------------------------
+   EPAY ADMIN PORTAL ACCESS
+
+   Its own block, not a row in the grants above, because it is not a CRM
+   permission. It opens a different application — the EPAY admin portal at
+   /admin, where every merchant on the platform is listed — and filing it
+   among "can this person see banking" would read as one more CRM switch.
+
+   Per person and never inherited from a classification. An automatic grant
+   is one nobody remembers to review, and the whole estate sits behind it.
+   ------------------------------------------------------------------------- */
+function epayAdminFieldHtml(editing){
+  const on = !!(editing && editing.epay_admin);
+  return `
+    <h3 style="font-size:14px;margin:24px 0 6px;">EPAY admin portal</h3>
+    <p style="font-size:11.5px;color:var(--slate-500);margin:0 0 10px;">
+      Opens the admin portal at <strong>/admin</strong> &mdash; every merchant account, their
+      plans, devices and boarding. Separate from everything above: it is not a classification
+      and nobody gets it by their role.
+    </p>
+    <label style="display:flex;align-items:flex-start;gap:10px;background:var(--surface-3);
+                  border:1px solid var(--line);border-radius:10px;padding:12px 13px;cursor:pointer;">
+      <input type="checkbox" id="uEpayAdmin" ${on ? 'checked' : ''} style="margin-top:2px;">
+      <span>
+        <span style="font-size:13px;font-weight:600;color:var(--navy-700);">
+          May open the EPAY admin portal
+        </span>
+        <span style="display:block;font-size:11px;color:var(--slate-500);margin-top:3px;">
+          Takes effect on their next action, and so does unticking it &mdash; somebody looking at
+          the portal when you untick this is refused on their next request, not at their next
+          sign-in.
+        </span>
+      </span>
+    </label>`;
 }
 
 /* -------------------------------------------------------------------------
