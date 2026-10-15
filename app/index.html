@@ -13936,6 +13936,100 @@ async function setPosAnswer(id, value){
   if(error) showToast('That answer did not save: ' + error.message, 'error');
 }
 
+/* ---------------------------------------------------------------------------
+   FROM A LEAD TO AN ACCOUNT
+
+   Migration 96 added leads.pos_merchant_id and nothing used it. This is the
+   thing that fills it: the stage where a deal becomes a business running on
+   EPAY POS is Account Boarding, so that is where the button lives.
+
+   Not by MID. The processor issues that later than the account is set up, so
+   a merchant boarded today would have no link for days — and linking on a
+   field that is blank at the moment of the link is how two records drift
+   apart and nobody notices.
+
+   The lead's own details carry across. Somebody who has just typed a business
+   name, an address and an owner into the pipeline should not type them again
+   into the portal; a second typing is a second chance to spell it differently.
+   --------------------------------------------------------------------------- */
+
+function posBoardFromLeadHtml(l){
+  if(!(currentUser && currentUser.epay_admin)){
+    /*
+     * Said rather than hidden. Somebody without the tick who can see this
+     * stage should know the step exists and who to ask, not wonder whether
+     * boarding happens somewhere else.
+     */
+    return `<p style="font-size:11.5px;color:var(--slate-300);margin:10px 0 0;">
+      Setting this up in EPAY POS needs admin portal access.</p>`;
+  }
+  if(l.pos_merchant_id){
+    return `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);">
+      <p style="font-size:11.5px;color:var(--green);margin:0 0 7px;">&#10003; Set up in EPAY POS</p>
+      <button class="btn" style="width:100%;" onclick="openPosMerchantFromLead('${l.pos_merchant_id}')">
+        Open the POS account</button></div>`;
+  }
+  return `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);">
+    <p style="font-size:11.5px;color:var(--slate-500);margin:0 0 7px;">
+      Not set up in EPAY POS yet. This creates the account and its first location
+      from what is already on this lead.</p>
+    <button class="btn" style="width:100%;" onclick="boardLeadInPos('${l.id}')">Set up in EPAY POS &rarr;</button></div>`;
+}
+
+async function openPosMerchantFromLead(merchantId){
+  await loadPosMerchants(true);
+  if(typeof setBrand === 'function') setBrand('backend');
+  showView('posmerchants');
+  openPosMerchant(merchantId);
+}
+
+async function boardLeadInPos(leadId){
+  const l = LEADS.find(x => x.id === leadId);
+  if(!l) return;
+  if(!confirm('Set ' + (l.business_name||'this lead') + ' up in EPAY POS?\n\nIt creates the account and its first location from what is on this lead. Nothing about the lead changes.')) return;
+
+  const merchant = {
+    dba: l.business_name || 'Unnamed',
+    legal_name: l.legal_name || null,
+    status: 'onboarding',
+    owner_name: l.contact_name || null,
+    owner_email: l.email || null,
+    owner_phone: l.phone || null,
+    street: l.address || null, city: l.city || null, state: l.state || null, zip: l.zip || null,
+    rep: (currentUser && currentUser.name) || null,
+    // Carried across only if it is already here. Usually it is not yet.
+    mid: l.mid || null,
+    created_by: (currentUser && currentUser.id) || null,
+  };
+  const { data, error } = await supa.from('pos_merchants').insert(merchant).select().single();
+  if(error){ showToast('Could not set it up: ' + error.message, 'error'); return; }
+
+  const { error: le } = await supa.from('pos_locations').insert({
+    merchant_id: data.id, name: merchant.dba,
+    street: merchant.street, city: merchant.city, state: merchant.state, zip: merchant.zip,
+    edition: 'restaurant', dual_pricing_ppm: 0, dual_pricing_fixed_cents: 0, tax_ppm: 0,
+  });
+  if(le) showToast('Account created, but its location did not: ' + le.message, 'error');
+
+  /*
+   * The link last, and reported separately if it fails. An account that
+   * exists with no link is recoverable — somebody can join them by hand. An
+   * account nobody can find because the link silently failed is not.
+   */
+  const { error: ue } = await supa.from('leads').update({ pos_merchant_id: data.id }).eq('id', leadId);
+  if(ue){
+    showToast('Set up, but the lead did not link to it: ' + ue.message, 'error');
+  } else {
+    l.pos_merchant_id = data.id;
+    showToast('Set up in EPAY POS. Edition and rate still need setting.', 'success');
+  }
+  posMerchantsLoaded = false;
+  // The same pair saveMid uses, so the panel redraws the way every other
+  // stage action redraws it.
+  refreshActiveView();
+  openLeadDetail(leadId);
+}
+
 function renderUsersTable(){
   const toggleBtn = document.getElementById('usersViewToggleBtn');
   if(toggleBtn) toggleBtn.textContent = usersViewMode === 'flat' ? 'View as hierarchy' : 'View as list';
@@ -15787,6 +15881,7 @@ function stagePanelHtml(l){
         <p class="stage-panel-desc">Enter the MID once it's issued before moving this account on to shipment.</p>
         <div class="field"><label>MID</label><input id="spMid" value="${l.mid||''}" placeholder="e.g. 123456789012"></div>
         <button class="btn btn-accent" style="width:100%;" onclick="saveMid('${l.id}')">Save MID</button>
+        ${posBoardFromLeadHtml(l)}
       </div>`;
     case 'equipment_shipment': return `
       <div class="stage-panel">
