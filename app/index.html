@@ -2995,16 +2995,27 @@
             <p class="subtext">The operational side of EPAY POS, alongside the CRM rather than in a separate tool. Nothing in here yet.</p>
           </div>
         </div>
-        <div class="panel">
-          <div class="stub-panel">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:42px;height:42px;opacity:.35;margin-bottom:14px;">
-              <rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
-            <h3>Nothing here yet</h3>
-            <p style="max-width:460px;margin:0 auto;font-size:13px;line-height:1.6;">
-              This is where the existing EPAY POS back end will be brought in. The switch above keeps it separate from
-              the two brands — no lead, partner or account belongs to it, so nothing here changes what those boards show.
-            </p>
-          </div>
+        <!--
+          The admin portal, in a frame.
+
+          A frame rather than the CRM rendering these screens itself, because
+          it is a different application: its own build, its own routing, its
+          own release. Rebuilding it here would be a second copy of the
+          provisioning rules, and the second copy is the one that drifts from
+          what the registers obey.
+
+          Same origin, which is the whole reason it is served from /admin
+          rather than a subdomain — the frame reads the Control Center session
+          already in storage, so nobody signs in again and nothing is passed
+          between the two.
+
+          Loaded lazily: the portal is its own bundle, and a frame that
+          fetched it on every CRM page load would cost everybody who never
+          opens this tab. showView() sets src the first time it is shown.
+        -->
+        <div class="panel" style="padding:0;overflow:hidden;">
+          <iframe id="backendFrame" title="EPAY admin portal"
+                  style="display:block;width:100%;height:calc(100vh - 210px);min-height:520px;border:0;"></iframe>
         </div>
       </section>
 
@@ -5364,7 +5375,16 @@ function renderBrandSwitch(){
   // It is an internal area, so it is offered to staff rather than being
   // driven by users.brands like the two real brands are.
   const positions = access.slice();
-  if(hasStaffTools()) positions.push('backend');
+  /*
+   * Offered to whoever may actually open it.
+   *
+   * This used to follow staffTools, which was the closest thing available
+   * before users.epay_admin existed. It is the wrong gate now: the portal
+   * asks pos-admin, pos-admin reads epay_admin, and a tab that opens onto a
+   * refusal is worse than no tab — somebody clicks it, is told no, and rings
+   * whoever manages users to report a fault that is a setting.
+   */
+  if(currentUser && currentUser.epay_admin) positions.push('backend');
   switchEl.innerHTML = positions.map(b => `<button type="button" data-brand="${b}">${brandSwitchLabel(b)}</button>`).join('');
   switchEl.querySelectorAll('button').forEach(btn=>{
     btn.classList.toggle('active', btn.dataset.brand === currentBrand);
@@ -9399,7 +9419,18 @@ function showView(view, fromHistory){
   if(INTERNAL_ONLY_VIEWS.includes(view) && !hasStaffTools()){
     view = 'dashboard';
   }
-  if(view === 'backend' && !hasStaffTools()) view = 'dashboard';
+  /* The same gate as the switch above it. Two different answers to "may
+     they open this" is how somebody reaches a view with no way back to it. */
+  if(view === 'backend' && !(currentUser && currentUser.epay_admin)) view = 'dashboard';
+  /*
+   * Fill the frame the first time somebody opens this tab, and never again.
+   * Re-pointing src on every visit would reload the portal and throw away
+   * whatever they were in the middle of.
+   */
+  if(view === 'backend'){
+    const frame = document.getElementById('backendFrame');
+    if(frame && !frame.getAttribute('src')) frame.setAttribute('src', '/admin');
+  }
   if(view === 'internalsales' && !canSeeInternalSales()) view = 'dashboard';
   if(view === 'recruiting'    && !canSeeRecruiting())    view = 'dashboard';
   if(ATM_ONLY_VIEWS.includes(view) && currentBrand !== 'atm'){
