@@ -13532,6 +13532,7 @@ function posDetailOverview(m){
     <span style="font-size:12px;color:var(--slate-500);">${k}</span>
     <span style="font-size:13px;font-weight:600;text-align:right;word-break:break-word;">${v || '—'}</span></div>`;
   return `
+    ${posSupportActionsHtml(m)}
     ${!m.mid ? `<div class="stat-card attention" style="margin-bottom:14px;">
       <div class="label">Waiting on a MID</div>
       <div style="font-size:13px;line-height:1.5;margin-top:4px;">
@@ -14028,6 +14029,88 @@ async function boardLeadInPos(leadId){
   // stage action redraws it.
   refreshActiveView();
   openLeadDetail(leadId);
+}
+
+/* ---------------------------------------------------------------------------
+   VISIT PORTAL
+
+   The merchant portal is on its own domain. A different origin means a
+   merchant can never reach anything of EPAY's — which is the point — and it
+   also means the Control Center session does not travel, so this cannot be a
+   link.
+
+   A token instead: minted here for one merchant, good for minutes, redeemed
+   once at the other end. It is a password for somebody's business, so it is
+   treated like one.
+   --------------------------------------------------------------------------- */
+
+/* Where the merchant portal lives. Set once, here, when the domain exists. */
+const POS_PORTAL_URL = '';
+
+const POS_SUPPORT_MINUTES = 10;
+
+function posSupportToken(){
+  /*
+   * From the browser's own CSPRNG. Math.random() is seeded, predictable and
+   * has no business anywhere near something that opens a business.
+   */
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, b => b.toString(16).padStart(2,'0')).join('');
+}
+
+async function visitMerchantPortal(merchantId){
+  const m = POS_MERCHANTS.find(x => x.id === merchantId);
+  if(!m) return;
+
+  if(!POS_PORTAL_URL){
+    /*
+     * Said plainly rather than opening a broken tab. Until the portal has a
+     * domain there is nowhere to send anybody, and a blank page is a bug
+     * report.
+     */
+    showToast('The merchant portal does not have an address yet, so there is nowhere to open.', 'error');
+    return;
+  }
+
+  const token = posSupportToken();
+  const expires = new Date(Date.now() + POS_SUPPORT_MINUTES * 60000).toISOString();
+  const { error } = await supa.from('pos_support_sessions').insert({
+    merchant_id: merchantId, token, expires_at: expires,
+    issued_to: (currentUser && currentUser.id) || null,
+    issued_name: (currentUser && currentUser.name) || 'Unknown',
+  });
+  if(error){ showToast('Could not open their portal: ' + error.message, 'error'); return; }
+
+  /*
+   * Written to the merchant's own log, not only to ours.
+   *
+   * "EPAY staff opened your portal" is exactly the kind of thing a merchant
+   * is entitled to see, and the relationship log already holds everything
+   * else that was done to their account. A failure here does not block the
+   * visit — refusing support because a note would not save helps nobody —
+   * but it is said out loud rather than swallowed.
+   */
+  const { error: ne } = await supa.from('pos_merchant_notes').insert({
+    merchant_id: merchantId, kind: 'support',
+    body: ((currentUser && currentUser.name) || 'EPAY staff') + ' opened this portal from the admin portal.',
+    by_name: (currentUser && currentUser.name) || 'EPAY staff',
+  });
+  if(ne) showToast('Opened, but the visit was not logged: ' + ne.message, 'error');
+
+  const url = POS_PORTAL_URL.replace(/\/+$/, '') + '/support/' + encodeURIComponent(token);
+  window.open(url, '_blank', 'noopener');
+}
+
+/* Everything support can do to a merchant that is not editing a field. */
+function posSupportActionsHtml(m){
+  return `
+    <div class="row" style="gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+      <button class="btn btn-accent btn-sm" onclick="visitMerchantPortal('${m.id}')">
+        Visit their portal</button>
+      <span style="font-size:11px;color:var(--slate-500);align-self:center;">
+        Opens their own back office as support, for ${POS_SUPPORT_MINUTES} minutes. They see that it happened.</span>
+    </div>`;
 }
 
 function renderUsersTable(){
