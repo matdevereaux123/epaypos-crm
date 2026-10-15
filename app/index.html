@@ -2392,6 +2392,13 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
             Setup
           </button>
+          <!-- Not data-view: the Tasks page is the CRM's, so this leaves the
+               back end rather than pretending to be a page inside it. The
+               filter is what makes it useful from here. -->
+          <button class="nav-item" type="button" onclick="openBoardingTasks()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/><line x1="7" y1="8" x2="7.01" y2="8"/></svg>
+            Boarding tasks
+          </button>
           <button class="nav-item" data-view="posnew">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             New merchant
@@ -3068,6 +3075,7 @@
           that the database is the authority, not either screen.
         -->
         <div class="cards-row" id="backendStats"></div>
+        <div class="panel" id="backendTasksCard" style="padding:14px 18px;margin-top:18px;"></div>
         <div class="panel">
           <div class="panel-head"><h2>Recently boarded</h2></div>
           <div id="backendRecent"></div>
@@ -13411,6 +13419,40 @@ function posDeviceCount(m){
 }
 function posPrimaryLocation(m){ return (m.pos_locations || [])[0] || null; }
 
+/*
+ * The boarding jobs, from either side.
+ *
+ * The Tasks page belongs to the CRM, so this leaves the back end rather than
+ * building a second tasks page that would drift from the first. What it
+ * carries across is the filter: somebody who got here from the back end
+ * wants the boarding list, not every follow-up in the business.
+ */
+function openBoardingTasks(){
+  taskCategoryFilter = 'boarding';
+  // Everyone's, not just mine. Boarding is a relay - sales, then the
+  // processor, then whoever ships the hardware - and a list filtered to one
+  // person shows a job as finished when it has only been handed on.
+  taskPersonFilter = 'all';
+  if(typeof setBrand === 'function' && currentBrand === 'backend') setBrand('epay');
+  showView('tasks');
+}
+
+/**
+ * Open boarding tasks, how many there are, and how many are late.
+ *
+ * `ready` is false until the tasks dataset has actually been fetched, which
+ * it has not been if nobody has opened the Tasks page this session. An empty
+ * TASKS reads identically to a cleared list, and "Nothing open" on a screen
+ * that simply has not loaded is the kind of wrong that gets believed.
+ */
+function boardingTaskCounts(){
+  const ready = typeof dataReady === 'function' ? dataReady(['tasks']) : false;
+  const all = (typeof TASKS !== 'undefined' && Array.isArray(TASKS) ? TASKS : [])
+    .filter(t => isBoardingTask(t) && !t.completed);
+  const today = todayISO();
+  return { ready, open: all.length, overdue: all.filter(t => t.due_date && t.due_date < today).length };
+}
+
 function renderBackendOverview(){
   const live = POS_MERCHANTS.filter(m => m.status === 'live').length;
   const onboarding = POS_MERCHANTS.filter(m => m.status === 'onboarding').length;
@@ -13431,6 +13473,33 @@ function renderBackendOverview(){
     /* The one that is a job rather than a number: an account set up and
        waiting on the processor cannot take a payment. */
     stat('Waiting on a MID', noMid, noMid ? 'cannot process yet' : 'all boarded', noMid > 0);
+
+  /* A number that is a list of jobs, so it opens the list. */
+  const tasks = boardingTaskCounts();
+  const tasksCard = document.getElementById('backendTasksCard');
+  if(tasksCard){
+    tasksCard.innerHTML = `
+      <div class="row" style="justify-content:space-between;">
+        <div>
+          <h2 style="font-size:15.5px;margin:0 0 2px;">Boarding tasks</h2>
+          <p style="font-size:12px;color:var(--slate-500);margin:0;">
+            ${!tasks.ready
+              ? 'Tasks filed under Boarding, from anywhere in the CRM.'
+              : tasks.open === 0
+              ? 'Nothing open. Tasks filed under Boarding show up here and on the Tasks page.'
+              : `${tasks.open} open${tasks.overdue ? `, <strong style="color:var(--red);">${tasks.overdue} overdue</strong>` : ''}.`}
+          </p>
+        </div>
+        <button class="btn btn-accent btn-sm" onclick="openBoardingTasks()">Open the list</button>
+      </div>`;
+  }
+
+  /* Fetch once and draw again, rather than showing a count of nothing. */
+  if(!tasks.ready && typeof ensureData === 'function'){
+    ensureData(['tasks']).then(() => {
+      if(document.getElementById('view-backend').style.display !== 'none') renderBackendOverview();
+    }).catch(() => {});
+  }
 
   const recent = POS_MERCHANTS.slice(0, 6);
   document.getElementById('backendRecent').innerHTML = recent.length === 0
@@ -23820,7 +23889,24 @@ function taskLinkedRecordHtml(t){
 let taskGroupBy = 'due';
 let taskPersonFilter = 'mine';
 let taskPriorityFilter = 'all';
+let taskCategoryFilter = 'all';
 let taskSearch = '';
+
+/*
+ * Getting a merchant from "signed" to "taking cards" is a list of jobs with
+ * a processor and a shipping company in the middle of it, and those jobs
+ * were mixed in with every follow-up and call-back in the CRM. One category,
+ * spelled one way, so the filter can find them from either side.
+ *
+ * Matched case-insensitively against whatever somebody typed, rather than
+ * requiring this exact string: a task filed as "boarding" or "Boarding —
+ * Maple Street" is the same job, and a filter that misses it is a filter
+ * nobody trusts twice.
+ */
+const BOARDING_CATEGORY = 'Boarding';
+function isBoardingTask(t){
+  return /boarding/i.test(String((t && t.category) || ''));
+}
 
 const TASK_PRIORITIES = {
   high:   { label:'High',   color:'var(--red)' },
@@ -23941,6 +24027,12 @@ function renderTasksList(){
     sel('taskGroupSel', [['due','Group: Due date'],['priority','Group: Priority'],['person','Group: Person'],['category','Group: Category'],['record','Group: Record']], taskGroupBy, "taskGroupBy=this.value;renderTasksList()")
     + sel('taskPersonSel', [['mine','Assigned to me'],['all', canSeeOthers ? 'Everyone' : 'Everything I can see']].concat(people.map(p => [p.id, p.name])), taskPersonFilter, "taskPersonFilter=this.value;renderTasksList()")
     + sel('taskPrioSel', [['all','Any priority'],['high','High'],['normal','Normal'],['low','Low']], taskPriorityFilter, "taskPriorityFilter=this.value;renderTasksList()")
+    /* Boarding is offered whether or not anything is filed under it yet, so
+       the filter is there to be found before the first one exists. */
+    + sel('taskCatSel',
+        [['all','Any category'],['boarding','Boarding only']]
+          .concat(taskCategories().filter(c => !/boarding/i.test(c)).map(c => [c, c])),
+        taskCategoryFilter, "taskCategoryFilter=this.value;renderTasksList()")
     + `<input class="search-input" id="taskSearchBox" placeholder="Search tasks..." value="${escAttr(taskSearch)}" oninput="taskSearch=this.value;renderTasksList(true)">`;
 
   let rows = visible.slice();
@@ -23948,6 +24040,8 @@ function renderTasksList(){
   if(taskPersonFilter === 'mine') rows = rows.filter(t => taskHasAssignee(t, currentUser.id) || (!t.assigned_to && !(t.assigned_to_ids||[]).length && t.created_by === currentUser.id));
   else if(taskPersonFilter !== 'all') rows = rows.filter(t => taskHasAssignee(t, taskPersonFilter));
   if(taskPriorityFilter !== 'all') rows = rows.filter(t => (t.priority || 'normal') === taskPriorityFilter);
+  if(taskCategoryFilter === 'boarding') rows = rows.filter(isBoardingTask);
+  else if(taskCategoryFilter !== 'all') rows = rows.filter(t => (t.category||'').trim() === taskCategoryFilter);
   const q = taskSearch.trim().toLowerCase();
   if(q) rows = rows.filter(t => [t.title, t.notes, t.category, taskRecordLabel(t)].some(v => (v || '').toLowerCase().includes(q)));
 
