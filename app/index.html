@@ -13549,11 +13549,11 @@ async function savePosMerchant(id){
   };
 
   if(id){
-    const { error } = await supa.from('pos_merchants').update(merchant).eq('id', id);
+    const { error } = await updateRow('pos_merchants', id, merchant);
     if(error){ posProblem('Could not save: ' + error.message); return; }
     const existing = posPrimaryLocation(POS_MERCHANTS.find(x => x.id === id));
     if(existing){
-      const { error: le } = await supa.from('pos_locations').update(location).eq('id', existing.id);
+      const { error: le } = await updateRow('pos_locations', existing.id, location);
       if(le){ posProblem('Saved the business, but not the location: ' + le.message); return; }
     }
     showToast('Saved.', 'success');
@@ -13853,10 +13853,10 @@ async function savePosLocation(id){
   if(tax === null){ say('Sales tax has to be a number.'); return; }
   if(!isFinite(fixed) || fixed < 0){ say('Per transaction has to be a whole number of cents.'); return; }
   say('');
-  const { error } = await supa.from('pos_locations').update({
+  const { error } = await updateRow('pos_locations', id, {
     name: get('plName'), edition: get('plEdition'),
     dual_pricing_ppm: pct, dual_pricing_fixed_cents: fixed, tax_ppm: tax,
-  }).eq('id', id);
+  });
   if(error){ say('Could not save: ' + error.message); return; }
   posLocEditing = null;
   await loadPosMerchants(true);
@@ -14061,7 +14061,7 @@ async function setPosAnswer(id, value){
   else next[id] = value;
   m.setup_answers = next;              // shown immediately
   renderPosDetail();
-  const { error } = await supa.from('pos_merchants').update({ setup_answers: next }).eq('id', m.id);
+  const { error } = await updateRow('pos_merchants', m.id, { setup_answers: next });
   if(error) showToast('That answer did not save: ' + error.message, 'error');
 }
 
@@ -14358,7 +14358,7 @@ async function setPosOffer(patch){
   });
   POS_OFFER = next;
   renderPosReferral();
-  const { error } = await supa.from('pos_referral_offer').update(patch).eq('id', true);
+  const { error } = await updateRow('pos_referral_offer', true, patch);
   if(error) showToast('That did not save: ' + error.message, 'error');
 }
 
@@ -14627,7 +14627,7 @@ function posAddonsPicker(l){
 }
 
 async function setPosLocationPlan(id, key){
-  const { error } = await supa.from('pos_locations').update({ plan_key: key || null }).eq('id', id);
+  const { error } = await updateRow('pos_locations', id, { plan_key: key || null });
   if(error){ showToast('Could not save the plan: ' + error.message, 'error'); return; }
   await loadPosMerchants(true); renderPosDetail();
 }
@@ -14648,7 +14648,7 @@ async function setPosLocationAddon(id, key, on){
     const orphaned = POS_ADDONS.filter(a => a.requires === key).map(a => a.key);
     next = next.filter(k => !orphaned.includes(k));
   }
-  const { error } = await supa.from('pos_locations').update({ add_ons: next }).eq('id', id);
+  const { error } = await updateRow('pos_locations', id, { add_ons: next });
   if(error){ showToast('Could not save: ' + error.message, 'error'); return; }
   await loadPosMerchants(true); renderPosDetail();
 }
@@ -14697,11 +14697,11 @@ async function pausePosMerchant(id){
   const n = Number(t);
   const reason = (Number.isInteger(n) && n >= 1 && n <= POS_PAUSE_REASONS.length)
     ? POS_PAUSE_REASONS[n-1] : t;
-  const { error } = await supa.from('pos_merchants').update({
+  const { error } = await updateRow('pos_merchants', id, {
     status: 'paused', pause_reason: reason,
     paused_at: new Date().toISOString(),
     paused_by: (currentUser && currentUser.name) || 'Unknown',
-  }).eq('id', id);
+  });
   if(error){ showToast('Could not pause it: ' + error.message, 'error'); return; }
   // On their own log too, so the reason survives whoever typed it.
   await supa.from('pos_merchant_notes').insert({
@@ -14712,9 +14712,9 @@ async function pausePosMerchant(id){
 }
 
 async function unpausePosMerchant(id){
-  const { error } = await supa.from('pos_merchants').update({
+  const { error } = await updateRow('pos_merchants', id, {
     status: 'live', pause_reason: null, paused_at: null, paused_by: null,
-  }).eq('id', id);
+  });
   if(error){ showToast('Could not do that: ' + error.message, 'error'); return; }
   await supa.from('pos_merchant_notes').insert({
     merchant_id: id, kind: 'system', body: 'Account put back live.',
@@ -14753,11 +14753,11 @@ function posPairLabel(d){
 
 async function pairPosDevice(id){
   const code = posPairCode();
-  const { error } = await supa.from('pos_devices').update({
+  const { error } = await updateRow('pos_devices', id, {
     pairing_code: code,
     pairing_expires_at: new Date(Date.now() + POS_PAIR_MINUTES*60000).toISOString(),
     paired_at: null,
-  }).eq('id', id);
+  });
   if(error){ showToast('Could not make a code: ' + error.message, 'error'); return; }
   await loadPosMerchants(true); renderPosDetail();
   showToast('Pairing code ' + code + ' — good for ' + POS_PAIR_MINUTES + ' minutes.', 'success');
