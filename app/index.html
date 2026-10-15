@@ -13496,7 +13496,7 @@ function renderPosDetail(){
   const m = posDetailMerchant();
   if(!m) return;
   const tabs = [
-    ['overview','Overview'], ['plan','Locations and plan'],
+    ['overview','Overview'], ['setup','Setup'], ['plan','Locations and plan'],
     ['devices','Stations'], ['log','Relationship'],
   ];
   document.getElementById('posMerchantDrawer').innerHTML = `
@@ -13515,6 +13515,7 @@ function renderPosDetail(){
             onclick="posDetailTab='${k}';renderPosDetail();">${label}</button>`).join('')}
       </div>
       ${posDetailTab === 'overview' ? posDetailOverview(m)
+        : posDetailTab === 'setup' ? posDetailSetup(m)
         : posDetailTab === 'plan' ? posDetailPlan(m)
         : posDetailTab === 'devices' ? posDetailDevices(m)
         : posDetailLog(m)}
@@ -13769,6 +13770,170 @@ async function removePosLocation(id){
   await loadPosMerchants(true);
   renderPosDetail();
   renderPosMerchants();
+}
+
+/* ---------------------------------------------------------------------------
+   SETUP: WHAT A SITE STILL HAS TO TELL US
+
+   The rule the whole thing is built around: only ask what applies. A bar asked
+   how many kitchen screens it needs is a bar that stops filling the form in,
+   and rightly — the question is evidence nobody read the previous answer.
+
+   So every question can say when it applies, and a question that does not is
+   not merely hidden: it is not asked, not counted, and not blocking. Progress
+   is measured against what THIS merchant was asked, so a bar that answered all
+   of its questions is finished rather than stuck at 80% for not having a
+   kitchen.
+   --------------------------------------------------------------------------- */
+
+const POS_SETUP = [
+  { id:'business', title:'The business', blurb:'What prints on every receipt a customer takes home.',
+    questions:[
+      { id:'receiptName',  label:'Name as it should print', kind:'text', needed:true,
+        help:'Often the trading name rather than the legal one.' },
+      { id:'receiptPhone', label:'Phone to print', kind:'text', needed:true },
+      { id:'receiptFooter',label:'Closing line', kind:'text',
+        help:'The line at the foot of the slip. "Thank you — see you again" or your hours.' },
+    ]},
+  { id:'service', title:'How they serve', blurb:'This decides which screens get installed.',
+    questions:[
+      { id:'serviceStyle', label:'How is an order taken?', kind:'choice', needed:true,
+        options:['Table service','Counter service','Bar tabs only','Both'] },
+      { id:'hasKitchen', label:'Is there a kitchen?', kind:'yesno', needed:true,
+        help:'A kitchen means tickets have to go somewhere. No kitchen means they do not.',
+        applies:(a)=>['Table service','Counter service','Both'].includes(a.serviceStyle) },
+      { id:'kitchenScreens', label:'How many kitchen screens?', kind:'number',
+        applies:(a)=>['Table service','Counter service','Both'].includes(a.serviceStyle) && a.hasKitchen===true },
+      { id:'areas', label:'Name the rooms or areas', kind:'text',
+        help:'Comma separated. "Main dining, Patio, Bar". One room is fine — say so.',
+        applies:(a)=>a.serviceStyle==='Table service'||a.serviceStyle==='Both' },
+      { id:'runsTabs', label:'Do they run tabs?', kind:'yesno',
+        help:'A tab stays open across rounds and is settled at the end.' },
+    ]},
+  { id:'hardware', title:'Hardware', blurb:'What goes on the counter, and what somebody carries.',
+    questions:[
+      { id:'stations', label:'Full stations', kind:'number', needed:true },
+      { id:'handhelds', label:'Handhelds', kind:'number', help:'Nil is a normal answer.' },
+      { id:'cardTerminals', label:'Card terminals', kind:'number', needed:true },
+      { id:'printers', label:'Receipt printers', kind:'number', help:'Besides any built into a handheld.' },
+    ]},
+  { id:'menu', title:'The item file', blurb:'Keying four hundred rows is why item files never get finished.',
+    questions:[
+      { id:'itemSource', label:'Where is the item list coming from?', kind:'choice', needed:true,
+        options:['A spreadsheet they can send','Export from their current POS','A printed menu only','They will type it in'] },
+      { id:'itemCount', label:'Roughly how many items?', kind:'number',
+        help:'An estimate is fine. It tells us how long setup takes.' },
+      { id:'hasModifiers', label:'Do items have options?', kind:'yesno',
+        help:'Temperature, sides, milk, size — anything asked after the item is rung.' },
+    ]},
+  { id:'people', title:'People', blurb:'Who signs in, and who may put money back.',
+    questions:[
+      { id:'staffCount', label:'How many people will sign in?', kind:'number', needed:true },
+      { id:'managerNames', label:'Who may void, refund and comp?', kind:'text', needed:true,
+        help:'Names, comma separated. These are the people who get a manager PIN.' },
+    ]},
+];
+
+/* `false` and `0` are answers. Treating them as blank is how a form asks twice. */
+function posAnswered(v){
+  if(v === undefined || v === null) return false;
+  if(typeof v === 'string') return v.trim() !== '';
+  if(typeof v === 'number') return isFinite(v);
+  return true;
+}
+function posAsked(section, answers){
+  return section.questions.filter(q => !q.applies || q.applies(answers));
+}
+function posReadiness(answers){
+  let asked = 0, got = 0; const blocking = [];
+  POS_SETUP.forEach(s => posAsked(s, answers).forEach(q => {
+    asked++;
+    if(posAnswered(answers[q.id])) got++;
+    else if(q.needed) blocking.push(q);
+  }));
+  return { asked, got, blocking,
+    percent: asked === 0 ? 100 : Math.round((got/asked)*100),
+    canOpen: blocking.length === 0 };
+}
+function posReadinessLine(r){
+  if(r.asked === 0) return 'Nothing to fill in';
+  if(r.canOpen && r.got === r.asked) return 'Setup complete';
+  if(r.canOpen) return `Ready to open · ${r.got} of ${r.asked} answered`;
+  const n = r.blocking.length;
+  return `${n} ${n===1?'answer':'answers'} still needed before opening`;
+}
+
+function posSetupField(q, answers){
+  const v = answers[q.id];
+  const id = 'ps_' + q.id;
+  const needed = q.needed ? ` <span style="color:var(--warn-text);font-weight:700;">&middot; needed</span>` : '';
+  let control;
+  if(q.kind === 'yesno'){
+    control = [true,false].map(choice => `<button type="button" class="chip" aria-pressed="${v===choice}"
+      onclick="setPosAnswer('${q.id}', ${choice})">${choice?'Yes':'No'}</button>`).join(' ');
+  } else if(q.kind === 'choice'){
+    control = `<select id="${id}" onchange="setPosAnswer('${q.id}', this.value)">
+      <option value="">Choose&hellip;</option>
+      ${q.options.map(o => `<option value="${escAttr(o)}" ${v===o?'selected':''}>${escAttr(o)}</option>`).join('')}
+    </select>`;
+  } else {
+    control = `<input id="${id}" value="${v===undefined?'':escAttr(String(v))}"
+      inputmode="${q.kind==='number'?'numeric':'text'}"
+      onchange="setPosAnswer('${q.id}', ${q.kind==='number'?'this.value===\'\'?\'\':Number(this.value)':'this.value'})">`;
+  }
+  return `<div class="field"><label>${escAttr(q.label)}${needed}</label>${control}
+    ${q.help ? `<p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">${escAttr(q.help)}</p>` : ''}</div>`;
+}
+
+function posDetailSetup(m){
+  const answers = m.setup_answers || {};
+  const r = posReadiness(answers);
+  return `
+    <div class="stat-card" style="margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;">
+        <div class="label">${r.canOpen ? 'Everything we need' : 'Before they open'}</div>
+        <span class="pill ${r.canOpen?'pill-agent-auth':'pill-commission'}">${posReadinessLine(r)}</span>
+      </div>
+      <div style="height:8px;border-radius:999px;background:var(--surface-2);margin:10px 0 6px;overflow:hidden;
+                  box-shadow:inset 0 0 0 1px var(--line);">
+        <div style="height:100%;width:${r.percent}%;background:var(--blue-400);border-radius:999px;"></div>
+      </div>
+      <div style="font-size:11.5px;color:var(--slate-500);">
+        ${r.got} of ${r.asked} answered${r.blocking.length ? ' · still needed: ' + escAttr(r.blocking[0].label) : ''}
+        ${r.blocking.length > 1 ? ` and ${r.blocking.length-1} more` : ''}
+      </div>
+    </div>
+    ${POS_SETUP.map(s => {
+      const asked = posAsked(s, answers);
+      const done = asked.every(q => posAnswered(answers[q.id]));
+      return `<div style="border:1px solid var(--line);border-radius:10px;padding:13px;margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;">
+          <strong style="font-size:13.5px;">${escAttr(s.title)}</strong>
+          ${done ? `<span class="pill pill-agent-auth">Done</span>` : ''}
+        </div>
+        <p style="font-size:11.5px;color:var(--slate-500);margin:4px 0 10px;">${escAttr(s.blurb)}</p>
+        ${asked.map(q => posSetupField(q, answers)).join('')}
+      </div>`;
+    }).join('')}`;
+}
+
+/*
+ * Saved on every answer rather than behind a Save button.
+ *
+ * This gets filled in over days, by two different people, often mid-phone
+ * call. A form that loses six answers because nobody pressed Save is a form
+ * people stop trusting.
+ */
+async function setPosAnswer(id, value){
+  const m = posDetailMerchant();
+  if(!m) return;
+  const next = Object.assign({}, m.setup_answers || {});
+  if(value === '' || value === null || value === undefined) delete next[id];
+  else next[id] = value;
+  m.setup_answers = next;              // shown immediately
+  renderPosDetail();
+  const { error } = await supa.from('pos_merchants').update({ setup_answers: next }).eq('id', m.id);
+  if(error) showToast('That answer did not save: ' + error.message, 'error');
 }
 
 function renderUsersTable(){
