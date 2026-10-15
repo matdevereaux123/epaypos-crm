@@ -10065,6 +10065,19 @@ function formatDate(d){
   const dt = new Date(d + 'T00:00:00');
   return dt.toLocaleDateString('en-US', { month:'short', day:'numeric' });
 }
+/* formatDate drops the year on purpose: nearly every date in this app is a
+   follow-up, a meeting or a submission within a few weeks, and "Oct 24"
+   reads faster than "Oct 24, 2026" when the year is never in question.
+
+   A date of birth is the one place that reasoning inverts. "Oct 24" next to
+   a column of this month's dates reads as this month - which is exactly how
+   a 1952 birthday came to look like today's date. Anything where the year
+   carries the meaning uses this instead. */
+function formatDateFull(d){
+  const dt = new Date(d + 'T00:00:00');
+  if(isNaN(dt)) return '';
+  return dt.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+}
 // Shared across every lead-like table's detail drawer (Leads, Cold Leads,
 // ISO Leads, Lending Leads) — all four have a created_by uuid pointing at
 // users.id (database/46_lead_created_by.sql), stamped by whichever insert
@@ -15764,7 +15777,7 @@ function buildAccountDetailsHTML(l){
     <div class="field"><label>Owner last name</label><input id="acOwnerLast" value="${l.owner_last_name||''}" placeholder="Last name"></div>
     <div class="field">
       <label>Date of birth</label>
-      ${sensitiveFieldHtml(l.id, 'dob', l.dob, l.dob ? formatDate(l.dob) : '', 'dob', `<input id="acDob" type="date" value="${l.dob||''}">`)}
+      ${sensitiveFieldHtml(l.id, 'dob', l.dob, l.dob ? formatDateFull(l.dob) : '', 'dob', `<input id="acDob" type="date" value="${l.dob||''}">`)}
     </div>
     <div class="field">
       <label>Driver's license #</label>
@@ -20755,14 +20768,22 @@ async function openApplicationDetail(id){
   // fresh each open, never cached) rather than mutating the real record —
   // same "reveal via RPC" pattern as leads/partners banking.
   const a = Object.assign({}, base);
+  // Blank first: without permission these stay encrypted, and an encrypted
+  // value rendered as text is worse than an empty field - it looks like data.
+  a.dob = '';
   if(canViewSensitive()){
-    const [ssnRes, dlRes, taxRes, bankRes] = await Promise.all([
+    const [ssnRes, dlRes, taxRes, bankRes, dobRes] = await Promise.all([
       supa.rpc('reveal_application_ssn', { p_application_id: id }),
       supa.rpc('reveal_application_drivers_license', { p_application_id: id }),
       supa.rpc('reveal_application_tax_id', { p_application_id: id }),
       supa.rpc('reveal_application_banking', { p_application_id: id }),
+      // dob is encrypted like the rest and was the one left out of this
+      // list, so the drawer was handing the raw ciphertext to the date
+      // formatter and printing "Invalid Date".
+      supa.rpc('reveal_application_dob', { p_application_id: id }),
     ]);
     if(ssnRes.data) a.ssn = ssnRes.data;
+    if(dobRes.data) a.dob = dobRes.data;
     if(dlRes.data) a.drivers_license = dlRes.data;
     if(taxRes.data) a.business_tax_id = taxRes.data;
     if(bankRes.data){
@@ -20815,7 +20836,7 @@ async function openApplicationDetail(id){
       ${editableRow('Business type', a.business_type, { table:'applications', id:a.id, column:'business_type', record:base })}
       ${editableRow('Pricing plan', a.pricing_plan, { table:'applications', id:a.id, column:'pricing_plan', record:base })}
       ${editableRow('Date of birth', a.dob, { id:a.id, type:'date', can:canEditSensitive,
-          display: v => v ? formatDate(v) : '—',
+          display: v => v ? (formatDateFull(v) || '—') : '—',
           rpc:{ fn:'set_application_dob', idParam:'p_application_id', valueParam:'p_value' } })}
       ${editableRow("Driver's license", a.drivers_license, { id:a.id, can:canEditSensitive,
           rpc:{ fn:'set_application_drivers_license', idParam:'p_application_id', valueParam:'p_value' } })}
