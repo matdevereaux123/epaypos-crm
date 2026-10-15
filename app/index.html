@@ -13989,14 +13989,28 @@ async function boardLeadInPos(leadId){
   if(!l) return;
   if(!confirm('Set ' + (l.business_name||'this lead') + ' up in EPAY POS?\n\nIt creates the account and its first location from what is on this lead. Nothing about the lead changes.')) return;
 
+  /*
+   * The lead first, then the application for anything the lead is missing.
+   *
+   * The lead is what somebody typed while working the deal; the application
+   * is what the merchant filled in themselves. Neither is wholly better, so
+   * the lead leads and the application fills the gaps — which is what stops
+   * an empty address on the lead becoming an empty address on the account.
+   */
+  const app = (typeof APPLICATIONS !== 'undefined' && Array.isArray(APPLICATIONS))
+    ? APPLICATIONS.find(a => a.linked_account_id === leadId) : null;
+  const fromApp = posFromApplication(app);
+  const or = (a, b) => (a !== null && a !== undefined && String(a).trim() !== '') ? a : (b || null);
+
   const merchant = {
-    dba: l.business_name || 'Unnamed',
-    legal_name: l.legal_name || null,
+    dba: or(l.business_name, fromApp.dba) || 'Unnamed',
+    legal_name: or(l.legal_name, fromApp.legal_name),
     status: 'onboarding',
-    owner_name: l.contact_name || null,
-    owner_email: l.email || null,
-    owner_phone: l.phone || null,
-    street: l.address || null, city: l.city || null, state: l.state || null, zip: l.zip || null,
+    owner_name: or(l.contact_name, fromApp.owner_name),
+    owner_email: or(l.email, fromApp.owner_email),
+    owner_phone: or(l.phone, fromApp.owner_phone),
+    street: or(l.address, fromApp.street), city: or(l.city, fromApp.city),
+    state: or(l.state, fromApp.state), zip: or(l.zip, fromApp.zip),
     rep: (currentUser && currentUser.name) || null,
     // Carried across only if it is already here. Usually it is not yet.
     mid: l.mid || null,
@@ -14111,6 +14125,73 @@ function posSupportActionsHtml(m){
       <span style="font-size:11px;color:var(--slate-500);align-self:center;">
         Opens their own back office as support, for ${POS_SUPPORT_MINUTES} minutes. They see that it happened.</span>
     </div>`;
+}
+
+/* ---------------------------------------------------------------------------
+   SET UP IN EPAY POS, FROM THE STAGE WHERE THE SYSTEM IS CHOSEN
+
+   The moment somebody picks EPAY over Clover or NRS is the moment an account
+   in the POS makes sense. Waiting until Account Boarding meant the record
+   appeared days later, after the details had been typed somewhere twice.
+
+   There is no "create in POS" column. The tick IS pos_merchant_id: ticked
+   means an account exists, and that cannot drift from the truth the way a
+   second boolean would. Unticking is not offered — deleting a merchant is
+   done on the merchant, deliberately, not by clearing a checkbox on a lead.
+   --------------------------------------------------------------------------- */
+
+function posBoardCheckboxHtml(l){
+  if(!(currentUser && currentUser.epay_admin)){
+    return `<p style="font-size:10.5px;color:var(--slate-300);margin:0 0 12px;">
+      Setting this account up in EPAY POS needs admin portal access.</p>`;
+  }
+  if(l.pos_merchant_id){
+    return `<label class="check" style="margin-bottom:12px;">
+      <input type="checkbox" checked disabled>
+      <span style="font-size:12.5px;">Set up in EPAY POS
+        <a href="#" onclick="event.preventDefault();openPosMerchantFromLead('${l.pos_merchant_id}')"
+           style="color:var(--brand-accent-2);margin-left:6px;">open it</a></span>
+    </label>`;
+  }
+  return `<label class="check" style="margin-bottom:12px;">
+      <input type="checkbox" onchange="if(this.checked){this.checked=false;boardLeadInPos('${l.id}')}">
+      <span style="font-size:12.5px;">Set this account up in EPAY POS
+        <span style="display:block;font-size:10.5px;color:var(--slate-300);">
+          Creates the account and its first location from this lead and its application.</span></span>
+    </label>`;
+}
+
+/*
+ * What the application knows that the lead does not.
+ *
+ * The lead is what somebody typed while working the deal; the application is
+ * what the merchant themselves filled in, so where they disagree the
+ * application is the better source for the merchant's own details. Wix sends
+ * more than the columns capture, so raw_payload is read too — under several
+ * spellings, because a form field renamed upstream should not quietly empty
+ * an address.
+ */
+function posFromApplication(app){
+  if(!app) return {};
+  const raw = (app.raw_payload && typeof app.raw_payload === 'object') ? app.raw_payload : {};
+  const pick = (...keys) => {
+    for(const k of keys){
+      const v = raw[k];
+      if(typeof v === 'string' && v.trim()) return v.trim();
+    }
+    return null;
+  };
+  return {
+    dba: app.business_name || pick('business_name','businessName','dba','legal_business_name'),
+    owner_name: app.contact_name || pick('contact_name','contactName','owner_name','ownerName'),
+    owner_email: app.email || pick('email','owner_email','contact_email'),
+    owner_phone: app.phone || pick('phone','owner_phone','contact_phone'),
+    street: pick('address','street','address1','business_address'),
+    city: pick('city','business_city'),
+    state: pick('state','business_state'),
+    zip: pick('zip','zipcode','postal_code','business_zip'),
+    legal_name: pick('legal_name','legalName','legal_business_name'),
+  };
 }
 
 function renderUsersTable(){
@@ -15511,6 +15592,8 @@ function systemPricingFieldsHtml(l){
     <div class="field"><label>POS station</label>
       <select id="spSystemChoice" onchange="
         document.getElementById('spPosPlanField').style.display = this.value==='epay' ? 'block':'none';
+        var pb = document.getElementById('spPosBoardField');
+        if(pb) pb.style.display = this.value==='epay' ? 'block':'none';
         document.getElementById('spCloverField').style.display = this.value==='clover' ? 'block':'none';
         document.getElementById('spNrsField').style.display = this.value==='nrs' ? 'block':'none';
         document.getElementById('spNcrField').style.display = this.value==='ncr' ? 'block':'none';
@@ -15522,6 +15605,9 @@ function systemPricingFieldsHtml(l){
         <option value="ncr" ${l.system_choice==='ncr'?'selected':''}>NCR</option>
         <option value="third_party" ${l.system_choice==='third_party'?'selected':''}>Third-party integration/gateway</option>
       </select>
+    </div>
+    <div id="spPosBoardField" style="${l.system_choice==='epay'?'':'display:none;'}">
+      ${posBoardCheckboxHtml(l)}
     </div>
     <div class="field" id="spPosPlanField" style="${l.system_choice==='epay'?'':'display:none;'}">
       <label>EPAY POS plan</label>
