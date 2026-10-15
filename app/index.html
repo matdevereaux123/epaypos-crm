@@ -2355,6 +2355,22 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l1-5h16l1 5"/><path d="M4 9v11h16V9"/><path d="M9 20v-6h6v6"/></svg>
             Merchants
           </button>
+          <button class="nav-item" data-view="possetup">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+            Setup
+          </button>
+          <button class="nav-item" data-view="posnew">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            New merchant
+          </button>
+          <button class="nav-item" data-view="posbilling">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+            Billing
+          </button>
+          <button class="nav-item" data-view="posreferral">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12v10H4V12"/><path d="M2 7h20v5H2z"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
+            Referral offer
+          </button>
         </div>
 
         <button class="nav-section-toggle" id="paymentsSectionToggle" type="button">
@@ -3021,6 +3037,56 @@
       </section>
 
       <!-- PAYMENTS: INVOICING (placeholder) -->
+      <!-- EPAY BACK END: WHO IS READY TO OPEN -->
+      <section id="view-possetup" class="view" style="display:none;">
+        <div class="topbar">
+          <div>
+            <h1>Setup</h1>
+            <p class="subtext">Which merchants are ready to open, and what is holding up the ones that are not.</p>
+          </div>
+        </div>
+        <div class="panel"><div id="posSetupBoard"></div></div>
+      </section>
+
+      <!-- EPAY BACK END: BILLING (not built) -->
+      <section id="view-posbilling" class="view" style="display:none;">
+        <div class="topbar">
+          <div>
+            <h1>Billing</h1>
+            <p class="subtext">What EPAY charges a merchant for the software, and what they have paid.</p>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="stub-panel">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+                 style="width:42px;height:42px;opacity:.35;margin-bottom:14px;">
+              <rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+            <h3>Coming soon</h3>
+            <!--
+              Named rather than left blank. A tab that says only "coming soon"
+              tells somebody it is not here; saying what will be here tells
+              them whether to keep looking somewhere else in the meantime.
+            -->
+            <p style="max-width:460px;margin:0 auto;font-size:13px;line-height:1.6;">
+              Software billing for merchants &mdash; what each account is charged, on what plan, and
+              what has been collected. Not built yet. Card processing fees are a separate thing and
+              come from the processor, not from here.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- EPAY BACK END: THE REFERRAL OFFER -->
+      <section id="view-posreferral" class="view" style="display:none;">
+        <div class="topbar">
+          <div>
+            <h1>Referral offer</h1>
+            <p class="subtext">What EPAY pays a merchant for sending another business. Every merchant portal reads this.</p>
+          </div>
+        </div>
+        <div class="panel"><div id="posReferralBox"></div></div>
+      </section>
+
       <!-- EPAY BACK END: MERCHANTS -->
       <section id="view-posmerchants" class="view" style="display:none;">
         <div class="topbar">
@@ -9455,12 +9521,24 @@ function showView(view, fromHistory){
   }
   /* The same gate as the switch above it. Two different answers to "may
      they open this" is how somebody reaches a view with no way back to it. */
-  if((view === 'backend' || view === 'posmerchants') && !(currentUser && currentUser.epay_admin)) view = 'dashboard';
-  if(view === 'backend' || view === 'posmerchants'){
+  const posViews = ['backend','posmerchants','possetup','posnew','posreferral','posbilling'];
+  if(posViews.includes(view) && !(currentUser && currentUser.epay_admin)) view = 'dashboard';
+  /*
+   * "New merchant" is an action wearing a nav item's clothes. It opens the
+   * boarding drawer over the Merchants list rather than being a page of its
+   * own — a page you can only leave by finishing or cancelling is a page.
+   */
+  if(view === 'posnew'){
+    view = 'posmerchants';
+    loadPosMerchants().then(() => { renderPosMerchants(); openPosMerchantForm(null); });
+  } else if(posViews.includes(view)){
     // Loaded on the way in rather than at startup: nobody who never opens
     // this tab should pay for the query.
     loadPosMerchants().then(() => {
-      if(view === 'backend') renderBackendOverview(); else renderPosMerchants();
+      if(view === 'backend') renderBackendOverview();
+      else if(view === 'possetup') renderPosSetupBoard();
+      else if(view === 'posreferral') renderPosReferral();
+      else renderPosMerchants();
     });
   }
   if(view === 'internalsales' && !canSeeInternalSales()) view = 'dashboard';
@@ -14111,6 +14189,149 @@ function posSupportActionsHtml(m){
       <span style="font-size:11px;color:var(--slate-500);align-self:center;">
         Opens their own back office as support, for ${POS_SUPPORT_MINUTES} minutes. They see that it happened.</span>
     </div>`;
+}
+
+/* ---------------------------------------------------------------------------
+   WHO IS READY TO OPEN
+
+   The question the Setup tab can only answer one merchant at a time: which of
+   the accounts being onboarded could actually open tomorrow, and what is
+   stopping the rest. Sorted by how close they are, because the one with a
+   single answer outstanding is the one worth a phone call this afternoon.
+   --------------------------------------------------------------------------- */
+
+function renderPosSetupBoard(){
+  const open = POS_MERCHANTS.filter(m => m.status !== 'closed');
+  const rows = open.map(m => ({ m, r: posReadiness(m.setup_answers || {}) }))
+    .sort((a,b) => (a.r.canOpen === b.r.canOpen)
+      ? b.r.percent - a.r.percent
+      : (a.r.canOpen ? 1 : -1));
+
+  const ready = rows.filter(x => x.r.canOpen).length;
+  document.getElementById('posSetupBoard').innerHTML = rows.length === 0
+    ? `<div class="stub-panel"><h3>No merchants yet</h3>
+         <p style="font-size:13px;">Board one and its setup appears here.</p></div>`
+    : `<p style="font-size:12px;color:var(--slate-500);margin:0 0 12px;">
+         ${ready} of ${rows.length} could open today. The rest are listed by how close they are.</p>
+       <div class="table-wrap"><table><thead><tr>
+         <th>Merchant</th><th>Status</th><th>Answered</th><th>Still needed</th></tr></thead><tbody>` +
+      rows.map(({m,r}) => `<tr onclick="openPosMerchant('${m.id}','setup')">
+        <td class="name-cell">${escAttr(m.dba)}<div class="sub">${escAttr(m.city||'')}</div></td>
+        <td>${posStatusPill(m.status)}</td>
+        <td style="min-width:140px;">
+          <div style="height:6px;border-radius:999px;background:var(--surface-2);overflow:hidden;
+                      box-shadow:inset 0 0 0 1px var(--line);margin-bottom:3px;">
+            <div style="height:100%;width:${r.percent}%;background:var(--blue-400);"></div></div>
+          <span class="sub">${r.got} of ${r.asked}</span></td>
+        <td>${r.canOpen
+          ? `<span class="pill pill-agent-auth">Ready to open</span>`
+          : `<span class="sub">${escAttr(r.blocking[0].label)}${r.blocking.length>1?` and ${r.blocking.length-1} more`:''}</span>`}</td>
+      </tr>`).join('') + `</tbody></table></div>`;
+}
+
+/* ---------------------------------------------------------------------------
+   THE REFERRAL OFFER
+
+   What EPAY pays a merchant for sending another business, read by every
+   merchant portal. A record rather than something in the code: the offer
+   changes, and one that needs a release to change goes stale — the first a
+   merchant hears of that is a reward that does not arrive.
+
+   Not the same as `partners`, which is agents and ISOs sending EPAY leads for
+   residuals. This is a live merchant pointing a friend at EPAY.
+   --------------------------------------------------------------------------- */
+
+let POS_OFFER = null;
+const POS_REWARD_KINDS = { cash:'Cash', credit:'Statement credit', waiver:'Fee waiver', other:'Something else' };
+
+async function renderPosReferral(){
+  if(!POS_OFFER){
+    const { data, error } = await supa.from('pos_referral_offer').select('*').eq('id', true).single();
+    if(error){
+      document.getElementById('posReferralBox').innerHTML =
+        `<p class="error-text">Could not load the offer: ${escAttr(error.message)}</p>`;
+      return;
+    }
+    POS_OFFER = data;
+  }
+  const tiers = Array.isArray(POS_OFFER.tiers) ? POS_OFFER.tiers.slice() : [];
+  tiers.sort((a,b) => (a.signups||0) - (b.signups||0));
+
+  document.getElementById('posReferralBox').innerHTML = `
+    <div class="row" style="gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
+      <button type="button" class="chip" aria-pressed="${!!POS_OFFER.running}"
+        onclick="setPosOffer({running:${!POS_OFFER.running}})">
+        ${POS_OFFER.running ? 'Running' : 'Paused'}</button>
+      <span style="font-size:11.5px;color:var(--slate-500);">
+        ${POS_OFFER.running
+          ? 'Every merchant portal is showing these tiers.'
+          : 'Merchant portals say the offer is between rounds rather than showing tiers nobody will honour.'}</span>
+    </div>
+
+    <div class="field"><label>The pitch</label>
+      <input id="poPitch" value="${escAttr(POS_OFFER.pitch||'')}"
+             onchange="setPosOffer({pitch:this.value})">
+      <p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">
+        One line under the heading in the merchant's portal.</p></div>
+
+    <h3 style="font-size:14px;margin:20px 0 4px;">Tiers</h3>
+    <p style="font-size:11.5px;color:var(--slate-500);margin:0 0 10px;">
+      What a merchant gets at each number of signups. Changing a tier changes what every merchant
+      sees immediately &mdash; it does not change what anybody has already been promised.</p>
+
+    ${tiers.length === 0 ? `<p style="font-size:12.5px;color:var(--slate-500);">No tiers yet.</p>` :
+      tiers.map((t,i) => `
+      <div style="border:1px solid var(--line);border-radius:10px;padding:11px;margin-bottom:8px;
+                  display:grid;grid-template-columns:90px 150px 1fr auto;gap:10px;align-items:end;">
+        <div class="field" style="margin:0;"><label>Signups</label>
+          <input value="${Number(t.signups||0)}" inputmode="numeric"
+                 onchange="setPosTier(${i},{signups:Number(this.value)||0})"></div>
+        <div class="field" style="margin:0;"><label>Reward</label>
+          <select onchange="setPosTier(${i},{kind:this.value})">
+            ${Object.keys(POS_REWARD_KINDS).map(k =>
+              `<option value="${k}" ${t.kind===k?'selected':''}>${POS_REWARD_KINDS[k]}</option>`).join('')}
+          </select></div>
+        <div class="field" style="margin:0;"><label>What the merchant sees</label>
+          <input value="${escAttr(t.label||'')}" placeholder="$500 bonus or statement credit"
+                 onchange="setPosTier(${i},{label:this.value})"></div>
+        <button class="btn btn-xs" style="color:var(--red);" onclick="removePosTier(${i})">Remove</button>
+      </div>`).join('')}
+
+    <button class="btn btn-xs" onclick="addPosTier()">+ Tier</button>`;
+}
+
+async function setPosOffer(patch){
+  const next = Object.assign({}, POS_OFFER, patch, {
+    updated_by: (currentUser && currentUser.name) || null,
+    updated_at: new Date().toISOString(),
+  });
+  POS_OFFER = next;
+  renderPosReferral();
+  const { error } = await supa.from('pos_referral_offer').update(patch).eq('id', true);
+  if(error) showToast('That did not save: ' + error.message, 'error');
+}
+
+function posTiersSorted(){
+  const t = Array.isArray(POS_OFFER.tiers) ? POS_OFFER.tiers.slice() : [];
+  t.sort((a,b) => (a.signups||0) - (b.signups||0));
+  return t;
+}
+function setPosTier(i, patch){
+  const tiers = posTiersSorted();
+  if(!tiers[i]) return;
+  tiers[i] = Object.assign({}, tiers[i], patch);
+  setPosOffer({ tiers });
+}
+function addPosTier(){
+  const tiers = posTiersSorted();
+  const highest = tiers.reduce((n,t) => Math.max(n, Number(t.signups)||0), 0);
+  tiers.push({ id:'t'+Date.now(), signups: highest + 1, kind:'cash', label:'' });
+  setPosOffer({ tiers });
+}
+function removePosTier(i){
+  const tiers = posTiersSorted();
+  tiers.splice(i,1);
+  setPosOffer({ tiers });
 }
 
 function renderUsersTable(){
