@@ -32,7 +32,7 @@ begin
   -- candidates listed rather than guessing.
   select id into v_me
     from users
-   where lower(email) = lower('matthew@envisionprocessing.com');
+   where lower(email) = lower('matthew@epaypos.net');
 
   if v_me is null then
     select count(*) into v_n
