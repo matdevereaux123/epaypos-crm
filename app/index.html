@@ -13592,6 +13592,7 @@ async function openPosMerchant(id, tab){
   // Prices before the sheet draws, or the Locations tab renders its add-ons
   // with no catalogue and shows nothing at all.
   await loadPosBilling();
+  await loadPosAgreements(id);
   const { data } = await supa.from('pos_merchant_notes')
     .select('*').eq('merchant_id', id).order('created_at', { ascending:false });
   POS_NOTES = data || [];
@@ -13669,7 +13670,8 @@ function posDetailPlan(m){
     </div>
     ${locs.length === 0 ? `<div class="stub-panel"><h3>No locations</h3>
         <p style="font-size:13px;">Nothing can be set up until there is one.</p></div>`
-      : locs.map(l => posLocationCard(l, m)).join('')}`;
+      : locs.map(l => posLocationCard(l, m)).join('')}
+    ${posAgreementsHtml(m)}`;
 }
 
 function posDetailDevices(m){
@@ -14445,6 +14447,7 @@ function posMerchantMonthly(m){
 
 async function renderPosBilling(){
   await loadPosBilling();
+  await loadRecentAgreements();
   const box = document.getElementById('posBillingBox');
   const rows = POS_MERCHANTS.filter(m => m.status !== 'closed');
   const total = rows.reduce((n,m) => n + posMerchantMonthly(m).cents, 0);
@@ -14478,6 +14481,33 @@ async function renderPosBilling(){
             <td>${addons}</td>
             <td><strong>${posMoney(x.cents)}</strong>${x.unpriced
               ? `<div class="sub" style="color:var(--warn-text);">${x.unpriced} not priced</div>` : ''}</td>
+          </tr>`;
+        }).join('')}
+      </tbody></table></div>`}
+
+    <h3 style="font-size:14px;margin:0 0 4px;">Recently accepted</h3>
+    <p style="font-size:11.5px;color:var(--slate-500);margin:0 0 8px;">
+      Somebody at the business ticked a box next to a price. The price shown is the one they were
+      shown &mdash; it does not follow the catalogue afterwards.</p>
+    ${POS_AGREEMENTS_ALL.length === 0 ? `<p style="font-size:12.5px;color:var(--slate-500);margin-bottom:22px;">
+        Nothing yet. Switching an add-on on from this side does not create an agreement &mdash;
+        only a merchant accepting one does.</p>` : `
+      <div class="table-wrap" style="margin-bottom:22px;"><table><thead><tr>
+        <th>Merchant</th><th>Add-on</th><th>Agreed</th><th>Who</th><th>Terms</th><th>When</th></tr></thead><tbody>
+        ${POS_AGREEMENTS_ALL.map(a => {
+          const m = POS_MERCHANTS.find(x => x.id === a.merchant_id);
+          const addon = posAddon(a.addon_key);
+          return `<tr${a.cancelled_at?' style="opacity:.6;"':''}
+              onclick="openPosMerchant('${a.merchant_id}','plan')">
+            <td class="name-cell">${escAttr(m ? m.dba : 'Unknown')}</td>
+            <td>${escAttr((addon||{}).label || a.addon_key)}
+              ${a.cancelled_at?`<div class="sub">cancelled ${new Date(a.cancelled_at).toLocaleDateString()}</div>`:''}</td>
+            <td>${a.price_cents===null?'—':a.price_cents===0
+              ? `<span class="pill pill-agent-auth">Included</span>`
+              : `<strong>${posMoney(a.price_cents)}</strong><span class="sub">/mo</span>`}</td>
+            <td class="sub">${escAttr(a.accepted_by)}${a.accepted_in?`<div class="sub">${escAttr(a.accepted_in)}</div>`:''}</td>
+            <td class="sub">${escAttr(a.terms_version||'')}</td>
+            <td class="sub">${new Date(a.accepted_at).toLocaleDateString()}</td>
           </tr>`;
         }).join('')}
       </tbody></table></div>`}
@@ -14712,6 +14742,91 @@ async function pairPosDevice(id){
   if(error){ showToast('Could not make a code: ' + error.message, 'error'); return; }
   await loadPosMerchants(true); renderPosDetail();
   showToast('Pairing code ' + code + ' — good for ' + POS_PAIR_MINUTES + ' minutes.', 'success');
+}
+
+/* ---------------------------------------------------------------------------
+   WHAT A MERCHANT AGREED TO
+
+   The other half of the paywall. Somebody at the merchant ticked a box, and
+   this is where that shows up — who, when, at what price, under which terms.
+
+   The price here is the one they were shown, copied at the time. It is not
+   looked up from the catalogue: when a list price changes next quarter, an
+   agreement that pointed at the catalogue would quietly rewrite what somebody
+   was promised, and the first they would hear of it is an invoice.
+   --------------------------------------------------------------------------- */
+
+let POS_AGREEMENTS = [];
+let POS_AGREEMENTS_ALL = [];
+
+/* Everything accepted, newest first, across every account. Capped: this is a
+   glance at what is being agreed to, not an audit — the audit is per merchant,
+   where somebody actually needs it. */
+async function loadRecentAgreements(){
+  const { data, error } = await supa.from('pos_addon_agreements')
+    .select('*').order('accepted_at', { ascending:false }).limit(40);
+  if(error){ POS_AGREEMENTS_ALL = []; return; }
+  POS_AGREEMENTS_ALL = data || [];
+}
+
+/* A table that is not there yet is not a fault worth a toast: migration 102
+   may simply not have been run. Anything else is, because an agreements list
+   that is quietly empty when it should not be is the one failure here nobody
+   would notice. */
+function agreementsTableMissing(error){
+  return error.code === '42P01' || error.code === 'PGRST205'
+    || /pos_addon_agreements/.test(error.message || '');
+}
+
+async function loadPosAgreements(merchantId){
+  const { data, error } = await supa.from('pos_addon_agreements')
+    .select('*').eq('merchant_id', merchantId).order('accepted_at', { ascending:false });
+  if(error){
+    POS_AGREEMENTS = [];
+    if(!agreementsTableMissing(error)) showToast('Could not load agreements: ' + error.message, 'error');
+    return POS_AGREEMENTS;
+  }
+  POS_AGREEMENTS = data || [];
+  return POS_AGREEMENTS;
+}
+
+function posAgreementsHtml(m){
+  const live = POS_AGREEMENTS.filter(a => !a.cancelled_at);
+  const past = POS_AGREEMENTS.filter(a => a.cancelled_at);
+  const row = (a) => {
+    const addon = posAddon(a.addon_key);
+    const nowPrice = addon ? addon.price_cents : null;
+    /*
+     * Flagged where the list price has moved since. Not corrected — they
+     * keep what they accepted — but somebody reconciling an invoice needs
+     * to see that the two differ rather than wonder why the sum is wrong.
+     */
+    const moved = nowPrice !== null && nowPrice !== undefined
+      && a.price_cents !== null && nowPrice !== a.price_cents;
+    return `<tr${a.cancelled_at?' style="opacity:.6;"':''}>
+      <td class="name-cell">${escAttr((addon||{}).label || a.addon_key)}
+        <div class="sub">${escAttr(a.accepted_by)}${a.accepted_in?` · ${escAttr(a.accepted_in)}`:''}</div></td>
+      <td>${a.price_cents===null?'—':`<strong>${posMoney(a.price_cents)}</strong><span class="sub">/mo</span>`}
+        ${moved?`<div class="sub" style="color:var(--warn-text);">list is now ${posMoney(nowPrice)}</div>`:''}</td>
+      <td class="sub">${escAttr(a.terms_version||'')}</td>
+      <td class="sub">${new Date(a.accepted_at).toLocaleDateString()}</td>
+      <td class="sub">${a.cancelled_at
+        ? 'Cancelled ' + new Date(a.cancelled_at).toLocaleDateString()
+        : '<span class="pill pill-agent-auth">Live</span>'}</td>
+    </tr>`;
+  };
+
+  return `
+    <h3 style="font-size:14px;margin:18px 0 4px;">Agreed to</h3>
+    <p style="font-size:11.5px;color:var(--slate-500);margin:0 0 8px;">
+      What somebody at this business accepted, at the price and terms they were shown.
+      Kept whatever the list price does afterwards.</p>
+    ${POS_AGREEMENTS.length === 0
+      ? `<p style="font-size:12.5px;color:var(--slate-500);">Nothing accepted yet. Add-ons switched on
+           from this side do not create an agreement &mdash; only a merchant accepting one does.</p>`
+      : `<div class="table-wrap"><table><thead><tr>
+           <th>Add-on</th><th>Agreed price</th><th>Terms</th><th>When</th><th></th></tr></thead>
+           <tbody>${live.map(row).join('')}${past.map(row).join('')}</tbody></table></div>`}`;
 }
 
 function renderUsersTable(){
