@@ -9583,6 +9583,20 @@ function showView(view, fromHistory){
   document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
   document.getElementById('view-' + view).style.display = 'block';
 
+  /*
+   * Start at the top of the new page.
+   *
+   * Nothing here scrolls but the window, so the scroll position is shared by
+   * every view. Leave the EPAY Back End billing page halfway down, open
+   * Leads, and Leads opens halfway down too — on a short page that is a
+   * blank screen, and the usual reading of a blank screen is that the tab is
+   * broken rather than that it is scrolled past its own content.
+   *
+   * Not on a back press. The browser restores where somebody was, and that
+   * is the one case where the old position is the right one.
+   */
+  if(!fromHistory) window.scrollTo(0, 0);
+
   // A tab's own data, fetched the first time it is opened. The view is shown
   // straight away so navigation never feels blocked; if its data is not in
   // yet it shows "Loading…" rather than an empty table, and renders again
@@ -13503,6 +13517,18 @@ function openPosMerchantForm(id){
         ${m ? 'Save changes' : 'Board this merchant'}</button>
     </div>`;
   renderPosEditionCards();
+  openPosDrawer();
+}
+
+/*
+ * Opening the sheet starts at the top of it, whatever the last one was left
+ * at. The drawer element is reused, so its scroll position outlives the
+ * record it belonged to: open a merchant, read to the bottom, close it, open
+ * another, and the second one opens partway down somebody else's page.
+ */
+function openPosDrawer(){
+  const drawer = document.getElementById('posMerchantDrawer');
+  if(drawer) drawer.scrollTop = 0;
   document.getElementById('posMerchantOverlay').classList.add('open');
 }
 
@@ -13592,6 +13618,21 @@ async function savePosMerchant(id){
 
 let posDetailId = null;
 let posDetailTab = 'overview';
+
+/*
+ * Switching tabs inside the merchant sheet starts at the top of the new one.
+ *
+ * The sheet scrolls, not the page, and the scroll position belongs to the
+ * sheet rather than to the tab. Read to the bottom of the Plan tab - which
+ * is the longest, and got longer again when agreements landed on it - then
+ * open Log, and Log opens at a point past its own content.
+ */
+function setPosDetailTab(tab){
+  posDetailTab = tab;
+  renderPosDetail();
+  const drawer = document.getElementById('posMerchantDrawer');
+  if(drawer) drawer.scrollTop = 0;
+}
 let POS_NOTES = [];
 
 const POS_DEVICE_KINDS = {
@@ -13610,7 +13651,7 @@ async function openPosMerchant(id, tab){
     .select('*').eq('merchant_id', id).order('created_at', { ascending:false });
   POS_NOTES = data || [];
   renderPosDetail();
-  document.getElementById('posMerchantOverlay').classList.add('open');
+  openPosDrawer();
 }
 
 function posDetailMerchant(){ return POS_MERCHANTS.find(m => m.id === posDetailId) || null; }
@@ -13635,7 +13676,7 @@ function renderPosDetail(){
     <div class="drawer-body" style="padding-top:0;">
       <div class="row" style="gap:6px;margin:0 0 16px;border-bottom:1px solid var(--line);padding:10px 0;">
         ${tabs.map(([k,label]) => `<button type="button" class="chip" aria-pressed="${posDetailTab===k}"
-            onclick="posDetailTab='${k}';renderPosDetail();">${label}</button>`).join('')}
+            onclick="setPosDetailTab('${k}')">${label}</button>`).join('')}
       </div>
       ${posDetailTab === 'overview' ? posDetailOverview(m)
         : posDetailTab === 'setup' ? posDetailSetup(m)
