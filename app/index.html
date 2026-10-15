@@ -2400,6 +2400,10 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
             Billing
           </button>
+          <button class="nav-item" data-view="possubs">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            Subscription editing
+          </button>
           <button class="nav-item" data-view="posreferral">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12v10H4V12"/><path d="M2 7h20v5H2z"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
             Referral offer
@@ -2778,6 +2782,7 @@
         </p>
 
         <div class="cards-row" id="repStats"></div>
+        <p id="repSourceNote" style="font-size:11.5px;color:var(--slate-500);margin:10px 0 0;"></p>
 
         <div class="panel">
           <div class="panel-head"><h2>Add-ons in this period</h2></div>
@@ -3108,6 +3113,22 @@
             </p>
           </div>
         </div>
+      </section>
+
+      <!-- EPAY BACK END: SUBSCRIPTION EDITING
+           Split out of Billing. Billing is a thing you read - what each
+           account is on and what has been agreed. This is a thing you
+           change, and changing a price here changes what every future
+           quote says. Two different jobs, and mixing them put an Edit
+           button on a page people open to look something up. -->
+      <section id="view-possubs" class="view" style="display:none;">
+        <div class="topbar">
+          <div>
+            <h1>EPAY subscription editing</h1>
+            <p class="subtext">What EPAY charges for a plan and for each add-on. Changing a price here changes what a new agreement quotes &mdash; it does not change what anybody is already on.</p>
+          </div>
+        </div>
+        <div class="panel"><div id="posSubsBox"></div></div>
       </section>
 
       <!-- EPAY BACK END: THE REFERRAL OFFER -->
@@ -9567,7 +9588,7 @@ function showView(view, fromHistory){
   }
   /* The same gate as the switch above it. Two different answers to "may
      they open this" is how somebody reaches a view with no way back to it. */
-  const posViews = ['backend','posmerchants','possetup','posnew','posreferral','posbilling'];
+  const posViews = ['backend','posmerchants','possetup','posnew','posreferral','posbilling','possubs'];
   if(posViews.includes(view) && !(currentUser && currentUser.epay_admin)) view = 'dashboard';
   /*
    * "New merchant" is an action wearing a nav item's clothes. It opens the
@@ -9585,6 +9606,7 @@ function showView(view, fromHistory){
       else if(view === 'possetup') renderPosSetupBoard();
       else if(view === 'posreferral') renderPosReferral();
       else if(view === 'posbilling') renderPosBilling();
+      else if(view === 'possubs') renderPosSubscriptions();
       else renderPosMerchants();
     });
   }
@@ -9649,7 +9671,24 @@ function showView(view, fromHistory){
   if(view === 'coldemail') renderColdEmailTable();
   if(view === 'newsletter') renderNewsletterView();
   if(view === 'residuals') renderResidualsReport();
-  if(view === 'reportsubs') renderSubscriptionReport();
+  if(view === 'reportsubs'){
+    /*
+     * The POS side first, where this person can see it. Only EPAY admins can
+     * read pos_*, so for everybody else there is nothing to fetch and the
+     * report falls back to what the leads say — which it says on the page,
+     * because two people opening the same money report and seeing different
+     * totals with no explanation is worse than either total.
+     *
+     * Agreements are pulled deeper than the Billing page needs them: this
+     * report goes back over past periods, and the agreed price is the one
+     * that was invoiced.
+     */
+    if(currentUser && currentUser.epay_admin){
+      Promise.all([loadPosMerchants(), loadPosBilling(), loadRecentAgreements(500)])
+        .then(() => renderSubscriptionReport());
+    }
+    renderSubscriptionReport();
+  }
   if(view === 'collections') renderCollectionsReport();
   if(view === 'lendingleads') renderLendingLeadsBoard();
   if(view === 'esign'){ renderEsignTable(); refreshSignatureRequests(); }
@@ -14662,11 +14701,110 @@ function posMerchantMonthly(m){
   }, { cents: 0, unpriced: 0 });
 }
 
+/*
+ * What EPAY charges, and the only screen that changes it.
+ *
+ * Split out of Billing. Billing is read - what each account is on, what has
+ * been agreed, what it adds up to. This is written, and a price changed here
+ * is quoted to every merchant from that moment. Those are two different jobs
+ * for two different moods, and keeping them on one page put an Edit button
+ * beside figures somebody opened the page to look up.
+ *
+ * It still changes nothing anybody is already on. An agreement holds the
+ * price it was made at - see migration 102 - so this is the quote, not the
+ * invoice.
+ */
+async function renderPosSubscriptions(){
+  await loadPosBilling();
+  const box = document.getElementById('posSubsBox');
+  if(!box) return;
+  const unpriced = POS_ADDONS.filter(a => a.price_cents === null && a.sellable !== false);
+
+  box.innerHTML = `
+    ${unpriced.length ? `<div class="panel" style="margin-bottom:18px;padding:12px 14px;font-size:12.5px;">
+      <strong>${unpriced.length} add-on${unpriced.length===1?'':'s'} cannot be sold yet.</strong>
+      <span style="color:var(--slate-500);">An add-on with no price has no paywall to show, so
+      merchants are told to ask EPAY instead of being able to buy it.</span></div>` : ''}
+
+    <h3 style="font-size:14px;margin:0 0 4px;">Plans</h3>
+    <p style="font-size:11.5px;color:var(--slate-500);margin:0 0 8px;">
+      One per account, per location. This is the software subscription &mdash; card processing is
+      charged by the processor and never from here.</p>
+    <div class="table-wrap" style="margin-bottom:26px;"><table><thead><tr>
+      <th>Plan</th><th>Edition</th><th>Price</th><th></th></tr></thead><tbody>
+      ${POS_PLANS.map(p => `<tr>
+        <td class="name-cell">${escAttr(p.label)}${p.note?`<div class="sub">${escAttr(p.note)}</div>`:''}</td>
+        <td class="sub">${escAttr(p.edition||'')}</td>
+        <td>${p.price_cents===null
+          ? `<span class="pill pill-commission">Price not set</span>`
+          : `<strong>${posMoney(p.price_cents)}</strong><span class="sub">/mo</span>`}</td>
+        <td style="text-align:right;"><button class="btn btn-xs"
+          onclick="editPosPrice('pos_plans','${p.key}',${p.price_cents===null?'null':p.price_cents},'${escAttr(p.label)}')">Edit</button></td>
+      </tr>`).join('')}
+    </tbody></table></div>
+
+    <h3 style="font-size:14px;margin:0 0 4px;">Add-ons</h3>
+    <p style="font-size:11.5px;color:var(--slate-500);margin:0 0 8px;">
+      What a merchant is charged on top, per location. An add-on with no price cannot be put on an
+      account or sold through a paywall. &ldquo;Not sold&rdquo; is a settled answer rather than a
+      missing one &mdash; those rows are indicators, not products.</p>
+    <div class="table-wrap"><table><thead><tr>
+      <th>Add-on</th><th>Price</th><th>Needs</th><th></th></tr></thead><tbody>
+      ${POS_ADDONS.map(a => `<tr>
+        <td class="name-cell">${escAttr(a.label)}${a.blurb?`<div class="sub">${escAttr(a.blurb)}</div>`:''}</td>
+        <td>${a.sellable === false
+          ? `<span class="pill pill-agent-auth">Not sold</span>`
+          : a.price_cents===null
+          ? `<span class="pill pill-commission">Price not set</span>`
+          : a.price_cents===0 ? `<span class="pill pill-agent-auth">Included</span>`
+          : `<strong>${posMoney(a.price_cents)}</strong><span class="sub">/mo</span>`}</td>
+        <td class="sub">${a.requires ? escAttr((posAddon(a.requires)||{}).label || a.requires) : '—'}</td>
+        <td style="text-align:right;">${a.sellable === false
+          ? `<span class="sub">indicator only</span>`
+          : `<button class="btn btn-xs"
+          onclick="editPosPrice('pos_addons','${a.key}',${a.price_cents===null?'null':a.price_cents},'${escAttr(a.label)}')">Edit</button>`}</td>
+      </tr>`).join('')}
+    </tbody></table></div>`;
+}
+
+/*
+ * Who is on billing, and what they are on.
+ *
+ * EPAY's own clients only, and only the ones with a subscription that is
+ * running or being set up. A closed account is history and a lead is not a
+ * client yet; putting either in a billing figure makes a number nobody can
+ * reconcile against what was actually invoiced. Everything bought through
+ * somebody else lives in the CRM's subscription report, which carries both.
+ */
+let posBillingWindow = 0;   // 0 = everyone, otherwise a number of days
+
+function setPosBillingWindow(days){
+  posBillingWindow = days;
+  renderPosBilling();
+}
+
+/* When this account started billing: the first of its locations to exist.
+   An account with no location has nothing to bill for and no date. */
+function posBillingSince(m){
+  const dates = (m.pos_locations||[]).map(l => l.created_at).filter(Boolean).sort();
+  return dates[0] || m.created_at || null;
+}
+
+function posBillingIsNew(m, days){
+  const since = posBillingSince(m);
+  if(!since) return false;
+  return (Date.now() - new Date(since).getTime()) <= days * 86400000;
+}
+
 async function renderPosBilling(){
   await loadPosBilling();
   await loadRecentAgreements();
   const box = document.getElementById('posBillingBox');
-  const rows = POS_MERCHANTS.filter(m => m.status !== 'closed');
+  // Being set up, or set up. Not closed, and never a lead.
+  const live = POS_MERCHANTS.filter(m => m.status === 'live' || m.status === 'onboarding');
+  const rows = posBillingWindow
+    ? live.filter(m => posBillingIsNew(m, posBillingWindow))
+    : live;
   const total = rows.reduce((n,m) => n + posMerchantMonthly(m).cents, 0);
   /* Only rows somebody intends to sell. An indicator with no price is not
      a job anybody has to do; counting it would be a warning nobody can clear. */
@@ -14676,9 +14814,11 @@ async function renderPosBilling(){
     <div class="cards-row" style="margin-bottom:18px;">
       <div class="stat-card"><div class="label">Billed monthly</div>
         <div class="value">${posMoney(total)}</div>
-        <div class="delta" style="color:var(--slate-500);">${rows.length} open ${rows.length===1?'account':'accounts'}</div></div>
-      <div class="stat-card"><div class="label">Plans</div>
-        <div class="value">${POS_PLANS.length}</div></div>
+        <div class="delta" style="color:var(--slate-500);">${rows.length}
+          ${posBillingWindow ? `of ${live.length} ` : ''}${rows.length===1?'account':'accounts'}</div></div>
+      <div class="stat-card"><div class="label">New in 30 days</div>
+        <div class="value">${live.filter(m => posBillingIsNew(m, 30)).length}</div>
+        <div class="delta" style="color:var(--slate-500);">started billing</div></div>
       <div class="stat-card${unpriced.length?' attention':''}"><div class="label">Add-ons without a price</div>
         <div class="value">${unpriced.length}</div>
         <div class="delta" style="color:var(--slate-500);">${unpriced.length ? 'cannot be sold yet' : 'all priced'}</div></div>
@@ -14687,15 +14827,25 @@ async function renderPosBilling(){
     <p style="font-size:12px;color:var(--slate-500);margin:0 0 14px;">
       Software only. Card processing fees come from the processor and never from here.</p>
 
+    <div class="row" style="margin:0 0 10px;">
+      ${[[0,'All accounts'],[30,'Added in 30 days'],[90,'Added in 90 days']].map(([d,label]) =>
+        `<button type="button" class="chip" aria-pressed="${posBillingWindow===d}"
+           onclick="setPosBillingWindow(${d})">${label}</button>`).join('')}
+    </div>
+
     <h3 style="font-size:14px;margin:0 0 8px;">What each account is on</h3>
-    ${rows.length === 0 ? `<p style="font-size:12.5px;color:var(--slate-500);">No merchants yet.</p>` : `
+    ${rows.length === 0 ? `<p style="font-size:12.5px;color:var(--slate-500);">${posBillingWindow
+        ? `Nothing started billing in the last ${posBillingWindow} days.`
+        : 'No merchants yet.'}</p>` : `
       <div class="table-wrap" style="margin-bottom:22px;"><table><thead><tr>
-        <th>Merchant</th><th>Locations</th><th>Add-ons</th><th>Monthly</th></tr></thead><tbody>
+        <th>Merchant</th><th>Billing since</th><th>Locations</th><th>Add-ons</th><th>Monthly</th></tr></thead><tbody>
         ${rows.map(m => {
           const x = posMerchantMonthly(m);
           const addons = (m.pos_locations||[]).reduce((n,l) => n + (l.add_ons||[]).length, 0);
+          const since = posBillingSince(m);
           return `<tr onclick="openPosMerchant('${m.id}','plan')">
             <td class="name-cell">${escAttr(m.dba)}<div class="sub">${escAttr(m.status)}</div></td>
+            <td class="sub">${since ? new Date(since).toLocaleDateString() : '—'}</td>
             <td>${(m.pos_locations||[]).length}</td>
             <td>${addons}</td>
             <td><strong>${posMoney(x.cents)}</strong>${x.unpriced
@@ -14731,42 +14881,9 @@ async function renderPosBilling(){
         }).join('')}
       </tbody></table></div>`}
 
-    <h3 style="font-size:14px;margin:0 0 4px;">Plans</h3>
-    <p style="font-size:11.5px;color:var(--slate-500);margin:0 0 8px;">
-      Changing a price here changes what a new agreement quotes. It does not change what anybody is already on.</p>
-    <div class="table-wrap" style="margin-bottom:22px;"><table><thead><tr>
-      <th>Plan</th><th>Edition</th><th>Price</th><th></th></tr></thead><tbody>
-      ${POS_PLANS.map(p => `<tr>
-        <td class="name-cell">${escAttr(p.label)}${p.note?`<div class="sub">${escAttr(p.note)}</div>`:''}</td>
-        <td class="sub">${escAttr(p.edition||'')}</td>
-        <td>${p.price_cents===null
-          ? `<span class="pill pill-commission">Price not set</span>`
-          : `<strong>${posMoney(p.price_cents)}</strong><span class="sub">/mo</span>`}</td>
-        <td style="text-align:right;"><button class="btn btn-xs"
-          onclick="editPosPrice('pos_plans','${p.key}',${p.price_cents===null?'null':p.price_cents},'${escAttr(p.label)}')">Edit</button></td>
-      </tr>`).join('')}
-    </tbody></table></div>
-
-    <h3 style="font-size:14px;margin:0 0 4px;">Add-ons</h3>
-    <p style="font-size:11.5px;color:var(--slate-500);margin:0 0 8px;">
-      What a merchant is charged on top. An add-on with no price cannot be put on an account.</p>
-    <div class="table-wrap"><table><thead><tr>
-      <th>Add-on</th><th>Price</th><th>Needs</th><th></th></tr></thead><tbody>
-      ${POS_ADDONS.map(a => `<tr>
-        <td class="name-cell">${escAttr(a.label)}${a.blurb?`<div class="sub">${escAttr(a.blurb)}</div>`:''}</td>
-        <td>${a.sellable === false
-          ? `<span class="pill pill-agent-auth">Not sold</span>`
-          : a.price_cents===null
-          ? `<span class="pill pill-commission">Price not set</span>`
-          : a.price_cents===0 ? `<span class="pill pill-agent-auth">Included</span>`
-          : `<strong>${posMoney(a.price_cents)}</strong><span class="sub">/mo</span>`}</td>
-        <td class="sub">${a.requires ? escAttr((posAddon(a.requires)||{}).label || a.requires) : '—'}</td>
-        <td style="text-align:right;">${a.sellable === false
-          ? `<span class="sub">indicator only</span>`
-          : `<button class="btn btn-xs"
-          onclick="editPosPrice('pos_addons','${a.key}',${a.price_cents===null?'null':a.price_cents},'${escAttr(a.label)}')">Edit</button>`}</td>
-      </tr>`).join('')}
-    </tbody></table></div>`;
+    <p style="font-size:12px;color:var(--slate-500);margin:22px 0 0;">
+      Prices themselves are set under <a href="#possubs" onclick="showView('possubs');return false;"
+        style="color:var(--brand-accent-2);font-weight:600;">Subscription editing</a>.</p>`;
 }
 
 async function editPosPrice(table, key, current, label){
@@ -14985,9 +15102,9 @@ let POS_AGREEMENTS_ALL = [];
 /* Everything accepted, newest first, across every account. Capped: this is a
    glance at what is being agreed to, not an audit — the audit is per merchant,
    where somebody actually needs it. */
-async function loadRecentAgreements(){
+async function loadRecentAgreements(limit){
   const { data, error } = await supa.from('pos_addon_agreements')
-    .select('*').order('accepted_at', { ascending:false }).limit(40);
+    .select('*').order('accepted_at', { ascending:false }).limit(limit || 40);
   if(error){ POS_AGREEMENTS_ALL = []; return; }
   POS_AGREEMENTS_ALL = data || [];
 }
@@ -26533,6 +26650,55 @@ async function removeSubscriptionLine(leadId, source, index){
   showToast('Removed', 'success');
 }
 
+/* ---------------------------------------------------------------------------
+   WHAT A BOARDED ACCOUNT IS ACTUALLY ON
+
+   Once a lead is set up in EPAY POS, the POS account is the truth and the
+   lead's picks are the sales record of how it got there. The report has to
+   prefer the first, or it reports what somebody intended to sell rather than
+   what is being billed.
+
+   Two ways that goes wrong if it is done carelessly, and both are guarded:
+
+   - The same thing counted twice. Gift cards picked on the lead and then put
+     on the account is one $15 subscription, not two. Lead lines whose name
+     matches something on the account are dropped.
+   - The POS side invisible to whoever is looking. Only EPAY admins can read
+     pos_* at all, so for everybody else there is nothing to prefer and the
+     lead lines stand. The report says which it used rather than quietly
+     showing two people different totals.
+   --------------------------------------------------------------------------- */
+
+function posSubscriptionLines(l){
+  if(!l.pos_merchant_id) return null;
+  const m = POS_MERCHANTS.find(x => x.id === l.pos_merchant_id);
+  if(!m) return null;
+  // Closed accounts are history. Being set up still counts: the plan is
+  // agreed and it is what the first invoice will say.
+  if(m.status === 'closed') return null;
+  const out = [];
+  (m.pos_locations || []).forEach(loc => {
+    const when = (loc.created_at ? String(loc.created_at).slice(0,10) : null);
+    const plan = POS_PLANS.find(p => p.key === loc.plan_key);
+    if(plan && plan.price_cents !== null){
+      out.push({ category:'EPAY software', name: plan.label + ' — ' + loc.name,
+        price: plan.price_cents / 100, added_at: when });
+    }
+    (loc.add_ons || []).forEach(key => {
+      const a = POS_ADDONS.find(x => x.key === key);
+      if(!a || a.price_cents === null || a.sellable === false) return;
+      // The price that was agreed, where there is an agreement for it. The
+      // catalogue is today's price; an invoice is not.
+      const agreed = POS_AGREEMENTS_ALL.find(g => g.merchant_id === m.id
+        && g.addon_key === key && !g.cancelled_at);
+      out.push({ category:'EPAY POS add-on', name: a.label + ' — ' + loc.name,
+        price: (agreed && agreed.price_cents !== null ? agreed.price_cents : a.price_cents) / 100,
+        added_at: agreed ? String(agreed.accepted_at).slice(0,10) : when });
+    });
+  });
+  return out;
+}
+
 function collectSubscriptionReportItems(start, end){
   const items = [];
   LEADS.forEach(l => {
@@ -26546,15 +26712,30 @@ function collectSubscriptionReportItems(start, end){
         });
       }
     };
-    (l.integrations_selected || []).forEach(item => pushIfInPeriod(item, 'Integration'));
-    (l.epay_apps_selected || []).forEach(item => pushIfInPeriod(item, 'EPAY App'));
-    // Added by hand on the account rather than picked from a catalogue —
-    // the only kind an account created outside the pipeline can have.
+    const onAccount = posSubscriptionLines(l);
+    /* Anything already on the POS account, matched by name, so one
+       subscription is not counted on both sides of being boarded. */
+    const alreadyBilled = new Set((onAccount || []).map(x => x.name.split(' — ')[0].toLowerCase()));
+    const notDuplicated = (item) => !alreadyBilled.has(String(item.name||'').toLowerCase());
+
+    (l.integrations_selected || []).filter(notDuplicated)
+      .forEach(item => pushIfInPeriod(item, 'Integration'));
+    (l.epay_apps_selected || []).filter(notDuplicated)
+      .forEach(item => pushIfInPeriod(item, 'EPAY App'));
+    // Added by hand on the account rather than picked from a catalogue — a
+    // third-party subscription, or anything an account created outside the
+    // pipeline carries.
     (l.extra_subscriptions || []).forEach(item => pushIfInPeriod(item, item.category || 'Other'));
-    // The software plan itself. Left out until now, which made the monthly
-    // recurring figure smaller than what merchants actually pay.
-    const plan = posPlanLine(l);
-    if(plan) pushIfInPeriod(plan, 'EPAY software');
+
+    if(onAccount){
+      // The real thing, from the POS account.
+      onAccount.forEach(item => pushIfInPeriod(item, item.category));
+    } else {
+      // Not boarded, or the POS side is not readable from here. The plan the
+      // lead says they are going on is the best anybody has.
+      const plan = posPlanLine(l);
+      if(plan) pushIfInPeriod(plan, 'EPAY software');
+    }
   });
   return items.sort((a,b) => (b.added_at||'0000-00-00').localeCompare(a.added_at||'0000-00-00'));
 }
@@ -26573,6 +26754,22 @@ function renderSubscriptionReport(){
     <div class="stat-card"><div class="label">Accounts/leads involved</div><div class="value">${uniqueAccounts}</div></div>
     <div class="stat-card"><div class="label">Monthly recurring value</div><div class="value">$${totalMRR.toFixed(2)}</div></div>
   `;
+
+  /*
+   * Which figures these are. An EPAY admin sees what the POS accounts are
+   * actually on; everybody else sees what the leads say they were sold.
+   * Said out loud, because the two can differ and a money report that
+   * quietly shows two people different totals is worse than either.
+   */
+  const note = document.getElementById('repSourceNote');
+  if(note){
+    const boarded = LEADS.filter(l => l.pos_merchant_id).length;
+    note.textContent = (currentUser && currentUser.epay_admin)
+      ? (boarded
+          ? boarded + ' account' + (boarded===1?' is':'s are') + ' set up in EPAY POS; those lines come from the account rather than from the lead.'
+          : 'Nothing is set up in EPAY POS yet, so every line here comes from the leads.')
+      : 'From the leads. Lines for accounts already set up in EPAY POS need admin portal access to show.';
+  }
 
   if(items.length === 0){
     document.getElementById('repTableBody').innerHTML = '';
