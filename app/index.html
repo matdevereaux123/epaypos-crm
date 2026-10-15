@@ -14451,7 +14451,9 @@ async function renderPosBilling(){
   const box = document.getElementById('posBillingBox');
   const rows = POS_MERCHANTS.filter(m => m.status !== 'closed');
   const total = rows.reduce((n,m) => n + posMerchantMonthly(m).cents, 0);
-  const unpriced = POS_ADDONS.filter(a => a.price_cents === null);
+  /* Only rows somebody intends to sell. An indicator with no price is not
+     a job anybody has to do; counting it would be a warning nobody can clear. */
+  const unpriced = POS_ADDONS.filter(a => a.price_cents === null && a.sellable !== false);
 
   box.innerHTML = `
     <div class="cards-row" style="margin-bottom:18px;">
@@ -14535,13 +14537,17 @@ async function renderPosBilling(){
       <th>Add-on</th><th>Price</th><th>Needs</th><th></th></tr></thead><tbody>
       ${POS_ADDONS.map(a => `<tr>
         <td class="name-cell">${escAttr(a.label)}${a.blurb?`<div class="sub">${escAttr(a.blurb)}</div>`:''}</td>
-        <td>${a.price_cents===null
+        <td>${a.sellable === false
+          ? `<span class="pill pill-agent-auth">Not sold</span>`
+          : a.price_cents===null
           ? `<span class="pill pill-commission">Price not set</span>`
           : a.price_cents===0 ? `<span class="pill pill-agent-auth">Included</span>`
           : `<strong>${posMoney(a.price_cents)}</strong><span class="sub">/mo</span>`}</td>
         <td class="sub">${a.requires ? escAttr((posAddon(a.requires)||{}).label || a.requires) : '—'}</td>
-        <td style="text-align:right;"><button class="btn btn-xs"
-          onclick="editPosPrice('pos_addons','${a.key}',${a.price_cents===null?'null':a.price_cents},'${escAttr(a.label)}')">Edit</button></td>
+        <td style="text-align:right;">${a.sellable === false
+          ? `<span class="sub">indicator only</span>`
+          : `<button class="btn btn-xs"
+          onclick="editPosPrice('pos_addons','${a.key}',${a.price_cents===null?'null':a.price_cents},'${escAttr(a.label)}')">Edit</button>`}</td>
       </tr>`).join('')}
     </tbody></table></div>`;
 }
@@ -14586,7 +14592,7 @@ function posAddonsPicker(l){
           ${escAttr(p.label)} — ${priceLabel(p.price_cents)}</option>`).join('')}
       </select>
       <div class="label" style="margin-bottom:6px;">Add-ons</div>
-      ${POS_ADDONS.filter(a => a.active !== false).map(a => {
+      ${POS_ADDONS.filter(a => a.active !== false && a.sellable !== false).map(a => {
         const blocked = a.requires && !on.includes(a.requires);
         const unpriced = a.price_cents === null;
         return `<label class="check" style="margin-bottom:4px;${(blocked||unpriced)?'opacity:.55;':''}">
