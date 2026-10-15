@@ -2346,6 +2346,10 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
             Overview
           </button>
+          <button class="nav-item" data-view="posmerchants">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l1-5h16l1 5"/><path d="M4 9v11h16V9"/><path d="M9 20v-6h6v6"/></svg>
+            Merchants
+          </button>
         </div>
 
         <button class="nav-section-toggle" id="paymentsSectionToggle" type="button">
@@ -2996,30 +3000,57 @@
           </div>
         </div>
         <!--
-          The admin portal, in a frame.
+          Built here, not framed.
 
-          A frame rather than the CRM rendering these screens itself, because
-          it is a different application: its own build, its own routing, its
-          own release. Rebuilding it here would be a second copy of the
-          provisioning rules, and the second copy is the one that drifts from
-          what the registers obey.
-
-          Same origin, which is the whole reason it is served from /admin
-          rather than a subdomain — the frame reads the Control Center session
-          already in storage, so nobody signs in again and nothing is passed
-          between the two.
-
-          Loaded lazily: the portal is its own bundle, and a frame that
-          fetched it on every CRM page load would cost everybody who never
-          opens this tab. showView() sets src the first time it is shown.
+          ADR-0017: the portal is CRM pages reading the CRM's own database,
+          because a tab that is somebody else's application inside a box
+          never reads as part of the tool. The cost is that the provisioning
+          rules now exist twice — here and in ops.ts — and the mitigation is
+          that the database is the authority, not either screen.
         -->
-        <div class="panel" style="padding:0;overflow:hidden;">
-          <iframe id="backendFrame" title="EPAY admin portal"
-                  style="display:block;width:100%;height:calc(100vh - 210px);min-height:520px;border:0;"></iframe>
+        <div class="cards-row" id="backendStats"></div>
+        <div class="panel">
+          <div class="panel-head"><h2>Recently boarded</h2></div>
+          <div id="backendRecent"></div>
         </div>
       </section>
 
       <!-- PAYMENTS: INVOICING (placeholder) -->
+      <!-- EPAY BACK END: MERCHANTS -->
+      <section id="view-posmerchants" class="view" style="display:none;">
+        <div class="topbar">
+          <div>
+            <h1>Merchants</h1>
+            <p class="subtext">Every business running on EPAY POS &mdash; their edition, their rate and the hardware in the shop.</p>
+          </div>
+          <div class="topbar-actions">
+            <button class="btn btn-accent btn-sm" onclick="openPosMerchantForm(null)">+ Board a merchant</button>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <div class="row" id="posMerchantFilters" style="gap:6px;"></div>
+            <input id="posMerchantSearch" class="search-input" placeholder="Search name, MID or town"
+                   oninput="renderPosMerchants()" style="max-width:260px;">
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Merchant</th><th>Status</th><th>Edition</th>
+                  <th>Locations</th><th>Devices</th><th>Card price adds</th><th>Rep</th>
+                </tr>
+              </thead>
+              <tbody id="posMerchantsBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <div class="overlay" id="posMerchantOverlay">
+        <div class="drawer" id="posMerchantDrawer"></div>
+      </div>
+
       <section id="view-invoicing" class="view" style="display:none;">
         <div class="topbar">
           <div>
@@ -9421,15 +9452,13 @@ function showView(view, fromHistory){
   }
   /* The same gate as the switch above it. Two different answers to "may
      they open this" is how somebody reaches a view with no way back to it. */
-  if(view === 'backend' && !(currentUser && currentUser.epay_admin)) view = 'dashboard';
-  /*
-   * Fill the frame the first time somebody opens this tab, and never again.
-   * Re-pointing src on every visit would reload the portal and throw away
-   * whatever they were in the middle of.
-   */
-  if(view === 'backend'){
-    const frame = document.getElementById('backendFrame');
-    if(frame && !frame.getAttribute('src')) frame.setAttribute('src', '/admin');
+  if((view === 'backend' || view === 'posmerchants') && !(currentUser && currentUser.epay_admin)) view = 'dashboard';
+  if(view === 'backend' || view === 'posmerchants'){
+    // Loaded on the way in rather than at startup: nobody who never opens
+    // this tab should pay for the query.
+    loadPosMerchants().then(() => {
+      if(view === 'backend') renderBackendOverview(); else renderPosMerchants();
+    });
   }
   if(view === 'internalsales' && !canSeeInternalSales()) view = 'dashboard';
   if(view === 'recruiting'    && !canSeeRecruiting())    view = 'dashboard';
@@ -13109,6 +13138,323 @@ function duplicateUserBadge(u){
 function epayAdminBadge(u){
   if(!u.epay_admin) return '';
   return ` <span class="pill pill-inhouse" title="May open the EPAY admin portal at /admin.">EPAY admin</span>`;
+}
+
+/* ===========================================================================
+   EPAY BACK END — MERCHANTS
+
+   ADR-0017: built here rather than framed, reading the CRM's own tables
+   (migration 96). A merchant is a business already running on EPAY POS —
+   what edition, what rate, which tills are in the shop. A lead is a deal
+   being worked. They are different things and they are different tables.
+
+   The provisioning rules now exist twice: here, and in ops.ts for the
+   register's own back office. That is the known cost of building natively,
+   and the mitigation is that the database is the authority — the constraints
+   and RLS are in one place and both screens obey them.
+   =========================================================================== */
+
+let POS_MERCHANTS = [];
+let posMerchantFilter = 'all';
+let posMerchantsLoaded = false;
+
+const POS_EDITIONS = {
+  'restaurant':       { label:'EPAY Restaurant',      offers:'Tables, courses, split checks, bar tabs, kitchen screen' },
+  'quick-retail':     { label:'EPAY Quick Retail',    offers:'Fast ring by department, scanning, age checks, EBT' },
+  'retail-inventory': { label:'EPAY Retail Inventory',offers:'Item file with variants, stock counts, purchase orders' },
+  'salon':            { label:'EPAY Salon',           offers:'Appointments, turn rotation, tips by technician' },
+  'epay-charge':      { label:'EPAY Charge',          offers:'Key an amount and take the card. No item file' },
+};
+
+const POS_STATUSES = ['onboarding','live','paused','closed'];
+
+function posStatusPill(status){
+  const cls = status === 'live' ? 'pill-agent-auth'
+            : status === 'onboarding' ? 'pill-referral'
+            : status === 'paused' ? 'pill-commission' : 'pill-inhouse';
+  return `<span class="pill ${cls}">${status.charAt(0).toUpperCase()+status.slice(1)}</span>`;
+}
+
+/* 39900 ppm is 3.99%. Integer in the database on purpose — this is money. */
+function ppmPercent(ppm){ return (Number(ppm||0)/10000); }
+function ppmLabel(ppm, fixedCents){
+  const pct = ppmPercent(ppm);
+  const cents = Number(fixedCents || 0);
+  const pctText = pct ? pct.toFixed(2).replace(/\.00$/,'') + '%' : '';
+  const centsText = cents ? (cents/100).toFixed(2).replace(/\.00$/,'') + '\u00A2' : '';
+  /*
+   * "Off" means the program is off, which is only true when neither part is
+   * set. A location on a flat fee with no percentage read as "Off + 0.25c"
+   * — a rate, and a claim there is no rate, in one cell.
+   */
+  if(!pctText && !centsText) return 'Off';
+  if(pctText && centsText) return pctText + ' + ' + centsText;
+  return pctText || (centsText + ' per sale');
+}
+
+async function loadPosMerchants(force){
+  if(posMerchantsLoaded && !force) return POS_MERCHANTS;
+  const { data, error } = await supa
+    .from('pos_merchants')
+    .select('*, pos_locations(*, pos_devices(id, kind, label, last_seen_at))')
+    .order('created_at', { ascending:false });
+  if(error){
+    /*
+     * Said out loud rather than left as an empty table. An empty list and a
+     * failed query look identical, and the difference is whether somebody
+     * spends ten minutes wondering where their merchants went.
+     */
+    showToast('Could not load merchants: ' + error.message, 'error');
+    return POS_MERCHANTS;
+  }
+  POS_MERCHANTS = data || [];
+  posMerchantsLoaded = true;
+  return POS_MERCHANTS;
+}
+
+function posDeviceCount(m){
+  return (m.pos_locations || []).reduce((n,l) => n + ((l.pos_devices || []).length), 0);
+}
+function posPrimaryLocation(m){ return (m.pos_locations || [])[0] || null; }
+
+function renderBackendOverview(){
+  const live = POS_MERCHANTS.filter(m => m.status === 'live').length;
+  const onboarding = POS_MERCHANTS.filter(m => m.status === 'onboarding').length;
+  const devices = POS_MERCHANTS.reduce((n,m) => n + posDeviceCount(m), 0);
+  const noMid = POS_MERCHANTS.filter(m => !m.mid && m.status !== 'closed').length;
+
+  const stat = (label, value, note, attention) => `
+    <div class="stat-card${attention ? ' attention' : ''}">
+      <div class="label">${label}</div>
+      <div class="value">${value}</div>
+      ${note ? `<div class="delta" style="color:var(--slate-500);">${note}</div>` : ''}
+    </div>`;
+
+  document.getElementById('backendStats').innerHTML =
+    stat('Live merchants', live, '') +
+    stat('Onboarding', onboarding, onboarding ? 'not taking cards yet' : '') +
+    stat('Devices', devices, 'across every location') +
+    /* The one that is a job rather than a number: an account set up and
+       waiting on the processor cannot take a payment. */
+    stat('Waiting on a MID', noMid, noMid ? 'cannot process yet' : 'all boarded', noMid > 0);
+
+  const recent = POS_MERCHANTS.slice(0, 6);
+  document.getElementById('backendRecent').innerHTML = recent.length === 0
+    ? `<div class="stub-panel"><h3>No merchants yet</h3>
+         <p style="max-width:440px;margin:0 auto;font-size:13px;line-height:1.6;">
+           Board one from the Merchants page and it appears here.</p></div>`
+    : `<div class="table-wrap"><table><thead><tr>
+         <th>Merchant</th><th>Status</th><th>Edition</th><th>Boarded</th></tr></thead><tbody>` +
+      recent.map(m => {
+        const loc = posPrimaryLocation(m);
+        return `<tr onclick="openPosMerchantForm('${m.id}')">
+          <td class="name-cell">${escAttr(m.dba)}<div class="sub">${escAttr(m.city||'')}${m.city&&m.state?', ':''}${escAttr(m.state||'')}</div></td>
+          <td>${posStatusPill(m.status)}</td>
+          <td>${loc ? escAttr((POS_EDITIONS[loc.edition]||{}).label || loc.edition) : '—'}</td>
+          <td class="sub">${new Date(m.created_at).toLocaleDateString()}</td>
+        </tr>`;
+      }).join('') + `</tbody></table></div>`;
+}
+
+function renderPosMerchants(){
+  const chips = ['all'].concat(POS_STATUSES);
+  document.getElementById('posMerchantFilters').innerHTML = chips.map(c => {
+    const n = c === 'all' ? POS_MERCHANTS.length : POS_MERCHANTS.filter(m => m.status === c).length;
+    return `<button type="button" class="chip" aria-pressed="${posMerchantFilter===c}"
+      onclick="posMerchantFilter='${c}';renderPosMerchants();">${c==='all'?'All':c.charAt(0).toUpperCase()+c.slice(1)} ${n}</button>`;
+  }).join('');
+
+  const q = (document.getElementById('posMerchantSearch').value || '').trim().toLowerCase();
+  const rows = POS_MERCHANTS.filter(m => {
+    if(posMerchantFilter !== 'all' && m.status !== posMerchantFilter) return false;
+    if(!q) return true;
+    return [m.dba, m.legal_name, m.mid, m.city].some(v => (v||'').toLowerCase().includes(q));
+  });
+
+  document.getElementById('posMerchantsBody').innerHTML = rows.length === 0
+    ? `<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--slate-500);">
+         ${POS_MERCHANTS.length === 0 ? 'No merchants yet. Board one to get started.' : 'Nothing matches that.'}</td></tr>`
+    : rows.map(m => {
+        const loc = posPrimaryLocation(m);
+        return `<tr onclick="openPosMerchantForm('${m.id}')">
+          <td class="name-cell">${escAttr(m.dba)}<div class="sub">${m.mid ? 'MID ' + escAttr(m.mid) : 'No MID yet'}</div></td>
+          <td>${posStatusPill(m.status)}</td>
+          <td>${loc ? escAttr((POS_EDITIONS[loc.edition]||{}).label || loc.edition) : '—'}</td>
+          <td>${(m.pos_locations||[]).length}</td>
+          <td>${posDeviceCount(m)}</td>
+          <td>${loc ? ppmLabel(loc.dual_pricing_ppm, loc.dual_pricing_fixed_cents) : '—'}</td>
+          <td class="sub">${escAttr(m.rep || '')}</td>
+        </tr>`;
+      }).join('');
+}
+
+/* ---------------------------------------------------------------------------
+   BOARDING, AND THE ACCOUNT ONCE IT EXISTS
+
+   One drawer, two jobs, because they are the same fields: the form that
+   creates a merchant and the form that edits one. Two screens asking for a
+   dual-pricing rate is how the two come to disagree about what the rate means.
+   --------------------------------------------------------------------------- */
+
+function posEditionCards(selected){
+  return Object.keys(POS_EDITIONS).map(key => {
+    const e = POS_EDITIONS[key];
+    const on = key === selected;
+    return `<button type="button" class="chip" aria-pressed="${on}"
+      style="display:block;text-align:left;padding:10px 12px;border-radius:10px;width:100%;margin-bottom:6px;"
+      onclick="document.getElementById('pmEdition').value='${key}';renderPosEditionCards();">
+      <span style="display:block;font-weight:700;font-size:13px;">${e.label}</span>
+      <span style="display:block;font-size:11px;color:var(--slate-500);margin-top:2px;">${e.offers}</span>
+    </button>`;
+  }).join('');
+}
+function renderPosEditionCards(){
+  const box = document.getElementById('pmEditionCards');
+  if(box) box.innerHTML = posEditionCards(document.getElementById('pmEdition').value);
+}
+
+function openPosMerchantForm(id){
+  const m = id ? POS_MERCHANTS.find(x => x.id === id) : null;
+  const loc = m ? posPrimaryLocation(m) : null;
+  const v = (x) => escAttr(x == null ? '' : String(x));
+
+  document.getElementById('posMerchantDrawer').innerHTML = `
+    <div class="drawer-head">
+      <div><h2>${m ? escAttr(m.dba) : 'Board a merchant'}</h2>
+        ${m ? `<p class="sub" style="margin:2px 0 0;">${m.mid ? 'MID ' + v(m.mid) : 'No MID yet — cannot process until the processor issues one'}</p>` : ''}
+      </div>
+      <button class="drawer-close" onclick="closePosMerchantDrawer()">&times;</button>
+    </div>
+    <div class="drawer-body">
+      <div class="field"><label>Business name <span style="color:var(--slate-300);font-weight:400;">(what customers see)</span></label>
+        <input id="pmDba" value="${v(m&&m.dba)}" placeholder="e.g. Maple Street Grill"></div>
+      <div class="field"><label>Legal name <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
+        <input id="pmLegal" value="${v(m&&m.legal_name)}" placeholder="Maple Street Hospitality LLC"></div>
+
+      <div class="field"><label>Street</label><input id="pmStreet" value="${v(m&&m.street)}"></div>
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;">
+        <div class="field"><label>City</label><input id="pmCity" value="${v(m&&m.city)}"></div>
+        <div class="field"><label>State</label><input id="pmState" value="${v(m&&m.state)}" maxlength="2"></div>
+        <div class="field"><label>ZIP</label><input id="pmZip" value="${v(m&&m.zip)}"></div>
+      </div>
+
+      <div class="field"><label>Business phone</label>
+        <input id="pmPhone" value="${v(m&&m.phone)}" placeholder="(248) 555-0100">
+        <p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">
+          The address and this number print on every receipt. The owner's own number, below, does not.</p></div>
+
+      <h3 style="font-size:14px;margin:22px 0 6px;">Owner</h3>
+      <div class="field"><label>Name</label><input id="pmOwner" value="${v(m&&m.owner_name)}"></div>
+      <div class="field"><label>Email</label><input id="pmOwnerEmail" type="email" value="${v(m&&m.owner_email)}"></div>
+      <div class="field"><label>Phone</label><input id="pmOwnerPhone" value="${v(m&&m.owner_phone)}"></div>
+
+      <h3 style="font-size:14px;margin:22px 0 6px;">Account</h3>
+      <div class="field"><label>Status</label>
+        <select id="pmStatus">${POS_STATUSES.map(s =>
+          `<option value="${s}" ${m && m.status===s ? 'selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('')}</select></div>
+      <div class="field"><label>EPAY rep</label><input id="pmRep" value="${v(m ? m.rep : (currentUser&&currentUser.name))}"></div>
+      <div class="field"><label>Processor MID <span style="color:var(--slate-300);font-weight:400;">(when it is issued)</span></label>
+        <input id="pmMid" value="${v(m&&m.mid)}" placeholder="Leave blank until the processor issues it"></div>
+
+      <h3 style="font-size:14px;margin:22px 0 6px;">First location</h3>
+      <div class="field"><label>Location name <span style="color:var(--slate-300);font-weight:400;">(optional)</span></label>
+        <input id="pmLocName" value="${v(loc&&loc.name)}" placeholder="Same as the business name"></div>
+      <input type="hidden" id="pmEdition" value="${v(loc ? loc.edition : 'restaurant')}">
+      <div class="field"><label>Edition</label><div id="pmEditionCards"></div></div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+        <div class="field"><label>Card price adds (%)</label>
+          <input id="pmPct" value="${loc ? ppmPercent(loc.dual_pricing_ppm) : '3.99'}" inputmode="decimal"></div>
+        <div class="field"><label>Per transaction (&cent;)</label>
+          <input id="pmFixed" value="${loc ? Number(loc.dual_pricing_fixed_cents||0) : '0'}" inputmode="numeric"></div>
+        <div class="field"><label>Sales tax (%)</label>
+          <input id="pmTax" value="${loc ? ppmPercent(loc.tax_ppm) : '6'}" inputmode="decimal"></div>
+      </div>
+      <p style="font-size:10.5px;color:var(--slate-300);margin:2px 0 0;">
+        Enter 0 for the card price to run this location without the dual pricing program.</p>
+
+      <p id="pmProblem" class="error-text" style="display:none;"></p>
+    </div>
+    <div class="drawer-footer">
+      <button class="btn" style="flex:1;" onclick="closePosMerchantDrawer()">Cancel</button>
+      <button class="btn btn-accent" style="flex:1;" onclick="savePosMerchant(${m ? `'${m.id}'` : 'null'})">
+        ${m ? 'Save changes' : 'Board this merchant'}</button>
+    </div>`;
+  renderPosEditionCards();
+  document.getElementById('posMerchantOverlay').classList.add('open');
+}
+
+function closePosMerchantDrawer(){
+  document.getElementById('posMerchantOverlay').classList.remove('open');
+}
+
+function posProblem(text){
+  const el = document.getElementById('pmProblem');
+  el.textContent = text; el.style.display = text ? 'block' : 'none';
+}
+
+/* Percent in, ppm out. Rounded, because 3.99% is 39900 and nothing else. */
+function pctToPpm(raw){
+  const n = Number(String(raw).replace('%','').trim());
+  return isFinite(n) && n >= 0 ? Math.round(n * 10000) : null;
+}
+
+async function savePosMerchant(id){
+  const get = (k) => (document.getElementById(k).value || '').trim();
+  const dba = get('pmDba');
+  if(!dba){ posProblem('What is the business called?'); return; }
+  const pct = pctToPpm(get('pmPct'));
+  const tax = pctToPpm(get('pmTax'));
+  if(pct === null){ posProblem('The card price has to be a number. Enter 0 to run without the program.'); return; }
+  if(tax === null){ posProblem('Sales tax has to be a number.'); return; }
+  const fixed = Math.round(Number(get('pmFixed') || 0));
+  if(!isFinite(fixed) || fixed < 0){ posProblem('Per transaction has to be a whole number of cents.'); return; }
+  posProblem('');
+
+  const merchant = {
+    dba, legal_name: get('pmLegal') || null, status: get('pmStatus'),
+    owner_name: get('pmOwner') || null, owner_email: get('pmOwnerEmail') || null,
+    owner_phone: get('pmOwnerPhone') || null, phone: get('pmPhone') || null,
+    street: get('pmStreet') || null, city: get('pmCity') || null,
+    state: get('pmState') || null, zip: get('pmZip') || null,
+    rep: get('pmRep') || null, mid: get('pmMid') || null,
+  };
+  const location = {
+    name: get('pmLocName') || dba,
+    street: merchant.street, city: merchant.city, state: merchant.state, zip: merchant.zip,
+    edition: get('pmEdition'),
+    dual_pricing_ppm: pct, dual_pricing_fixed_cents: fixed, tax_ppm: tax,
+  };
+
+  if(id){
+    const { error } = await supa.from('pos_merchants').update(merchant).eq('id', id);
+    if(error){ posProblem('Could not save: ' + error.message); return; }
+    const existing = posPrimaryLocation(POS_MERCHANTS.find(x => x.id === id));
+    if(existing){
+      const { error: le } = await supa.from('pos_locations').update(location).eq('id', existing.id);
+      if(le){ posProblem('Saved the business, but not the location: ' + le.message); return; }
+    }
+    showToast('Saved.', 'success');
+  } else {
+    merchant.created_by = currentUser && currentUser.id ? currentUser.id : null;
+    const { data, error } = await supa.from('pos_merchants').insert(merchant).select().single();
+    if(error){ posProblem('Could not board this merchant: ' + error.message); return; }
+    /*
+     * The location is a second write, so it can fail on its own. Said
+     * plainly rather than swallowed: a merchant with no location is an
+     * account nobody can put a till on, and somebody has to know.
+     */
+    const { error: le } = await supa.from('pos_locations').insert({ ...location, merchant_id: data.id });
+    if(le){
+      showToast('Boarded, but the location did not save: ' + le.message, 'error');
+    } else {
+      showToast('Boarded ' + dba + '.', 'success');
+    }
+  }
+
+  closePosMerchantDrawer();
+  await loadPosMerchants(true);
+  renderPosMerchants();
 }
 
 function renderUsersTable(){
