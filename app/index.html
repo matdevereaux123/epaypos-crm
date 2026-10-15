@@ -565,6 +565,25 @@
   .btn{padding:10px 16px;border-radius:8px;border:1px solid var(--line);background:var(--card);font-size:13.5px;font-weight:600;color:var(--navy-700);}
   .btn:hover{border-color:var(--brand-accent-2);}
 
+  /*
+   * A line of controls.
+   *
+   * Every use of this in the EPAY Back End sets `gap` inline, which does
+   * nothing without a flex container — and there was no rule here at all,
+   * so all of them fell back to inline layout. Buttons and chips sat
+   * touching each other, spans carrying `align-self:center` dropped onto
+   * their own line, and anything that wrapped misaligned on the baseline,
+   * which is what reads as overlapping.
+   *
+   * Wrapping by default, because the merchant sheet is 440px wide and
+   * several of these rows are wider than that. A row that overflows a
+   * drawer puts a button under the edge of the screen.
+   */
+  .row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0;}
+  /* Buttons and chips in a row never squeeze their own text onto two
+     lines — a two-line button is the thing that makes a row look broken. */
+  .row > .btn, .row > .chip{flex:0 0 auto;white-space:nowrap;}
+
   /* Training walkthrough */
   .training-card{
     position:relative;width:min(520px,calc(100vw - 32px));max-height:calc(100vh - 48px);overflow-y:auto;
@@ -11875,7 +11894,7 @@ document.getElementById('fuSaveBtn').addEventListener('click', async function(){
   } else {
     const l = LEADS.find(x=>x.id===recordId);
     if(!l) return;
-    const { error } = updateRow('leads', recordId, { general_follow_up_date: date, general_follow_up_note: note });
+    const { error } = await updateRow('leads', recordId, { general_follow_up_date: date, general_follow_up_note: note });
     if(error){ alert('Could not save: ' + error.message); return; }
     l.general_follow_up_date = date;
     l.general_follow_up_note = note;
@@ -14134,16 +14153,121 @@ function posBoardFromLeadHtml(l){
       Setting this up in EPAY POS needs admin portal access.</p>`;
   }
   if(l.pos_merchant_id){
+    /*
+     * Ticked and fixed. Unticking would have to mean deleting the account,
+     * and an account with tills paired to it is not something a stray click
+     * on a lead should be able to remove. Closing one is a decision taken in
+     * the back end, where whoever takes it can see what is attached to it.
+     */
     return `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);">
-      <p style="font-size:11.5px;color:var(--green);margin:0 0 7px;">&#10003; Set up in EPAY POS</p>
+      <label class="check" style="margin:0 0 7px;cursor:default;">
+        <input type="checkbox" checked disabled>
+        <span style="font-size:12px;color:var(--green);font-weight:600;">Set up in EPAY POS</span>
+      </label>
       <button class="btn" style="width:100%;" onclick="openPosMerchantFromLead('${l.pos_merchant_id}')">
         Open the POS account</button></div>`;
   }
   return `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);">
-    <p style="font-size:11.5px;color:var(--slate-500);margin:0 0 7px;">
-      Not set up in EPAY POS yet. This creates the account and its first location
-      from what is already on this lead.</p>
-    <button class="btn" style="width:100%;" onclick="boardLeadInPos('${l.id}')">Set up in EPAY POS &rarr;</button></div>`;
+    <label class="check" style="margin:0 0 6px;">
+      <input type="checkbox" id="posBoardCheck_${l.id}" onchange="boardLeadInPos('${l.id}')">
+      <span style="font-size:12px;font-weight:600;">Set up in EPAY POS</span>
+    </label>
+    <p style="font-size:11.5px;color:var(--slate-500);margin:0;">
+      Creates the account and its first location, and copies everything already on this
+      lead and its application across. Ticks itself when an EPAY product is added.</p></div>`;
+}
+
+/* ---------------------------------------------------------------------------
+   WHAT CARRIES ACROSS
+
+   Everything the lead and its application hold that an EPAY account has a
+   place for. Somebody who typed a legal name, a tax id and an address into
+   the pipeline should not type them again into the portal: a second typing
+   is a second chance to spell it differently, and the two records are then
+   about the same business without agreeing about it.
+
+   Blank rather than a guess. A field nobody filled in stays null so the
+   setup board can say it is missing — an invented value is worse than an
+   absent one, because nothing flags it.
+   --------------------------------------------------------------------------- */
+
+/** The first non-empty of its arguments, trimmed, or null. */
+function firstFilled(){
+  for(const v of arguments){
+    if(typeof v === 'string' && v.trim() !== '') return v.trim();
+    if(typeof v === 'number' && isFinite(v)) return String(v);
+  }
+  return null;
+}
+
+/* An address typed as one line, split into the four columns the POS keeps it
+   in. Best effort, and deliberately so: the whole string is kept as the
+   street when it does not parse, which leaves somebody a line to correct
+   rather than four empty boxes to retype. */
+function splitAddress(text){
+  const out = { street:null, city:null, state:null, zip:null };
+  if(!text || typeof text !== 'string') return out;
+  const parts = text.split(',').map(x => x.trim()).filter(Boolean);
+  if(parts.length < 2){ out.street = text.trim() || null; return out; }
+  out.street = parts[0];
+  out.city = parts[1] || null;
+  const tail = (parts[2] || '').trim();
+  const m = tail.match(/^([A-Za-z]{2})\s*([\d-]{5,10})?$/);
+  if(m){ out.state = m[1].toUpperCase(); out.zip = m[2] || null; }
+  else if(tail){ out.state = tail; }
+  if(!out.zip){
+    const z = text.match(/\b(\d{5}(?:-\d{4})?)\b/);
+    if(z) out.zip = z[1];
+  }
+  return out;
+}
+
+/* The application attached to this lead, where there is one. Applications
+   link by linked_account_id; the fields they collect mostly land on the lead
+   itself, so this is a fallback for the few that do not. */
+function applicationForLead(leadId){
+  if(typeof APPLICATIONS === 'undefined' || !Array.isArray(APPLICATIONS)) return null;
+  return APPLICATIONS.find(a => a.linked_account_id === leadId) || null;
+}
+
+/** Everything that carries from a lead (and its application) to an account. */
+function posMerchantFromLead(l, app){
+  const a = app || {};
+  const raw = (a.raw_payload && typeof a.raw_payload === 'object') ? a.raw_payload : {};
+  const addr = splitAddress(firstFilled(l.business_address, raw.business_address, l.personal_address));
+  return {
+    dba: firstFilled(l.dba_name, l.business_name, a.business_name) || 'Unnamed',
+    legal_name: firstFilled(l.legal_business_name, raw.legal_business_name),
+    status: 'onboarding',
+    owner_name: firstFilled(
+      [l.owner_first_name, l.owner_last_name].filter(Boolean).join(' '),
+      l.contact_name, a.contact_name),
+    owner_email: firstFilled(l.email, a.email, raw.owner_email),
+    owner_phone: firstFilled(l.phone, a.phone),
+    // The business's own line and inbox, which are not the owner's. Receipts
+    // and disputes use these, so getting them mixed up points a cardholder
+    // at somebody's mobile.
+    phone: firstFilled(l.business_phone, raw.business_phone),
+    website: firstFilled(l.website, raw.website),
+    street: addr.street, city: addr.city, state: addr.state, zip: addr.zip,
+    rep: (currentUser && currentUser.name) || null,
+    // Usually not issued yet. Carried if it is.
+    mid: firstFilled(l.mid, l.mid_number),
+    tax_id: firstFilled(l.business_tax_id, raw.business_tax_id),
+    created_by: (currentUser && currentUser.id) || null,
+  };
+}
+
+/* Which edition the lead already points at, where it says. `pos_plan` is the
+   sales side's word for it; anything unrecognised stays on the default
+   rather than being guessed into the wrong product. */
+function posEditionFromLead(l){
+  const said = (l.pos_plan || '').toLowerCase();
+  if(said.includes('salon') || said.includes('nail') || said.includes('hair')) return 'salon';
+  if(said.includes('retail') && said.includes('express')) return 'quick-retail';
+  if(said.includes('retail')) return 'retail-inventory';
+  if(said.includes('terminal') || said.includes('charge')) return 'epay-charge';
+  return 'restaurant';
 }
 
 async function openPosMerchantFromLead(merchantId){
@@ -14153,31 +14277,42 @@ async function openPosMerchantFromLead(merchantId){
   openPosMerchant(merchantId);
 }
 
-async function boardLeadInPos(leadId){
+async function boardLeadInPos(leadId, auto){
   const l = LEADS.find(x => x.id === leadId);
   if(!l) return;
-  if(!confirm('Set ' + (l.business_name||'this lead') + ' up in EPAY POS?\n\nIt creates the account and its first location from what is on this lead. Nothing about the lead changes.')) return;
+  /*
+   * Never twice. The box can be ticked by hand and ticked again by adding a
+   * product, and two accounts for one business is the kind of mess somebody
+   * has to unpick by hand later — with tills possibly paired to the wrong
+   * one.
+   */
+  if(l.pos_merchant_id){ if(!auto) showToast('Already set up in EPAY POS.', 'success'); return; }
+  if(!(currentUser && currentUser.epay_admin)){
+    showToast('Setting this up in EPAY POS needs admin portal access.', 'error');
+    if(typeof openLeadDetail === 'function'){ refreshActiveView(); openLeadDetail(leadId); }
+    return;
+  }
+  // Asked when somebody ticked it. Not asked when adding a product ticked
+  // it for them — they already said what they wanted by adding the product.
+  if(!auto && !confirm('Set ' + (l.business_name||'this lead') + ' up in EPAY POS?\n\nIt creates the account and its first location, and copies across what is on this lead and its application. Nothing about the lead changes.')){
+    const box = document.getElementById('posBoardCheck_' + leadId);
+    if(box) box.checked = false;
+    return;
+  }
 
-  const merchant = {
-    dba: l.business_name || 'Unnamed',
-    legal_name: l.legal_name || null,
-    status: 'onboarding',
-    owner_name: l.contact_name || null,
-    owner_email: l.email || null,
-    owner_phone: l.phone || null,
-    street: l.address || null, city: l.city || null, state: l.state || null, zip: l.zip || null,
-    rep: (currentUser && currentUser.name) || null,
-    // Carried across only if it is already here. Usually it is not yet.
-    mid: l.mid || null,
-    created_by: (currentUser && currentUser.id) || null,
-  };
+  const merchant = posMerchantFromLead(l, applicationForLead(leadId));
   const { data, error } = await supa.from('pos_merchants').insert(merchant).select().single();
   if(error){ showToast('Could not set it up: ' + error.message, 'error'); return; }
 
   const { error: le } = await supa.from('pos_locations').insert({
     merchant_id: data.id, name: merchant.dba,
     street: merchant.street, city: merchant.city, state: merchant.state, zip: merchant.zip,
-    edition: 'restaurant', dual_pricing_ppm: 0, dual_pricing_fixed_cents: 0, tax_ppm: 0,
+    // What the lead already says they are buying, where it says. The rate is
+    // left at zero on purpose: dual pricing is the commercial heart of the
+    // deal and a number carried over from a sales note is not the number to
+    // start charging cardholders on.
+    edition: posEditionFromLead(l),
+    add_ons: [], dual_pricing_ppm: 0, dual_pricing_fixed_cents: 0, tax_ppm: 0,
   });
   if(le) showToast('Account created, but its location did not: ' + le.message, 'error');
 
@@ -14185,19 +14320,47 @@ async function boardLeadInPos(leadId){
    * The link last, and reported separately if it fails. An account that
    * exists with no link is recoverable — somebody can join them by hand. An
    * account nobody can find because the link silently failed is not.
+   *
+   * Through updateRow, because a refused UPDATE comes back looking exactly
+   * like a successful one: the lead would show as linked until the next
+   * refresh, and the next tick would board the business a second time.
    */
-  const { error: ue } = await supa.from('leads').update({ pos_merchant_id: data.id }).eq('id', leadId);
+  const { error: ue } = await updateRow('leads', leadId, { pos_merchant_id: data.id });
   if(ue){
     showToast('Set up, but the lead did not link to it: ' + ue.message, 'error');
   } else {
     l.pos_merchant_id = data.id;
-    showToast('Set up in EPAY POS. Edition and rate still need setting.', 'success');
+    showToast(auto
+      ? 'EPAY product added — set up in EPAY POS. Rate still needs setting.'
+      : 'Set up in EPAY POS. Edition and rate still need setting.', 'success');
   }
   posMerchantsLoaded = false;
   // The same pair saveMid uses, so the panel redraws the way every other
   // stage action redraws it.
   refreshActiveView();
   openLeadDetail(leadId);
+}
+
+/*
+ * An EPAY product on a lead means that business is going on EPAY POS, so the
+ * box ticks itself.
+ *
+ * Called after somebody saves the stage panel, not on render. A lead that has
+ * had products on it for months must not get an account the moment anybody
+ * opens it — boarding is a thing somebody does, and this is the moment they
+ * did it.
+ */
+function leadHasEpayProduct(l){
+  const apps = Array.isArray(l.epay_apps_selected) ? l.epay_apps_selected : [];
+  const integrations = Array.isArray(l.integrations_selected) ? l.integrations_selected : [];
+  return apps.length > 0 || integrations.length > 0;
+}
+
+async function autoBoardIfEpayProducts(l){
+  if(!l || l.pos_merchant_id) return;
+  if(!(currentUser && currentUser.epay_admin)) return;
+  if(!leadHasEpayProduct(l)) return;
+  await boardLeadInPos(l.id, true);
 }
 
 /* ---------------------------------------------------------------------------
@@ -16015,7 +16178,7 @@ async function toggleAccountCollections(id, checked){
     fields.collections_marked_at = new Date().toISOString().slice(0,10);
     fields.collections_marked_by = currentUser.email;
   }
-  const { error } = updateRow('leads', id, fields);
+  const { error } = await updateRow('leads', id, fields);
   if(error){ alert('Could not update collections status: ' + error.message); return; }
   Object.assign(l, fields);
   openLeadDetail(id);
@@ -16026,7 +16189,7 @@ async function saveAccountCollectionsNote(id){
   if(!l) return;
   const noteInput = document.getElementById('acCollectionsNote');
   const note = noteInput ? noteInput.value.trim() : '';
-  const { error } = updateRow('leads', id, { collections_note: note });
+  const { error } = await updateRow('leads', id, { collections_note: note });
   if(error){ alert('Could not save collections note: ' + error.message); return; }
   l.collections_note = note;
   refreshActiveView();
@@ -16117,7 +16280,7 @@ async function saveAccountDetails(id){
   // set_lead_dob with the other sensitive fields instead.
   const dobInput = document.getElementById('acDob');
 
-  const { error } = updateRow('leads', id, fields);
+  const { error } = await updateRow('leads', id, fields);
   if(error){ alert('Could not save: ' + error.message); return; }
   Object.assign(l, fields);
 
@@ -16594,7 +16757,7 @@ function atmStagePanelHtml(l){
 async function saveAtmTid(id){
   const l = LEADS.find(x=>x.id===id); if(!l) return;
   const tid = document.getElementById('atmTid').value.trim();
-  const { error } = updateRow('leads', id, { tid });
+  const { error } = await updateRow('leads', id, { tid });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.tid = tid;
   renderLeadsBoard();
@@ -16604,7 +16767,7 @@ async function saveAtmCommission(id){
   const l = LEADS.find(x=>x.id===id); if(!l) return;
   const commission_type = document.getElementById('atmCommissionType').value;
   const commission_value = document.getElementById('atmCommissionValue').value.trim();
-  const { error } = updateRow('leads', id, { commission_type, commission_value });
+  const { error } = await updateRow('leads', id, { commission_type, commission_value });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.commission_type = commission_type;
   l.commission_value = commission_value;
@@ -16624,7 +16787,7 @@ async function saveAtmInstallDate(id){
     converted_to_account = true;
     converted_at = new Date().toISOString().slice(0,10);
   }
-  const { error } = updateRow('leads', id, { installation_date, converted_to_account, converted_at });
+  const { error } = await updateRow('leads', id, { installation_date, converted_to_account, converted_at });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.installation_date = installation_date;
   l.converted_to_account = converted_to_account;
@@ -16794,7 +16957,7 @@ function followupStagePanel(l, n){
 async function saveLeadPartnerLink(id, partnerId){
   const l = LEADS.find(x=>x.id===id); if(!l) return;
   const linked_partner_id = partnerId || null;
-  const { error } = updateRow('leads', id, { linked_partner_id });
+  const { error } = await updateRow('leads', id, { linked_partner_id });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.linked_partner_id = linked_partner_id;
   refreshActiveView();
@@ -16825,7 +16988,7 @@ async function saveLeadBrand(id, brand){
     }
   }
 
-  const { error } = updateRow('leads', id, { brand });
+  const { error } = await updateRow('leads', id, { brand });
   if(error){
     alert('Could not change the brand: ' + error.message);
     const sel = document.getElementById('leadBrandSelect');
@@ -16954,7 +17117,7 @@ async function saveInboundLeadFields(id){
     const other = (document.getElementById('spLeadSourceOtherInput') || {}).value || '';
     if(other.trim()) lead_source = 'Other \u2014 ' + other.trim();
   }
-  const { error } = updateRow('leads', id, { lead_source });
+  const { error } = await updateRow('leads', id, { lead_source });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.lead_source = lead_source;
   unlockedLeadSourceIds.delete(id);
@@ -16978,6 +17141,18 @@ async function saveOutreachFields(id){
     extra_subscriptions: l.extra_subscriptions,
   });
   if(error){ alert('Could not save: ' + error.message); return; }
+  /*
+   * An EPAY product on the lead means this business is going on EPAY POS, so
+   * the box ticks itself and the account is created here. After the save, so
+   * it is only ever done for products that actually stuck; and only here,
+   * when somebody pressed save, rather than on render — a lead that has had
+   * products on it for months must not get an account the moment anybody
+   * opens it.
+   *
+   * It returns without doing anything if the lead is already linked, so
+   * saving this panel again is not a second account.
+   */
+  await autoBoardIfEpayProducts(l);
   refreshActiveView();
   openLeadDetail(id);
 }
@@ -16986,7 +17161,7 @@ async function saveFollowupFields(id, n){
   const dateField = 'followup'+n+'_date', ideaField = 'followup'+n+'_idea';
   const dateVal = document.getElementById('spFuDate').value || null;
   const ideaVal = document.getElementById('spFuIdea').value.trim();
-  const { error } = updateRow('leads', id, { [dateField]: dateVal, [ideaField]: ideaVal });
+  const { error } = await updateRow('leads', id, { [dateField]: dateVal, [ideaField]: ideaVal });
   if(error){ alert('Could not save: ' + error.message); return; }
   l[dateField] = dateVal;
   l[ideaField] = ideaVal;
@@ -17013,7 +17188,7 @@ async function savePendingCadence(id){
   const val = document.getElementById('spPendingCadence').value;
   const pending_cadence_days = val ? parseInt(val,10) : null;
   const pending_next_reminder = pending_cadence_days ? addDays(null, pending_cadence_days) : null;
-  const { error } = updateRow('leads', id, { pending_cadence_days, pending_next_reminder });
+  const { error } = await updateRow('leads', id, { pending_cadence_days, pending_next_reminder });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.pending_cadence_days = pending_cadence_days;
   l.pending_next_reminder = pending_next_reminder;
@@ -17045,7 +17220,7 @@ async function saveApplicationLinkChoice(id){
   const l = LEADS.find(x=>x.id===id); if(!l) return;
   const application_link_choice = document.getElementById('spAppLinkChoice').value;
   const application_link_custom = document.getElementById('spAppLinkCustomInput') ? document.getElementById('spAppLinkCustomInput').value.trim() : '';
-  const { error } = updateRow('leads', id, { application_link_choice, application_link_custom });
+  const { error } = await updateRow('leads', id, { application_link_choice, application_link_custom });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.application_link_choice = application_link_choice;
   l.application_link_custom = application_link_custom;
@@ -17055,7 +17230,7 @@ async function saveApplicationLinkChoice(id){
 async function saveAppId(id){
   const l = LEADS.find(x=>x.id===id); if(!l) return;
   const app_id = document.getElementById('spAppId').value.trim();
-  const { error } = updateRow('leads', id, { app_id });
+  const { error } = await updateRow('leads', id, { app_id });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.app_id = app_id;
   refreshActiveView();
@@ -17067,7 +17242,7 @@ async function convertToPostBoarding(id){
 async function saveMid(id){
   const l = LEADS.find(x=>x.id===id); if(!l) return;
   const mid = document.getElementById('spMid').value.trim();
-  const { error } = updateRow('leads', id, { mid });
+  const { error } = await updateRow('leads', id, { mid });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.mid = mid;
   refreshActiveView();
@@ -17083,7 +17258,7 @@ async function saveEquipmentShipment(id){
     tracking_number: in_person_install ? '' : document.getElementById('spTrackingNumber').value.trim(),
   };
   if(in_person_install){ fields.tracking_email_sent = false; fields.tracking_email_sent_at = null; }
-  const { error } = updateRow('leads', id, fields);
+  const { error } = await updateRow('leads', id, fields);
   if(error){ alert('Could not save: ' + error.message); return; }
   Object.assign(l, fields);
   refreshActiveView();
@@ -17131,7 +17306,7 @@ async function sendTrackingEmail(id){
   if(!l) return;
   const tracking_email_sent = true;
   const tracking_email_sent_at = new Date().toISOString().slice(0,10);
-  const { error } = updateRow('leads', id, { tracking_email_sent, tracking_email_sent_at });
+  const { error } = await updateRow('leads', id, { tracking_email_sent, tracking_email_sent_at });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.tracking_email_sent = tracking_email_sent;
   l.tracking_email_sent_at = tracking_email_sent_at;
@@ -17206,7 +17381,7 @@ async function sendAccountWelcomeEmail(id){
 
   const welcome_email_sent = true;
   const welcome_email_sent_at = new Date().toISOString().slice(0,10);
-  const { error } = updateRow('leads', id, { welcome_email_sent, welcome_email_sent_at });
+  const { error } = await updateRow('leads', id, { welcome_email_sent, welcome_email_sent_at });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.welcome_email_sent = welcome_email_sent;
   l.welcome_email_sent_at = welcome_email_sent_at;
@@ -17243,7 +17418,7 @@ async function addShipment(id){
     emailed: false,
     emailed_at: null,
   }, ...(l.shipments || [])];
-  const { error } = updateRow('leads', id, { shipments });
+  const { error } = await updateRow('leads', id, { shipments });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.shipments = shipments;
   openLeadDetail(id);
@@ -17254,7 +17429,7 @@ async function removeShipment(id, shipmentId){
   if(!l || !l.shipments) return;
   if(!confirm('Delete this shipment entry? This can\'t be undone.')) return;
   const shipments = l.shipments.filter(s => s.id !== shipmentId);
-  const { error } = updateRow('leads', id, { shipments });
+  const { error } = await updateRow('leads', id, { shipments });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.shipments = shipments;
   openLeadDetail(id);
@@ -17302,7 +17477,7 @@ async function markShipmentEmailed(id, shipmentId){
   const l = LEADS.find(x => x.id === id);
   if(!l || !l.shipments) return;
   const shipments = l.shipments.map(s => s.id === shipmentId ? Object.assign({}, s, { emailed: true, emailed_at: new Date().toISOString().slice(0,10) }) : s);
-  const { error } = updateRow('leads', id, { shipments });
+  const { error } = await updateRow('leads', id, { shipments });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.shipments = shipments;
   closeEmailPreviewDrawer();
@@ -17479,7 +17654,7 @@ async function sendApplicationEmail(id){
   if(!l) return;
   const application_email_sent = true;
   const application_email_sent_at = new Date().toISOString().slice(0,10);
-  const { error } = updateRow('leads', id, { application_email_sent, application_email_sent_at });
+  const { error } = await updateRow('leads', id, { application_email_sent, application_email_sent_at });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.application_email_sent = application_email_sent;
   l.application_email_sent_at = application_email_sent_at;
