@@ -2337,10 +2337,15 @@
           </button>
         </div>
 
-        <button class="nav-section-toggle" id="backendSectionToggle" type="button" style="display:none;">
-          <span>EPAY Back End</span>
-          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-        </button>
+        <!--
+          No heading and no chevron.
+
+          Switching to EPAY Back End hides every other nav item, so the whole
+          column is already this one thing — a collapsible header over the
+          only section on screen is a control whose single purpose is to hide
+          what somebody just asked for. The items stand on their own and stay
+          open.
+        -->
         <div class="nav-collapsible" id="backendSectionItems" style="display:none;">
           <button class="nav-item" data-view="backend">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
@@ -5465,13 +5470,11 @@ function setBrand(brand){
   // so they step aside rather than showing records that have nothing to do
   // with what is on screen.
   const inBackend = brand === 'backend';
-  const backendToggle = document.getElementById('backendSectionToggle');
   const backendItems = document.getElementById('backendSectionItems');
-  if(backendToggle) backendToggle.style.display = inBackend ? 'flex' : 'none';
-  if(backendItems)  backendItems.style.display  = inBackend ? 'block' : 'none';
+  if(backendItems) backendItems.style.display = inBackend ? 'block' : 'none';
   document.querySelectorAll('.sidebar .nav-item, .sidebar .nav-section-toggle, .sidebar .nav-section-label, .sidebar .nav-collapsible')
     .forEach(el => {
-      if(el === backendToggle || el === backendItems || backendItems.contains(el)) return;
+      if(el === backendItems || backendItems.contains(el)) return;
       el.dataset.hiddenForBackend = inBackend ? '1' : '';
       if(inBackend) el.style.display = 'none';
     });
@@ -13247,7 +13250,7 @@ function renderBackendOverview(){
          <th>Merchant</th><th>Status</th><th>Edition</th><th>Boarded</th></tr></thead><tbody>` +
       recent.map(m => {
         const loc = posPrimaryLocation(m);
-        return `<tr onclick="openPosMerchantForm('${m.id}')">
+        return `<tr onclick="openPosMerchant('${m.id}')">
           <td class="name-cell">${escAttr(m.dba)}<div class="sub">${escAttr(m.city||'')}${m.city&&m.state?', ':''}${escAttr(m.state||'')}</div></td>
           <td>${posStatusPill(m.status)}</td>
           <td>${loc ? escAttr((POS_EDITIONS[loc.edition]||{}).label || loc.edition) : '—'}</td>
@@ -13276,7 +13279,7 @@ function renderPosMerchants(){
          ${POS_MERCHANTS.length === 0 ? 'No merchants yet. Board one to get started.' : 'Nothing matches that.'}</td></tr>`
     : rows.map(m => {
         const loc = posPrimaryLocation(m);
-        return `<tr onclick="openPosMerchantForm('${m.id}')">
+        return `<tr onclick="openPosMerchant('${m.id}')">
           <td class="name-cell">${escAttr(m.dba)}<div class="sub">${m.mid ? 'MID ' + escAttr(m.mid) : 'No MID yet'}</div></td>
           <td>${posStatusPill(m.status)}</td>
           <td>${loc ? escAttr((POS_EDITIONS[loc.edition]||{}).label || loc.edition) : '—'}</td>
@@ -13454,6 +13457,204 @@ async function savePosMerchant(id){
 
   closePosMerchantDrawer();
   await loadPosMerchants(true);
+  renderPosMerchants();
+}
+
+/* ---------------------------------------------------------------------------
+   ONE MERCHANT
+
+   A sheet with tabs rather than five pages, because everything here is about
+   the same business and moving between "what edition are they on" and "how
+   many tills" should not be a navigation.
+
+   Opening a row shows this. Editing the business itself is still the boarding
+   drawer — the same fields that created it.
+   --------------------------------------------------------------------------- */
+
+let posDetailId = null;
+let posDetailTab = 'overview';
+let POS_NOTES = [];
+
+const POS_DEVICE_KINDS = {
+  'station':'Full station', 'mini':'Mini station', 'handheld':'Handheld',
+  'tablet':'Tablet', 'kds':'Kitchen display', 'card-terminal':'Card terminal',
+};
+
+async function openPosMerchant(id, tab){
+  posDetailId = id;
+  posDetailTab = tab || 'overview';
+  const { data } = await supa.from('pos_merchant_notes')
+    .select('*').eq('merchant_id', id).order('created_at', { ascending:false });
+  POS_NOTES = data || [];
+  renderPosDetail();
+  document.getElementById('posMerchantOverlay').classList.add('open');
+}
+
+function posDetailMerchant(){ return POS_MERCHANTS.find(m => m.id === posDetailId) || null; }
+
+function renderPosDetail(){
+  const m = posDetailMerchant();
+  if(!m) return;
+  const tabs = [
+    ['overview','Overview'], ['plan','Locations and plan'],
+    ['devices','Stations'], ['log','Relationship'],
+  ];
+  document.getElementById('posMerchantDrawer').innerHTML = `
+    <div class="drawer-head">
+      <div>
+        <h2>${escAttr(m.dba)} ${posStatusPill(m.status)}</h2>
+        <p class="sub" style="margin:2px 0 0;">
+          ${escAttr(m.legal_name || m.dba)}${m.mid ? ' &middot; MID ' + escAttr(m.mid) : ' &middot; no MID yet'}
+          ${m.rep ? ' &middot; rep ' + escAttr(m.rep) : ''}</p>
+      </div>
+      <button class="drawer-close" onclick="closePosMerchantDrawer()">&times;</button>
+    </div>
+    <div class="drawer-body" style="padding-top:0;">
+      <div class="row" style="gap:6px;margin:0 0 16px;border-bottom:1px solid var(--line);padding:10px 0;">
+        ${tabs.map(([k,label]) => `<button type="button" class="chip" aria-pressed="${posDetailTab===k}"
+            onclick="posDetailTab='${k}';renderPosDetail();">${label}</button>`).join('')}
+      </div>
+      ${posDetailTab === 'overview' ? posDetailOverview(m)
+        : posDetailTab === 'plan' ? posDetailPlan(m)
+        : posDetailTab === 'devices' ? posDetailDevices(m)
+        : posDetailLog(m)}
+    </div>
+    <div class="drawer-footer">
+      <button class="btn" style="flex:1;" onclick="openPosMerchantForm('${m.id}')">Edit the business</button>
+      <button class="btn btn-accent" style="flex:1;" onclick="closePosMerchantDrawer()">Done</button>
+    </div>`;
+}
+
+function posDetailOverview(m){
+  const loc = posPrimaryLocation(m);
+  const row = (k,v) => `<div style="display:flex;justify-content:space-between;gap:16px;padding:7px 0;border-bottom:1px solid var(--line);">
+    <span style="font-size:12px;color:var(--slate-500);">${k}</span>
+    <span style="font-size:13px;font-weight:600;text-align:right;word-break:break-word;">${v || '—'}</span></div>`;
+  return `
+    ${!m.mid ? `<div class="stat-card attention" style="margin-bottom:14px;">
+      <div class="label">Waiting on a MID</div>
+      <div style="font-size:13px;line-height:1.5;margin-top:4px;">
+        The processor has not issued one yet, so this account cannot take a card.
+        Everything else can be set up while you wait.</div></div>` : ''}
+    ${row('Owner', escAttr(m.owner_name))}
+    ${row('Email', escAttr(m.owner_email))}
+    ${row('Phone', escAttr(m.owner_phone))}
+    ${row('Business phone', escAttr(m.phone))}
+    ${row('Address', [m.street, m.city, m.state, m.zip].filter(Boolean).map(escAttr).join(', '))}
+    ${row('Edition', loc ? escAttr((POS_EDITIONS[loc.edition]||{}).label || loc.edition) : '')}
+    ${row('Card price adds', loc ? ppmLabel(loc.dual_pricing_ppm, loc.dual_pricing_fixed_cents) : '')}
+    ${row('Sales tax', loc ? ppmPercent(loc.tax_ppm) + '%' : '')}
+    ${row('Boarded', new Date(m.created_at).toLocaleDateString())}`;
+}
+
+function posDetailPlan(m){
+  const locs = m.pos_locations || [];
+  return `
+    <p style="font-size:12px;color:var(--slate-500);margin:0 0 12px;">
+      What each location sells and what the card price adds. A merchant with one shop has one row.</p>
+    ${locs.length === 0 ? `<div class="stub-panel"><h3>No locations</h3>
+        <p style="font-size:13px;">Nothing can be set up until there is one.</p></div>` :
+      locs.map(l => `
+      <div style="border:1px solid var(--line);border-radius:10px;padding:13px;margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;">
+          <strong style="font-size:14px;">${escAttr(l.name)}</strong>
+          <span class="pill pill-inhouse">${escAttr((POS_EDITIONS[l.edition]||{}).label || l.edition)}</span>
+        </div>
+        <p style="font-size:11.5px;color:var(--slate-500);margin:6px 0 0;">
+          ${escAttr((POS_EDITIONS[l.edition]||{}).offers || '')}</p>
+        <div style="display:flex;gap:18px;margin-top:10px;font-size:12.5px;">
+          <span><strong>${ppmLabel(l.dual_pricing_ppm, l.dual_pricing_fixed_cents)}</strong>
+            <span style="color:var(--slate-500);"> card price</span></span>
+          <span><strong>${ppmPercent(l.tax_ppm)}%</strong>
+            <span style="color:var(--slate-500);"> sales tax</span></span>
+          <span><strong>${(l.pos_devices||[]).length}</strong>
+            <span style="color:var(--slate-500);"> ${(l.pos_devices||[]).length===1?'station':'stations'}</span></span>
+        </div>
+      </div>`).join('')}`;
+}
+
+function posDetailDevices(m){
+  const locs = m.pos_locations || [];
+  return `
+    <p style="font-size:12px;color:var(--slate-500);margin:0 0 12px;">
+      Every till, screen and card terminal in the shop. A station's number prints on its checks,
+      so adding one here is what a device pairs against.</p>
+    ${locs.map(l => `
+      <div style="margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;">
+          <strong style="font-size:13px;">${escAttr(l.name)}</strong>
+          <button class="btn btn-xs" onclick="addPosDevice('${l.id}')">+ Add</button>
+        </div>
+        ${(l.pos_devices||[]).length === 0
+          ? `<p style="font-size:12px;color:var(--slate-500);margin:0;">Nothing here yet.</p>`
+          : `<div class="table-wrap"><table><thead><tr>
+               <th>Device</th><th>Type</th><th>Last seen</th><th></th></tr></thead><tbody>` +
+            (l.pos_devices||[]).map(d => `<tr>
+              <td class="name-cell">${escAttr(d.label)}</td>
+              <td>${escAttr(POS_DEVICE_KINDS[d.kind] || d.kind)}</td>
+              <td class="sub">${d.last_seen_at ? new Date(d.last_seen_at).toLocaleString() : 'Never checked in'}</td>
+              <td style="text-align:right;"><button class="btn btn-xs" style="color:var(--red);"
+                  onclick="removePosDevice('${d.id}')">Remove</button></td>
+            </tr>`).join('') + `</tbody></table></div>`}
+      </div>`).join('')}`;
+}
+
+function posDetailLog(m){
+  return `
+    <div class="field"><label>Add a note</label>
+      <textarea id="pmNote" rows="2" placeholder="What was said, in a few words"></textarea></div>
+    <div class="row" style="gap:8px;margin-bottom:14px;">
+      <select id="pmNoteKind" style="max-width:140px;">
+        <option value="call">Call</option><option value="email">Email</option>
+        <option value="visit">Visit</option><option value="support">Support</option>
+      </select>
+      <button class="btn btn-accent btn-sm" onclick="addPosNote('${m.id}')">Add</button>
+    </div>
+    ${POS_NOTES.length === 0
+      ? `<p style="font-size:12.5px;color:var(--slate-500);">Nothing logged yet. A note explaining why a
+           rate changed is worth more than the rate, and it has to survive whoever wrote it leaving.</p>`
+      : POS_NOTES.map(n => `
+        <div style="border-left:3px solid var(--blue-400);padding:2px 0 2px 11px;margin-bottom:13px;">
+          <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--slate-500);">
+            ${escAttr(n.kind)} &middot; ${new Date(n.created_at).toLocaleString()}</div>
+          <div style="font-size:13px;line-height:1.5;margin-top:3px;">${escAttr(n.body)}</div>
+          <div style="font-size:11px;color:var(--slate-500);margin-top:2px;">${escAttr(n.by_name)}</div>
+        </div>`).join('')}`;
+}
+
+async function addPosNote(id){
+  const body = (document.getElementById('pmNote').value || '').trim();
+  if(!body) return;
+  const kind = document.getElementById('pmNoteKind').value;
+  const { error } = await supa.from('pos_merchant_notes').insert({
+    merchant_id: id, kind, body, by_name: (currentUser && currentUser.name) || 'Unknown',
+  });
+  if(error){ showToast('Could not add the note: ' + error.message, 'error'); return; }
+  await openPosMerchant(id, 'log');
+}
+
+async function addPosDevice(locationId){
+  const label = prompt('What is this device called? e.g. Station 2, Bar handheld');
+  if(!label || !label.trim()) return;
+  const kind = prompt('Type: station, mini, handheld, tablet, kds, card-terminal', 'station');
+  if(!kind || !POS_DEVICE_KINDS[kind.trim()]){
+    if(kind !== null) showToast('That is not a device type.', 'error');
+    return;
+  }
+  const { error } = await supa.from('pos_devices')
+    .insert({ location_id: locationId, label: label.trim(), kind: kind.trim() });
+  if(error){ showToast('Could not add it: ' + error.message, 'error'); return; }
+  await loadPosMerchants(true);
+  renderPosDetail();
+  renderPosMerchants();
+}
+
+async function removePosDevice(id){
+  if(!confirm('Remove this device? Its checks keep the station number they already printed.')) return;
+  const { error } = await supa.from('pos_devices').delete().eq('id', id);
+  if(error){ showToast('Could not remove it: ' + error.message, 'error'); return; }
+  await loadPosMerchants(true);
+  renderPosDetail();
   renderPosMerchants();
 }
 
