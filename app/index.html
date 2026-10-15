@@ -3455,6 +3455,11 @@ function emptyAccountFields(){
     // Inbound Lead stage
     lead_source:'',
 
+    // Set by the landing-page statement analyzer, never typed by hand.
+    // quote_number is what the merchant was shown and told to quote;
+    // statement_analysis is the fee breakdown read off their statement.
+    quote_number:null, statement_analysis:null,
+
     // Initial Outreach stage
     system_choice:'epay',            // 'epay' | 'clover' | 'nrs' | 'ncr' | 'third_party'
     pos_plan:'', processing_pricing:'', clover_device:'',
@@ -3558,7 +3563,8 @@ async function loadLeadsFromSupabase(){
     app_id, in_person_install, tracking_number, tracking_email_sent, tracking_email_sent_at, shipments,
     tid, installation_date, commission_type, commission_value,
     linked_partner_id, assigned_to, general_follow_up_date, general_follow_up_note,
-    welcome_email_sent, welcome_email_sent_at
+    welcome_email_sent, welcome_email_sent_at,
+    quote_number, statement_analysis
   `).order('created_at', { ascending: false });
   if(error){ reportLoadFailure('leads from Supabase', error); return []; }
   return data;
@@ -13068,6 +13074,64 @@ async function sendApplicationEmail(id){
   openLeadDetail(id);
 }
 
+// ---------------------------------------------------------------------------
+// Statement analyzer results (landing pages).
+//
+// A merchant who uploads a processing statement on one of the EPAY landing
+// pages is shown a quote number and a fee breakdown; both arrive here on the
+// lead via public_submit_landing_lead(). Whoever calls them should see their
+// real numbers before dialling, so this renders in the lead overview.
+//
+// statement_analysis holds fee and volume figures ONLY — the analyzer is
+// built never to extract banking or card data — so unlike SSN/DOB/banking
+// this needs no reveal RPC and no permission gate.
+// ---------------------------------------------------------------------------
+function statementMoney(n){
+  const v = Number(n);
+  if(!isFinite(v)) return '—';
+  return '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function statementPanelHtml(l){
+  const blob = l.statement_analysis;
+  if(!blob) return '';
+  let parsed = blob;
+  if(typeof blob === 'string'){
+    try { parsed = JSON.parse(blob); } catch(e){ return ''; }
+  }
+  const a = parsed.analysis || {};
+  const sv = parsed.savings || {};
+  const cc = sv.consumer_choice || {};
+  const plan = sv.plan || {};
+  const lines = Array.isArray(a.fee_lines) ? a.fee_lines : [];
+
+  const rows = [];
+  if(a.processor_name)  rows.push(['Current processor', escAttr(a.processor_name)]);
+  if(a.statement_month) rows.push(['Statement period', escAttr(a.statement_month)]);
+  if(a.total_volume)    rows.push(['Card volume', statementMoney(a.total_volume)]);
+  if(a.total_fees)      rows.push(['Fees paid', statementMoney(a.total_fees)]);
+  if(sv.effective_rate) rows.push(['Effective rate', sv.effective_rate.toFixed(2) + '%']);
+  if(plan.name)         rows.push(['Quoted plan', escAttr(plan.name) + ' — ' + statementMoney(plan.price) + '/mo']);
+  if(cc.monthly_saved)  rows.push(['Consumer Choice saves', statementMoney(cc.monthly_saved) + '/mo']);
+
+  const lowConfidence = a.confidence === 'low';
+
+  return `
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line);">
+      <div style="font-weight:600;font-size:12px;margin-bottom:8px;">Statement analysis</div>
+      ${lowConfidence ? `<p style="font-size:10.5px;color:var(--amber,#d08b25);margin:0 0 8px;">The analyzer flagged this scan as hard to read — confirm these figures with the merchant.</p>` : ''}
+      ${rows.map(r => `<div class="detail-row"><span class="k">${r[0]}</span><span class="v">${r[1]}</span></div>`).join('')}
+      ${a.notes ? `<p style="font-size:10.5px;color:var(--slate-300);margin:8px 0 0;">${escAttr(a.notes)}</p>` : ''}
+      ${lines.length ? `
+      <details style="margin-top:10px;">
+        <summary style="font-size:11px;cursor:pointer;color:var(--slate-300);">Every fee line (${lines.length})</summary>
+        <div style="margin-top:8px;">
+          ${lines.map(f => `<div class="detail-row"><span class="k">${escAttr(f.label)}</span><span class="v">${statementMoney(f.amount)}</span></div>`).join('')}
+        </div>
+      </details>` : ''}
+    </div>`;
+}
+
 async function openLeadDetail(id){
   const base = LEADS.find(x => x.id === id);
   if(!base) return;
@@ -13136,6 +13200,7 @@ async function openLeadDetail(id){
     ${editableRow('Phone', l.phone, { table:'leads', id:l.id, column:'phone', type:'tel', record:base })}
     ${editableRow('Email', l.email, { table:'leads', id:l.id, column:'email', type:'email', record:base })}
     ${editableRow('Lead source', l.lead_source, { table:'leads', id:l.id, column:'lead_source', record:base })}
+    ${l.quote_number ? `<div class="detail-row"><span class="k">Quote #</span><span class="v" style="font-family:ui-monospace,Menlo,monospace;">${escAttr(l.quote_number)}</span></div>` : ''}
     ${editableRow('Est. monthly volume', l.est_volume, { table:'leads', id:l.id, column:'est_volume', record:base })}
     ${editableRow('Business address', l.business_address, { table:'leads', id:l.id, column:'business_address', type:'textarea', record:base })}
     <div class="detail-row"><span class="k">Created</span><span class="v">${formatDate(l.created_at)}</span></div>
@@ -13173,6 +13238,7 @@ async function openLeadDetail(id){
       <button class="btn btn-sm" style="width:100%;" onclick="createEpayLeadFromAtmLead('${l.id}')">Create as EPAY Lead</button>
       <p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">Cross-sell — copies this into the EPAY POS Leads pipeline as a new Inbound Lead.</p>
     </div>` : ''}
+    ${statementPanelHtml(l)}
   `;
 
   const callNotesBody = `
@@ -14297,6 +14363,7 @@ function openColdLeadDetail(id){
         ${editableRow('Address', c.address, { table:'cold_leads', id:c.id, column:'address', type:'textarea', record:c })}
         ${editableRow('Website', c.website, { table:'cold_leads', id:c.id, column:'website', record:c })}
         ${editableRow('Source detail', c.source, { table:'cold_leads', id:c.id, column:'source', record:c })}
+        ${editableRow('Quote #', c.quote_number, { table:'cold_leads', id:c.id, column:'quote_number', record:c })}
         <div class="detail-row"><span class="k">Added</span><span class="v">${formatDate(c.created_at)}</span></div>
         ${createdByLabel(c) ? `<div class="detail-row"><span class="k">Added by</span><span class="v">${createdByLabel(c)}</span></div>` : ''}
         <div class="field" style="margin-top:12px;">
