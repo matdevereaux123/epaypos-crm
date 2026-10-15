@@ -1,0 +1,908 @@
+// Supabase Edge Function: google-calendar
+// ---------------------------------------------------------------------------
+// Deploy with:  supabase functions deploy google-calendar
+// (JWT verification ON — every action here is on behalf of a signed-in user.)
+//
+// Everything the browser is allowed to ask about a Google Calendar link.
+// Actions: connect_url | complete_oauth | status | disconnect | push_event |
+//          delete_event | import_events | public_push_event
+//
+// public_push_event is the one exception to "every action here is on behalf
+// of a signed-in user" — see the comment where it is dispatched, below.
+//
+// Google redirects to a small page on the CRM's own domain (/oauth/google),
+// which hands the code back to the already-signed-in CRM window; that window
+// then calls complete_oauth here. There is deliberately NO public callback
+// endpoint on this project:
+//
+//   * Supabase's gateway rejects any function request without a JWT before
+//     the function runs, so a public callback needs "Verify JWT" turned off —
+//     and that toggle silently turns itself back on every time the function
+//     is updated (supabase/supabase#43608). Sign-in would break on some
+//     future unrelated edit, with nothing in the logs, because the gateway
+//     rejects the call before there is anything to log.
+//   * Doing the exchange from an authenticated call is also strictly safer:
+//     the OAuth state can be checked against the user actually making the
+//     request, which a public callback cannot do.
+//
+// Why a function rather than calling Google from app/index.html: the exchange
+// needs GOOGLE_CLIENT_SECRET, and the stored refresh token is a permanent key
+// to somebody's calendar. app/index.html ships to every visitor. Neither one
+// can be in it.
+//
+// Environment variables:
+//   GOOGLE_CLIENT_ID
+//   GOOGLE_CLIENT_SECRET
+//   APP_URL             e.g. https://epaycrm.epaypos.net
+//   CALENDAR_TIMEZONE   optional, defaults to America/Detroit
+// ---------------------------------------------------------------------------
+
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+function json(body: unknown, status: number) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
+// Must be byte-identical in the consent request and the token exchange, or
+// Google rejects the exchange with redirect_uri_mismatch. One function so the
+// two cannot drift.
+function redirectUri(): string {
+  return `${(Deno.env.get('APP_URL') ?? 'https://epaycrm.epaypos.net').replace(/\/+$/, '')}/oauth/google`;
+}
+
+// The id_token comes straight back from Google's token endpoint over TLS, in
+// response to a request carrying our client secret. That is Google's own
+// stated condition for skipping signature verification — this only reads the
+// payload, it is not accepting a token from a caller.
+function emailFromIdToken(idToken?: string): string | null {
+  if (!idToken) return null;
+  try {
+    const part = idToken.split('.')[1];
+    if (!part) return null;
+    return (JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/'))) as { email?: string }).email ?? null;
+  } catch {
+    return null;
+  }
+}
+
+const SCOPES = [
+  'https://www.googleapis.com/auth/calendar.events',
+  'openid',
+  'email',
+].join(' ');
+
+// ---------------------------------------------------------------------------
+// Access tokens last about an hour; refresh tokens last until revoked. This
+// spends the refresh token for a fresh access token when the stored one is
+// within a minute of expiring, and writes the new one back so the next call
+// does not have to.
+// ---------------------------------------------------------------------------
+async function accessTokenFor(
+  admin: ReturnType<typeof createClient>,
+  userId: string,
+): Promise<{ token?: string; error?: string }> {
+  const { data, error } = await admin.rpc('google_calendar_get_tokens', { p_user_id: userId });
+  if (error) return { error: error.message };
+
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row?.refresh_token) return { error: 'This account has no Google Calendar connected.' };
+
+  const expiresAt = row.access_expires_at ? new Date(row.access_expires_at).getTime() : 0;
+  if (row.access_token && expiresAt > Date.now() + 60_000) {
+    return { token: row.access_token as string };
+  }
+
+  const clientId = Deno.env.get('GOOGLE_CLIENT_ID');
+  const clientSecret = Deno.env.get('GOOGLE_CLIENT_SECRET');
+  if (!clientId || !clientSecret) return { error: 'Google Calendar is not configured on the server.' };
+
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: row.refresh_token as string,
+      grant_type: 'refresh_token',
+    }),
+  });
+  const out = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    // invalid_grant means the user revoked us, changed their password, or the
+    // token went unused for six months. It will never work again, so say so
+    // plainly rather than letting them retry into the same wall.
+    if (out?.error === 'invalid_grant') {
+      return { error: 'Google has revoked this link. Disconnect and connect again.' };
+    }
+    return { error: out?.error_description || out?.error || `Google returned ${res.status}` };
+  }
+
+  // update_access_token, not store_tokens: a renewal carries no refresh token,
+  // and store_tokens refuses a null one on purpose. See migration 35.
+  await admin.rpc('google_calendar_update_access_token', {
+    p_user_id:      userId,
+    p_access_token: out.access_token,
+    p_expires_at:   new Date(Date.now() + ((out.expires_in ?? 3600) * 1000)).toISOString(),
+    p_scope:        out.scope ?? null,
+  });
+
+  return { token: out.access_token as string };
+}
+
+// calendar_events stores date as YYYY-MM-DD, time as HH:MM and duration as a
+// plain number of minutes. Google wants RFC3339 plus a zone, and gets the
+// zone by name so daylight saving is Google's problem rather than ours.
+function toGoogleTimes(date: string, time: string, durationMinutes: number, tz: string) {
+  const t = /^\d{2}:\d{2}$/.test(time || '') ? time : '09:00';
+  const start = `${date}T${t}:00`;
+  const [h, m] = t.split(':').map(Number);
+  const end = new Date(Date.UTC(2000, 0, 1, h, m + (durationMinutes || 30)));
+  const endTime = `${String(end.getUTCHours()).padStart(2, '0')}:${String(end.getUTCMinutes()).padStart(2, '0')}`;
+  // A meeting running past midnight would need the next day's date; nothing
+  // in MEETING_TYPES is longer than 90 minutes, so this only has to be right
+  // for same-day events and says so rather than pretending otherwise.
+  const endDate = (h * 60 + m + (durationMinutes || 30)) >= 1440 ? null : date;
+  return endDate
+    ? { start: { dateTime: start, timeZone: tz }, end: { dateTime: `${endDate}T${endTime}:00`, timeZone: tz } }
+    : { start: { dateTime: start, timeZone: tz }, end: { dateTime: `${date}T23:59:00`, timeZone: tz } };
+}
+
+// Google gives either dateTime (timed) or date (all-day). Everything here
+// stays in the calendar's local wall-clock terms, matching how the CRM stores
+// dates — a date string and an HH:MM string, no zone.
+function fromGoogleEvent(ev: Record<string, any>, calendarId: string, ownerId: string) {
+  const s = ev.start ?? {};
+  const e = ev.end ?? {};
+  const allDay = !!s.date && !s.dateTime;
+
+  const date = allDay ? String(s.date) : String(s.dateTime ?? '').slice(0, 10);
+  const time = allDay ? '' : String(s.dateTime ?? '').slice(11, 16);
+
+  let duration = 30;
+  if (!allDay && s.dateTime && e.dateTime) {
+    const mins = Math.round((new Date(e.dateTime).getTime() - new Date(s.dateTime).getTime()) / 60000);
+    // Clamp rather than trust: a malformed pair should not write a negative
+    // duration that the UI then tries to render.
+    if (Number.isFinite(mins) && mins > 0 && mins <= 60 * 24) duration = mins;
+  }
+
+  return {
+    title: String(ev.summary ?? '(no title)').slice(0, 300),
+    date,
+    time,
+    duration: String(duration),
+    all_day: allDay,
+    type: 'external',
+    calendar_id: calendarId,
+    // Stamped here rather than left to the trigger. These rows are written
+    // with the service role, so current_app_user_id() is null at that point —
+    // an unowned personal event would be visible to the whole team.
+    owner_id: ownerId,
+    zoom_link: ev.hangoutLink ?? ev.location ?? null,
+    notes: ev.description ? String(ev.description).slice(0, 4000) : null,
+    google_event_id: ev.id,
+    google_origin: true,
+    google_updated_at: ev.updated ?? null,
+    google_synced_at: new Date().toISOString(),
+    google_sync_error: null,
+  };
+}
+
+const TYPE_LABELS: Record<string, string> = {
+  phone: 'Phone Call',
+  zoom_meeting: 'Zoom Meeting',
+  zoom_demo: 'Zoom Demo',
+  in_person: 'In-Person Install/Training',
+};
+
+// ---------------------------------------------------------------------------
+// Pushes one calendar_events row to Google (create or update) and writes the
+// sync bookkeeping back. Shared by the authenticated push_event action and
+// the anon public_push_event action below — the two differ only in whose
+// token they push with and how that token is obtained, never in what
+// actually gets sent to Google or written back afterward.
+// ---------------------------------------------------------------------------
+async function pushEventToGoogle(
+  admin: ReturnType<typeof createClient>,
+  ev: Record<string, any>,
+  ownerUserId: string,
+  token: string,
+  tz: string,
+): Promise<{ error: string; status: number } | { success: true; googleEventId: string; htmlLink: string | null; status: 200 }> {
+  const times = toGoogleTimes(ev.date as string, ev.time as string, Number(ev.duration) || 30, tz);
+  const descriptionParts = [
+    TYPE_LABELS[ev.type as string] ? `Type: ${TYPE_LABELS[ev.type as string]}` : null,
+    ev.notes ? String(ev.notes) : null,
+    'Scheduled from the EPAY POS Control Center.',
+  ].filter(Boolean);
+
+  const body: Record<string, unknown> = {
+    summary: ev.title,
+    description: descriptionParts.join('\n\n'),
+    ...times,
+  };
+  if (ev.zoom_link) body.location = ev.zoom_link;
+
+  // Whoever scheduled it owns the event either way — this only ever adds
+  // other teammates as Google attendees on that same event, never a second
+  // owner. Looked up fresh rather than trusting anything the browser sent,
+  // same reasoning as every other server-side email lookup in this project.
+  const attendeeIds = (Array.isArray(ev.attendee_user_ids) ? ev.attendee_user_ids : [])
+    .filter((id: unknown) => typeof id === 'string' && id !== ownerUserId);
+  if (attendeeIds.length) {
+    const { data: attendeeUsers } = await admin
+      .from('users')
+      .select('email')
+      .in('id', attendeeIds);
+    const emails = (attendeeUsers ?? [])
+      .map((u: { email?: string }) => u.email)
+      .filter((e: unknown): e is string => typeof e === 'string' && e.length > 0);
+    if (emails.length) body.attendees = emails.map((email: string) => ({ email }));
+  }
+
+  const existing = ev.google_event_id as string | null;
+  const endpoint = existing
+    ? `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(existing)}`
+    : 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
+  // sendUpdates=all is what actually makes Google email the invite to each
+  // attendee rather than silently attaching them to the event.
+  const url = `${endpoint}?sendUpdates=all`;
+
+  const res = await fetch(url, {
+    method: existing ? 'PATCH' : 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const out = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    // A 404 on an event we thought we owned means it was deleted in
+    // Google. Clearing the id lets the next push create a fresh one
+    // instead of failing forever against a ghost.
+    const msg = out?.error?.message || `Google returned ${res.status}`;
+    await admin.from('calendar_events').update({
+      google_sync_error: msg,
+      ...(res.status === 404 && existing ? { google_event_id: null } : {}),
+    }).eq('id', ev.id);
+    return { error: msg, status: 502 };
+  }
+
+  await admin.from('calendar_events').update({
+    google_event_id: out.id,
+    google_synced_at: new Date().toISOString(),
+    google_sync_error: null,
+    // Backfills anything created before ownership existed, so a meeting
+    // stops being editable by the whole team the first time it syncs.
+    owner_id: (ev.owner_id as string | null) ?? ownerUserId,
+  }).eq('id', ev.id);
+
+  return { success: true, googleEventId: out.id, htmlLink: out.htmlLink ?? null, status: 200 };
+}
+
+// ---------------------------------------------------------------------------
+// Booking confirmation emails — same visual template as send-email/index.ts
+// (same colors, same 480px layout) so mail from this function looks like it
+// comes from the same product, but built inline here rather than calling
+// that function: send-email requires an authenticated fullDashboard caller,
+// and a visitor booking a public link is never signed in at all. Adding a
+// service-to-service exception to that function's auth is more risk than
+// duplicating one small template is worth.
+// ---------------------------------------------------------------------------
+function buildBrandedEmailHtml(heading: string, bodyText: string, extraHtml?: string): string {
+  const esc = (v: string) =>
+    v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${esc(heading)}</title></head>
+<body style="margin:0; padding:0; background-color:#F4F7FB; font-family:Arial, Helvetica, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F4F7FB; padding:32px 16px;">
+    <tr><td align="center">
+      <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="width:480px; max-width:100%; background-color:#ffffff; border-radius:10px; overflow:hidden; border:1px solid #E4E9F2;">
+        <tr><td align="center" style="background-color:#ffffff; padding:24px; border-bottom:1px solid #E4E9F2;">
+          <img src="https://epaycrm.epaypos.net/email-logo.png" alt="EPAY POS" width="90" style="display:block;">
+        </td></tr>
+        <tr><td style="padding:30px 26px;">
+          <h1 style="margin:0 0 14px; font-size:19px; color:#142850;">${esc(heading)}</h1>
+          <p style="margin:0 0 16px; font-size:14px; line-height:1.6; color:#22406F;">${esc(bodyText).replace(/\n/g, '<br>')}</p>
+          ${extraHtml || ''}
+          <p style="margin:16px 0 0; font-size:14px; line-height:1.6; color:#22406F;">&mdash; The EPAY POS Team</p>
+        </td></tr>
+        <tr><td align="center" style="background-color:#F4F7FB; padding:16px 24px; font-size:11px; color:#5B6B8C;">
+          EPAY POS &middot; 185 E Big Beaver Rd, Troy, MI 48083 &middot; epaypos.net
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+}
+
+// "Add to Calendar" — same floating-local-time simplification app/index.html's
+// own bookingCalendarLinks() makes (no per-user timezone field exists), just
+// duplicated here since this is a separate Deno runtime with no shared import
+// between the two. Google/Outlook as buttons in the email body; the ICS goes
+// on as a real attachment below, for Apple Calendar and everything else.
+function calendarAddLinksHtml(title: string, dateStr: string, timeStr: string, durationMinutes: number): string {
+  const [y, mo, d] = dateStr.split('-').map(Number);
+  const [h, mi] = timeStr.split(':').map(Number);
+  const start = new Date(y, mo - 1, d, h, mi);
+  const end = new Date(start.getTime() + durationMinutes * 60000);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const fmtLocal = (dt: Date) => `${dt.getFullYear()}${pad(dt.getMonth() + 1)}${pad(dt.getDate())}T${pad(dt.getHours())}${pad(dt.getMinutes())}00`;
+  const fmtIso = (dt: Date) => `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}:00`;
+
+  const google = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${fmtLocal(start)}/${fmtLocal(end)}`;
+  const outlook = `https://outlook.live.com/calendar/0/deeplink/compose?path=/calendar/action/compose&rru=addevent&subject=${encodeURIComponent(title)}&startdt=${encodeURIComponent(fmtIso(start))}&enddt=${encodeURIComponent(fmtIso(end))}`;
+
+  return `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:4px 0 2px;">
+    <tr>
+      <td style="padding-right:8px;padding-bottom:8px;"><a href="${google}" target="_blank" style="display:inline-block;padding:9px 16px;border-radius:7px;background:#0558D6;color:#ffffff;text-decoration:none;font-size:12.5px;font-weight:bold;">Add to Google Calendar</a></td>
+      <td style="padding-bottom:8px;"><a href="${outlook}" target="_blank" style="display:inline-block;padding:9px 16px;border-radius:7px;border:1px solid #0558D6;color:#0558D6;text-decoration:none;font-size:12.5px;font-weight:bold;">Add to Outlook</a></td>
+    </tr>
+  </table>
+  <p style="margin:0 0 4px;font-size:11.5px;color:#5B6B8C;">Using Apple Calendar or something else? The attached .ics file works with any calendar app.</p>`;
+}
+
+function buildIcs(title: string, dateStr: string, timeStr: string, durationMinutes: number, description: string): string {
+  const [y, mo, d] = dateStr.split('-').map(Number);
+  const [h, mi] = timeStr.split(':').map(Number);
+  const start = new Date(y, mo - 1, d, h, mi);
+  const end = new Date(start.getTime() + durationMinutes * 60000);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const fmtLocal = (dt: Date) => `${dt.getFullYear()}${pad(dt.getMonth() + 1)}${pad(dt.getDate())}T${pad(dt.getHours())}${pad(dt.getMinutes())}00`;
+  const escText = (s: string) => s.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
+  return [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//EPAY POS//Booking//EN', 'CALSCALE:GREGORIAN',
+    'BEGIN:VEVENT',
+    `UID:${crypto.randomUUID()}@epaypos.net`,
+    `DTSTAMP:${fmtLocal(new Date())}Z`,
+    `DTSTART:${fmtLocal(start)}`,
+    `DTEND:${fmtLocal(end)}`,
+    `SUMMARY:${escText(title)}`,
+    `DESCRIPTION:${escText(description)}`,
+    'END:VEVENT', 'END:VCALENDAR',
+  ].join('\r\n');
+}
+
+// Plain btoa() throws on anything outside Latin1 — a real risk here since
+// ICS content embeds a business/contact name the visitor typed themselves.
+function toBase64Utf8(str: string): string {
+  const bytes = new TextEncoder().encode(str);
+  let binary = '';
+  bytes.forEach(b => { binary += String.fromCharCode(b); });
+  return btoa(binary);
+}
+
+async function sendBookingEmail(
+  admin: ReturnType<typeof createClient>,
+  to: string,
+  subject: string,
+  heading: string,
+  bodyText: string,
+  extra?: { html?: string; icsContent?: string },
+) {
+  const apiKey = Deno.env.get('RESEND_API_KEY');
+  const from = Deno.env.get('EMAIL_FROM');
+  if (!apiKey || !from || !to) return;
+
+  let sendErr: string | null = null;
+  let providerId: string | null = null;
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from, to: [to], subject,
+        html: buildBrandedEmailHtml(heading, bodyText, extra?.html),
+        ...(extra?.icsContent
+          ? { attachments: [{ filename: 'meeting.ics', content: toBase64Utf8(extra.icsContent) }] }
+          : {}),
+      }),
+    });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok) sendErr = out?.message || `Resend returned ${res.status}`;
+    else providerId = out?.id ?? null;
+  } catch (e) {
+    sendErr = e instanceof Error ? e.message : 'Could not reach Resend';
+  }
+
+  await admin.from('email_log').insert({
+    kind: 'booking_confirmation',
+    to_email: to,
+    subject,
+    provider_id: providerId,
+    status: sendErr ? 'failed' : 'sent',
+    error: sendErr,
+  });
+}
+
+async function sendBookingConfirmationEmails(admin: ReturnType<typeof createClient>, ev: Record<string, any>) {
+  const [{ data: owner }, { data: coldLead }] = await Promise.all([
+    admin.from('users').select('name, email').eq('id', ev.owner_id as string).maybeSingle(),
+    ev.linked_cold_lead_id
+      ? admin.from('cold_leads').select('contact_name, email').eq('id', ev.linked_cold_lead_id as string).maybeSingle()
+      : Promise.resolve({ data: null as { contact_name?: string; email?: string } | null }),
+  ]);
+
+  const when = `${ev.date} at ${ev.time}`;
+  const meetingLabel = TYPE_LABELS[ev.type as string] || 'meeting';
+  const addToCalHtml = calendarAddLinksHtml(ev.title as string, ev.date as string, ev.time as string, Number(ev.duration) || 30);
+  const ics = buildIcs(
+    ev.title as string, ev.date as string, ev.time as string, Number(ev.duration) || 30,
+    `${meetingLabel} scheduled via EPAY POS.`,
+  );
+
+  if (coldLead?.email) {
+    await sendBookingEmail(
+      admin, coldLead.email as string, `Confirmed: ${ev.title}`, "You're booked",
+      `Your ${meetingLabel.toLowerCase()} with ${owner?.name ?? 'our team'} is confirmed for ${when}.`,
+      { html: addToCalHtml, icsContent: ics },
+    );
+  }
+  if (owner?.email) {
+    await sendBookingEmail(
+      admin, owner.email as string, `New booking: ${ev.title}`, 'New booking',
+      `${ev.title} is on your calendar for ${when} (${meetingLabel}).`,
+      { icsContent: ics },
+    );
+  }
+}
+
+// Handles public_push_event — see the dispatch comment in Deno.serve for why
+// this runs with no caller identity. Sends the confirmation emails either
+// way (the booking is real regardless of Google), then pushes to Google only
+// if the owner actually has a calendar connected; no connection is not an
+// error, just nothing further to do.
+async function handlePublicPushEvent(
+  admin: ReturnType<typeof createClient>,
+  payload: Record<string, unknown>,
+  tz: string,
+) {
+  const eventId = String(payload.eventId ?? '');
+  if (!eventId) return json({ error: 'eventId is required' }, 400);
+
+  const { data: ev, error: evErr } = await admin
+    .from('calendar_events')
+    .select('*')
+    .eq('id', eventId)
+    .single();
+  if (evErr || !ev) return json({ error: 'That meeting no longer exists' }, 404);
+
+  // The hard boundary: only a row public_book_slot() itself created carries
+  // this column, so this path can never be pointed at a hand-entered meeting.
+  if (!ev.booking_link_id) return json({ error: 'Not a public booking' }, 403);
+  if (!ev.owner_id) return json({ error: 'This booking has no owner' }, 400);
+
+  await sendBookingConfirmationEmails(admin, ev);
+
+  const got = await accessTokenFor(admin, ev.owner_id as string);
+  if (got.error) {
+    // No Google connected (or a genuine token error) is not a booking
+    // failure — the meeting already exists in the CRM either way.
+    return json({ success: true, googleSynced: false }, 200);
+  }
+
+  const result = await pushEventToGoogle(admin, ev, ev.owner_id as string, got.token!, tz);
+  if ('error' in result) {
+    return json({ success: true, googleSynced: false, googleError: result.error }, 200);
+  }
+  return json({ success: true, googleSynced: true, googleEventId: result.googleEventId }, 200);
+}
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+
+  let payload: Record<string, unknown>;
+  try {
+    payload = await req.json();
+  } catch {
+    return json({ error: 'Expected a JSON body' }, 400);
+  }
+  const action = String(payload.action ?? '');
+
+  const admin = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+  );
+  const tz = Deno.env.get('CALENDAR_TIMEZONE') ?? 'America/Detroit';
+
+  // ---- public_push_event: the one action with no caller identity at all.
+  // A visitor who just booked a slot through a public booking link
+  // (database/53_booking_links.sql's public_book_slot()) was never signed
+  // in, so there is no JWT to check here. The authorization boundary is
+  // instead that this can only ever touch a calendar_events row that
+  // already carries a booking_link_id — nothing except public_book_slot()
+  // itself ever sets that column, so an arbitrary eventId gets nowhere.
+  // Handled before the auth gate below on purpose.
+  if (action === 'public_push_event') {
+    return await handlePublicPushEvent(admin, payload, tz);
+  }
+
+  // ---- who is asking -------------------------------------------------------
+  const authHeader = req.headers.get('Authorization') ?? '';
+  const caller = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_ANON_KEY')!,
+    { global: { headers: { Authorization: authHeader } } },
+  );
+
+  const { data: { user } } = await caller.auth.getUser();
+  if (!user) return json({ error: 'Not authenticated' }, 401);
+
+  // Calendar access opened up from fullDashboard-only (internal staff) to
+  // any logged-in user — Agents, Referral Partners, and ISOs included —
+  // once calendar_events/connected_calendars RLS became strictly per-owner
+  // (database/52_calendar_per_user.sql). This just confirms a real CRM user
+  // record exists behind the login; the "own calendar only" boundary is
+  // enforced by RLS on every table read/write below, not by a permission
+  // check here.
+  const { data: callerRow } = await caller
+    .from('users')
+    .select('id, name, email')
+    .eq('auth_id', user.id)
+    .single();
+
+  const userId = (callerRow as { id?: string })?.id;
+  if (!userId) return json({ error: 'No CRM user record for this login' }, 403);
+
+  // -------------------------------------------------------------------------
+  switch (action) {
+    case 'connect_url': {
+      const clientId = Deno.env.get('GOOGLE_CLIENT_ID');
+      if (!clientId) {
+        return json({ error: 'Google Calendar is not configured yet. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET on this function.' }, 500);
+      }
+
+      const state = crypto.randomUUID() + '.' + crypto.randomUUID();
+      const { error } = await admin.from('google_oauth_states').insert({ state, user_id: userId });
+      if (error) return json({ error: error.message }, 500);
+
+      const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+      url.searchParams.set('client_id', clientId);
+      url.searchParams.set('redirect_uri', redirectUri());
+      url.searchParams.set('response_type', 'code');
+      url.searchParams.set('scope', SCOPES);
+      // offline + consent together are what produce a refresh token. Without
+      // access_type=offline there is none at all, and without prompt=consent
+      // Google omits it for an account that has consented before — which is
+      // every reconnect.
+      url.searchParams.set('access_type', 'offline');
+      url.searchParams.set('prompt', 'consent');
+      url.searchParams.set('include_granted_scopes', 'true');
+      url.searchParams.set('state', state);
+
+      return json({ url: url.toString() }, 200);
+    }
+
+    case 'complete_oauth': {
+      const code = String(payload.code ?? '');
+      const state = String(payload.state ?? '');
+      if (!code || !state) return json({ error: 'Google did not return a code' }, 400);
+
+      const clientId = Deno.env.get('GOOGLE_CLIENT_ID');
+      const clientSecret = Deno.env.get('GOOGLE_CLIENT_SECRET');
+      if (!clientId || !clientSecret) {
+        return json({ error: 'Google Calendar is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET on this function.' }, 500);
+      }
+
+      // The state must exist AND belong to the user making this call. Both
+      // halves matter: existence stops a forged callback, and the ownership
+      // check stops one user completing a flow that another user started.
+      const { data: stateRow } = await admin
+        .from('google_oauth_states')
+        .select('state, user_id, expires_at')
+        .eq('state', state)
+        .maybeSingle();
+
+      if (!stateRow || stateRow.user_id !== userId) {
+        return json({ error: 'This connection request was not recognised. Start again from Settings.' }, 400);
+      }
+      // Single use — deleted before the exchange so a replay cannot bind twice.
+      await admin.from('google_oauth_states').delete().eq('state', state);
+      await admin.from('google_oauth_states').delete().lt('expires_at', new Date().toISOString());
+
+      if (new Date(stateRow.expires_at as string).getTime() < Date.now()) {
+        return json({ error: 'This connection request expired. Start again from Settings.' }, 400);
+      }
+
+      let tok: {
+        access_token?: string; refresh_token?: string; expires_in?: number;
+        scope?: string; id_token?: string; error?: string; error_description?: string;
+      };
+      try {
+        const res = await fetch('https://oauth2.googleapis.com/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            code,
+            client_id: clientId,
+            client_secret: clientSecret,
+            redirect_uri: redirectUri(),
+            grant_type: 'authorization_code',
+          }),
+        });
+        tok = await res.json();
+        if (!res.ok) {
+          return json({ error: `Google refused the exchange: ${tok.error_description || tok.error || res.status}` }, 502);
+        }
+      } catch (e) {
+        return json({ error: `Could not reach Google: ${e instanceof Error ? e.message : 'unknown error'}` }, 502);
+      }
+
+      // Without a refresh token the link dies within the hour and cannot renew
+      // itself. connect_url always forces the consent screen, so reaching here
+      // means something is genuinely wrong rather than a routine reconnect.
+      if (!tok.refresh_token) {
+        return json({ error: 'Google did not return a refresh token, so the link would stop working within the hour. Remove EPAY POS at myaccount.google.com/permissions, then connect again.' }, 400);
+      }
+
+      const { error: storeErr } = await admin.rpc('google_calendar_store_tokens', {
+        p_user_id:       userId,
+        p_refresh_token: tok.refresh_token,
+        p_access_token:  tok.access_token ?? null,
+        p_expires_at:    new Date(Date.now() + ((tok.expires_in ?? 3600) * 1000)).toISOString(),
+        p_scope:         tok.scope ?? null,
+        p_google_email:  emailFromIdToken(tok.id_token),
+      });
+      if (storeErr) return json({ error: `Connected to Google, but saving it here failed: ${storeErr.message}` }, 500);
+
+      return json({ success: true, email: emailFromIdToken(tok.id_token) }, 200);
+    }
+
+    case 'status': {
+      const { data } = await admin
+        .from('google_calendar_tokens')
+        .select('google_email, updated_at, scope')
+        .eq('user_id', userId)
+        .maybeSingle();
+      return json({ connected: !!data, email: data?.google_email ?? null, since: data?.updated_at ?? null }, 200);
+    }
+
+    case 'disconnect': {
+      // Best effort: tell Google to drop the grant too, so it disappears from
+      // the user's own account permissions rather than only from our table.
+      const got = await accessTokenFor(admin, userId);
+      if (got.token) {
+        await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(got.token)}`, {
+          method: 'POST',
+        }).catch(() => {});
+      }
+      const { error } = await admin.rpc('google_calendar_disconnect', { p_user_id: userId });
+      if (error) return json({ error: error.message }, 500);
+      return json({ success: true }, 200);
+    }
+
+    case 'push_event': {
+      const eventId = String(payload.eventId ?? '');
+      if (!eventId) return json({ error: 'eventId is required' }, 400);
+
+      const { data: ev, error: evErr } = await admin
+        .from('calendar_events')
+        .select('*')
+        .eq('id', eventId)
+        .single();
+      if (evErr || !ev) return json({ error: 'That meeting no longer exists' }, 404);
+
+      const got = await accessTokenFor(admin, userId);
+      if (got.error) {
+        await admin.from('calendar_events')
+          .update({ google_sync_error: got.error }).eq('id', eventId);
+        return json({ error: got.error }, 400);
+      }
+
+      const result = await pushEventToGoogle(admin, ev, userId, got.token!, tz);
+      const { status, ...body } = result;
+      return json(body, status);
+    }
+
+    // Not Google-specific at all — this is the CRM-native "you've been added
+    // to a meeting" email, sent regardless of whether anyone involved has
+    // Google connected. Lives here anyway to reuse this file's existing
+    // branded-email helper rather than duplicating it into a third function.
+    // notified_attendee_ids is what keeps re-saving the same meeting from
+    // re-emailing everyone already on it — only ids that are on
+    // attendee_user_ids but not yet on notified_attendee_ids get one.
+    case 'notify_attendees': {
+      const eventId = String(payload.eventId ?? '');
+      if (!eventId) return json({ error: 'eventId is required' }, 400);
+
+      const { data: ev, error: evErr } = await admin
+        .from('calendar_events')
+        .select('*')
+        .eq('id', eventId)
+        .single();
+      if (evErr || !ev) return json({ error: 'That meeting no longer exists' }, 404);
+      if (ev.owner_id !== userId) return json({ error: 'Only the meeting owner can invite people to it' }, 403);
+
+      const already = new Set((ev.notified_attendee_ids ?? []) as string[]);
+      const current = (Array.isArray(ev.attendee_user_ids) ? ev.attendee_user_ids : []) as string[];
+      const newIds = current.filter((id) => !already.has(id));
+      if (!newIds.length) return json({ success: true, notified: 0 }, 200);
+
+      const [{ data: organizer }, { data: invitees }] = await Promise.all([
+        admin.from('users').select('name').eq('id', userId).maybeSingle(),
+        admin.from('users').select('id, name, email').in('id', newIds),
+      ]);
+
+      const meetingLabel = TYPE_LABELS[ev.type as string] || 'meeting';
+      const when = `${ev.date}${ev.time ? ` at ${ev.time}` : ''}`;
+      const organizerName = (organizer as { name?: string } | null)?.name ?? 'A teammate';
+
+      const notifRows = (invitees ?? []).map((u: { id: string }) => ({
+        user_id: u.id,
+        type: 'meeting_invite',
+        title: `${organizerName} added you to "${ev.title}"`,
+        body: `${meetingLabel} — ${when}`,
+        link_view: 'calendar',
+        link_id: ev.id,
+      }));
+      if (notifRows.length) await admin.from('notifications').insert(notifRows);
+
+      for (const u of (invitees ?? []) as { id: string; name?: string; email?: string }[]) {
+        if (!u.email) continue;
+        await sendBookingEmail(
+          admin, u.email, `You're invited: ${ev.title}`, "You've been added to a meeting",
+          `${organizerName} added you to "${ev.title}" (${meetingLabel}), scheduled for ${when}.` +
+          (ev.zoom_link ? `\n\nJoin: ${ev.zoom_link}` : ''),
+        );
+      }
+
+      await admin.from('calendar_events')
+        .update({ notified_attendee_ids: Array.from(new Set([...already, ...newIds])) })
+        .eq('id', eventId);
+
+      return json({ success: true, notified: newIds.length }, 200);
+    }
+
+    case 'import_events': {
+      const got = await accessTokenFor(admin, userId);
+      if (got.error) return json({ error: got.error }, 400);
+
+      const { data: cal } = await admin
+        .from('connected_calendars')
+        .select('id, google_sync_token')
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (!cal) return json({ error: 'No Google Calendar is linked to this account.' }, 400);
+
+      const force = payload.full === true;
+      let syncToken: string | null = force ? null : (cal.google_sync_token as string | null);
+      let pageToken: string | null = null;
+      let nextSyncToken: string | null = null;
+      const items: Record<string, any>[] = [];
+
+      // Page until Google stops offering a nextPageToken. Capped so a calendar
+      // with years of history cannot spin here forever on a first import; the
+      // remainder arrives on the next sync.
+      for (let page = 0; page < 20; page++) {
+        const u = new URL('https://www.googleapis.com/calendar/v3/calendars/primary/events');
+        u.searchParams.set('maxResults', '250');
+        u.searchParams.set('singleEvents', 'true');       // expand recurrences
+        u.searchParams.set('showDeleted', 'true');        // needed to learn about deletions
+        if (syncToken) {
+          u.searchParams.set('syncToken', syncToken);
+        } else {
+          // First run, or after an expired token: a bounded window rather than
+          // the whole history.
+          const from = new Date(); from.setDate(from.getDate() - 30);
+          const to = new Date();   to.setDate(to.getDate() + 180);
+          u.searchParams.set('timeMin', from.toISOString());
+          u.searchParams.set('timeMax', to.toISOString());
+          u.searchParams.set('orderBy', 'startTime');
+        }
+        if (pageToken) u.searchParams.set('pageToken', pageToken);
+
+        const res = await fetch(u.toString(), { headers: { Authorization: `Bearer ${got.token}` } });
+
+        // 410 GONE means the sync token is too old to be useful. Google's
+        // documented recovery is to throw it away and do a full sync, which is
+        // exactly what clearing it and restarting the loop does.
+        if (res.status === 410 && syncToken) {
+          syncToken = null; pageToken = null; items.length = 0;
+          await admin.from('connected_calendars').update({ google_sync_token: null }).eq('id', cal.id);
+          continue;
+        }
+        if (!res.ok) {
+          const out = await res.json().catch(() => ({}));
+          return json({ error: out?.error?.message || `Google returned ${res.status}` }, 502);
+        }
+
+        const body = await res.json();
+        items.push(...(body.items ?? []));
+        nextSyncToken = body.nextSyncToken ?? nextSyncToken;
+        pageToken = body.nextPageToken ?? null;
+        if (!pageToken) break;
+      }
+
+      let imported = 0, updated = 0, removed = 0;
+
+      for (const ev of items) {
+        if (!ev.id) continue;
+
+        if (ev.status === 'cancelled') {
+          // Deleted in Google. Only rows that came FROM Google are removed —
+          // a CRM meeting whose Google copy was deleted keeps its own record
+          // here, because this system is the source of truth for its own work.
+          const { data: gone } = await admin.from('calendar_events')
+            .delete()
+            .eq('calendar_id', cal.id).eq('google_event_id', ev.id)
+            .eq('google_origin', true).eq('owner_id', userId)
+            .select('id');
+          removed += (gone?.length ?? 0);
+          continue;
+        }
+
+        const row = fromGoogleEvent(ev, cal.id as string, userId);
+        if (!row.date) continue;   // nothing usable to place it on
+
+        const { data: existing } = await admin.from('calendar_events')
+          .select('id, google_origin, google_updated_at')
+          .eq('calendar_id', cal.id).eq('google_event_id', ev.id)
+          .maybeSingle();
+
+        if (!existing) {
+          const { error } = await admin.from('calendar_events').insert(row);
+          if (!error) imported++;
+          continue;
+        }
+
+        // A meeting the CRM created and pushed. Google is the mirror, not the
+        // master, so its copy does not overwrite the CRM's own fields — only
+        // the sync bookkeeping is refreshed.
+        if (existing.google_origin !== true) {
+          await admin.from('calendar_events')
+            .update({ google_synced_at: new Date().toISOString(), google_updated_at: row.google_updated_at })
+            .eq('id', existing.id);
+          continue;
+        }
+
+        // Unchanged since we last saw it — skip the write entirely.
+        if (existing.google_updated_at && row.google_updated_at
+            && new Date(existing.google_updated_at as string).getTime()
+               >= new Date(row.google_updated_at as string).getTime()) {
+          continue;
+        }
+
+        const { error } = await admin.from('calendar_events').update(row).eq('id', existing.id);
+        if (!error) updated++;
+      }
+
+      await admin.from('connected_calendars').update({
+        google_sync_token: nextSyncToken,
+        last_synced_at: new Date().toISOString(),
+      }).eq('id', cal.id);
+
+      return json({ success: true, imported, updated, removed, seen: items.length }, 200);
+    }
+
+    case 'delete_event': {
+      const googleEventId = String(payload.googleEventId ?? '');
+      if (!googleEventId) return json({ success: true, skipped: 'nothing on Google to remove' }, 200);
+
+      const got = await accessTokenFor(admin, userId);
+      if (got.error) return json({ error: got.error }, 400);
+
+      const res = await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(googleEventId)}`,
+        { method: 'DELETE', headers: { Authorization: `Bearer ${got.token}` } },
+      );
+      // 410 Gone / 404 mean it is already not there, which is the outcome we
+      // wanted. Only a real failure is worth reporting.
+      if (!res.ok && res.status !== 404 && res.status !== 410) {
+        const out = await res.json().catch(() => ({}));
+        return json({ error: out?.error?.message || `Google returned ${res.status}` }, 502);
+      }
+      return json({ success: true }, 200);
+    }
+
+    default:
+      return json({ error: `Unknown action: ${action || '(none)'}` }, 400);
+  }
+});
