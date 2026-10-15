@@ -13550,27 +13550,15 @@ function posDetailOverview(m){
 function posDetailPlan(m){
   const locs = m.pos_locations || [];
   return `
-    <p style="font-size:12px;color:var(--slate-500);margin:0 0 12px;">
-      What each location sells and what the card price adds. A merchant with one shop has one row.</p>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin:0 0 12px;">
+      <p style="font-size:12px;color:var(--slate-500);margin:0;">
+        What each location sells and what the card price adds. Each one is set on its own &mdash;
+        two shops are rarely on the same rate for long.</p>
+      <button class="btn btn-xs" style="white-space:nowrap;" onclick="addPosLocation('${m.id}')">+ Location</button>
+    </div>
     ${locs.length === 0 ? `<div class="stub-panel"><h3>No locations</h3>
-        <p style="font-size:13px;">Nothing can be set up until there is one.</p></div>` :
-      locs.map(l => `
-      <div style="border:1px solid var(--line);border-radius:10px;padding:13px;margin-bottom:10px;">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;">
-          <strong style="font-size:14px;">${escAttr(l.name)}</strong>
-          <span class="pill pill-inhouse">${escAttr((POS_EDITIONS[l.edition]||{}).label || l.edition)}</span>
-        </div>
-        <p style="font-size:11.5px;color:var(--slate-500);margin:6px 0 0;">
-          ${escAttr((POS_EDITIONS[l.edition]||{}).offers || '')}</p>
-        <div style="display:flex;gap:18px;margin-top:10px;font-size:12.5px;">
-          <span><strong>${ppmLabel(l.dual_pricing_ppm, l.dual_pricing_fixed_cents)}</strong>
-            <span style="color:var(--slate-500);"> card price</span></span>
-          <span><strong>${ppmPercent(l.tax_ppm)}%</strong>
-            <span style="color:var(--slate-500);"> sales tax</span></span>
-          <span><strong>${(l.pos_devices||[]).length}</strong>
-            <span style="color:var(--slate-500);"> ${(l.pos_devices||[]).length===1?'station':'stations'}</span></span>
-        </div>
-      </div>`).join('')}`;
+        <p style="font-size:13px;">Nothing can be set up until there is one.</p></div>`
+      : locs.map(l => posLocationCard(l, m)).join('')}`;
 }
 
 function posDetailDevices(m){
@@ -13652,6 +13640,131 @@ async function addPosDevice(locationId){
 async function removePosDevice(id){
   if(!confirm('Remove this device? Its checks keep the station number they already printed.')) return;
   const { error } = await supa.from('pos_devices').delete().eq('id', id);
+  if(error){ showToast('Could not remove it: ' + error.message, 'error'); return; }
+  await loadPosMerchants(true);
+  renderPosDetail();
+  renderPosMerchants();
+}
+
+/* ---------------------------------------------------------------------------
+   LOCATIONS, EDITED WHERE THEY ARE
+
+   Boarding creates a business and its first shop together, which is right —
+   nobody has a merchant with no location. Everything after that is about one
+   shop: this edition, this rate, this tax. A merchant with two shops could
+   only ever have the first one's rate changed, because the boarding form owns
+   "the location" singular.
+
+   So each location edits itself, and a second one can be added.
+   --------------------------------------------------------------------------- */
+
+let posLocEditing = null;
+
+function posLocationCard(l, m){
+  const editing = posLocEditing === l.id;
+  const e = POS_EDITIONS[l.edition] || {};
+  if(!editing){
+    return `
+      <div style="border:1px solid var(--line);border-radius:10px;padding:13px;margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;">
+          <strong style="font-size:14px;">${escAttr(l.name)}</strong>
+          <span class="pill pill-inhouse">${escAttr(e.label || l.edition)}</span>
+        </div>
+        <p style="font-size:11.5px;color:var(--slate-500);margin:6px 0 0;">${escAttr(e.offers || '')}</p>
+        <div style="display:flex;gap:18px;margin-top:10px;font-size:12.5px;flex-wrap:wrap;">
+          <span><strong>${ppmLabel(l.dual_pricing_ppm, l.dual_pricing_fixed_cents)}</strong>
+            <span style="color:var(--slate-500);"> card price</span></span>
+          <span><strong>${ppmPercent(l.tax_ppm)}%</strong>
+            <span style="color:var(--slate-500);"> sales tax</span></span>
+          <span><strong>${(l.pos_devices||[]).length}</strong>
+            <span style="color:var(--slate-500);"> ${(l.pos_devices||[]).length===1?'station':'stations'}</span></span>
+        </div>
+        <div class="row" style="gap:8px;margin-top:11px;">
+          <button class="btn btn-xs" onclick="posLocEditing='${l.id}';renderPosDetail();">Edit this location</button>
+          ${(m.pos_locations||[]).length > 1
+            ? `<button class="btn btn-xs" style="color:var(--red);" onclick="removePosLocation('${l.id}')">Remove</button>`
+            /* The last one cannot go: a merchant with no location is an
+               account nobody can put a till on, and nothing would say why. */
+            : `<span style="font-size:11px;color:var(--slate-300);align-self:center;">The only location</span>`}
+        </div>
+      </div>`;
+  }
+  return `
+    <div style="border:1px solid var(--blue-400);border-radius:10px;padding:13px;margin-bottom:10px;">
+      <div class="field"><label>Location name</label>
+        <input id="plName" value="${escAttr(l.name)}"></div>
+      <div class="field"><label>Edition</label>
+        <select id="plEdition">${Object.keys(POS_EDITIONS).map(k =>
+          `<option value="${k}" ${k===l.edition?'selected':''}>${POS_EDITIONS[k].label}</option>`).join('')}</select></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+        <div class="field"><label>Card price adds (%)</label>
+          <input id="plPct" value="${ppmPercent(l.dual_pricing_ppm)}" inputmode="decimal"></div>
+        <div class="field"><label>Per transaction (&cent;)</label>
+          <input id="plFixed" value="${Number(l.dual_pricing_fixed_cents||0)}" inputmode="numeric"></div>
+        <div class="field"><label>Sales tax (%)</label>
+          <input id="plTax" value="${ppmPercent(l.tax_ppm)}" inputmode="decimal"></div>
+      </div>
+      <p id="plProblem" class="error-text" style="display:none;"></p>
+      <div class="row" style="gap:8px;">
+        <button class="btn btn-xs" onclick="posLocEditing=null;renderPosDetail();">Cancel</button>
+        <button class="btn btn-accent btn-xs" onclick="savePosLocation('${l.id}')">Save this location</button>
+      </div>
+    </div>`;
+}
+
+async function savePosLocation(id){
+  const get = (k) => (document.getElementById(k).value || '').trim();
+  const say = (t) => { const el=document.getElementById('plProblem'); el.textContent=t; el.style.display=t?'block':'none'; };
+  const pct = pctToPpm(get('plPct'));
+  const tax = pctToPpm(get('plTax'));
+  const fixed = Math.round(Number(get('plFixed') || 0));
+  if(!get('plName')){ say('What is this location called?'); return; }
+  if(pct === null){ say('The card price has to be a number. Enter 0 to run without the program.'); return; }
+  if(tax === null){ say('Sales tax has to be a number.'); return; }
+  if(!isFinite(fixed) || fixed < 0){ say('Per transaction has to be a whole number of cents.'); return; }
+  say('');
+  const { error } = await supa.from('pos_locations').update({
+    name: get('plName'), edition: get('plEdition'),
+    dual_pricing_ppm: pct, dual_pricing_fixed_cents: fixed, tax_ppm: tax,
+  }).eq('id', id);
+  if(error){ say('Could not save: ' + error.message); return; }
+  posLocEditing = null;
+  await loadPosMerchants(true);
+  renderPosDetail();
+  renderPosMerchants();
+  showToast('Saved.', 'success');
+}
+
+async function addPosLocation(merchantId){
+  const m = POS_MERCHANTS.find(x => x.id === merchantId);
+  const name = prompt('What is this location called? e.g. Second shop, Patio bar');
+  if(!name || !name.trim()) return;
+  /*
+   * The new one starts on the first location's edition, rate and tax rather
+   * than on defaults. A merchant opening a second shop is almost always
+   * opening the same business again, and a second shop that silently arrived
+   * on 0% card price is a rate nobody set and nobody notices.
+   */
+  const first = posPrimaryLocation(m) || {};
+  const { error } = await supa.from('pos_locations').insert({
+    merchant_id: merchantId,
+    name: name.trim(),
+    street: m.street, city: m.city, state: m.state, zip: m.zip,
+    edition: first.edition || 'restaurant',
+    dual_pricing_ppm: first.dual_pricing_ppm || 0,
+    dual_pricing_fixed_cents: first.dual_pricing_fixed_cents || 0,
+    tax_ppm: first.tax_ppm || 0,
+  });
+  if(error){ showToast('Could not add it: ' + error.message, 'error'); return; }
+  await loadPosMerchants(true);
+  renderPosDetail();
+  renderPosMerchants();
+  showToast('Added ' + name.trim() + '. Check its address and rate.', 'success');
+}
+
+async function removePosLocation(id){
+  if(!confirm('Remove this location? Its stations go with it. Anything it has already sold is unaffected.')) return;
+  const { error } = await supa.from('pos_locations').delete().eq('id', id);
   if(error){ showToast('Could not remove it: ' + error.message, 'error'); return; }
   await loadPosMerchants(true);
   renderPosDetail();
