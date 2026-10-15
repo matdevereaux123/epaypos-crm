@@ -8614,7 +8614,7 @@ async function deleteResidualPayout(id){
   const r = RESIDUALS.find(x => x.id === id);
   if(!r) return;
   if(!confirm(`Delete the ${monthLabel(r.period_month)} payout for ${partnerNameById(r.partner_id)}? They will stop seeing it in their portal.`)) return;
-  const { error } = await supa.from('residual_payouts').delete().eq('id', id);
+  const { error } = await deleteRows('residual_payouts', 'id', id);
   if(error){ showToast('Could not delete it: ' + error.message, 'error'); return; }
   RESIDUALS = RESIDUALS.filter(x => x.id !== id);
   closeResidualDrawer();
@@ -9038,7 +9038,7 @@ async function deleteLoader(id){
   const l = LOADERS.find(x => x.id === id);
   if(!l) return;
   if(!confirm(`Delete ${l.business_name}? If they might come back, set them Inactive instead — that keeps the record.`)) return;
-  const { error } = await supa.from('atm_loaders').delete().eq('id', id);
+  const { error } = await deleteRows('atm_loaders', 'id', id);
   if(error){ showToast('Could not delete: ' + error.message, 'error'); return; }
   LOADERS = LOADERS.filter(x => x.id !== id);
   closeLoaderDrawer();
@@ -9272,7 +9272,7 @@ async function deleteContact(id){
   const c = CONTACTS.find(x => x.id === id);
   if(!c) return;
   if(!confirm(`Delete ${c.name}? This can't be undone.`)) return;
-  const { error } = await supa.from('contacts').delete().eq('id', id);
+  const { error } = await deleteRows('contacts', 'id', id);
   if(error){ showToast('Could not delete: ' + error.message, 'error'); return; }
   CONTACTS = CONTACTS.filter(x => x.id !== id);
   closeContactDrawer();
@@ -10196,7 +10196,7 @@ document.getElementById('deleteSelectedReferralsBtn').addEventListener('click', 
   const ids = Array.from(document.querySelectorAll('.row-check-referrals:checked')).map(cb => cb.dataset.id);
   if(ids.length === 0) return;
   if(!confirm(`Delete ${ids.length} partner${ids.length===1?'':'s'}? This can't be undone.`)) return;
-  const { error } = await supa.from('partners').delete().in('id', ids);
+  const { error } = await deleteRows('partners', 'id', ids);
   if(error){ alert('Could not delete: ' + error.message); return; }
   PARTNERS = PARTNERS.filter(p => !ids.includes(p.id));
   renderReferralTable();
@@ -11323,7 +11323,7 @@ async function deletePartner(id){
   const p = PARTNERS.find(x => x.id === id);
   if(!p) return;
   if(!confirm(`Delete "${p.name}"? This can't be undone.`)) return;
-  const { error } = await supa.from('partners').delete().eq('id', id);
+  const { error } = await deleteRows('partners', 'id', id);
   if(error){ alert('Could not delete: ' + error.message); return; }
   PARTNERS = PARTNERS.filter(x => x.id !== id);
   closeReferralDrawer();
@@ -12377,7 +12377,7 @@ async function deleteOffice(officeId){
   const office = OFFICES.find(o => o.id === officeId);
   if(!office) return;
   if(!confirm(`Delete "${office.name}"? Anyone assigned here becomes Unassigned.`)) return;
-  const { error } = await supa.from('offices').delete().eq('id', officeId);
+  const { error } = await deleteRows('offices', 'id', officeId);
   if(error){ alert('Could not delete: ' + error.message); return; }
   OFFICES = OFFICES.filter(o => o.id !== officeId);
   PARTNERS.filter(p => p.office_id === officeId).forEach(p => { p.office_id = null; });
@@ -13101,7 +13101,7 @@ async function deleteCustomRole(key){
     return;
   }
   if(!confirm(`Delete the "${ROLES[key].label}" role? This can't be undone.`)) return;
-  const { error } = await supa.from('roles').delete().eq('key', key);
+  const { error } = await deleteRows('roles', 'key', key);
   if(error){ alert('Could not delete role: ' + error.message); return; }
   delete CUSTOM_ROLES[key];
   rebuildRoles();
@@ -13753,7 +13753,7 @@ async function addPosDevice(locationId){
 
 async function removePosDevice(id){
   if(!confirm('Remove this device? Its checks keep the station number they already printed.')) return;
-  const { error } = await supa.from('pos_devices').delete().eq('id', id);
+  const { error } = await deleteRows('pos_devices', 'id', id);
   if(error){ showToast('Could not remove it: ' + error.message, 'error'); return; }
   await loadPosMerchants(true);
   renderPosDetail();
@@ -13879,7 +13879,7 @@ async function addPosLocation(merchantId){
 
 async function removePosLocation(id){
   if(!confirm('Remove this location? Its stations go with it. Anything it has already sold is unaffected.')) return;
-  const { error } = await supa.from('pos_locations').delete().eq('id', id);
+  const { error } = await deleteRows('pos_locations', 'id', id);
   if(error){ showToast('Could not remove it: ' + error.message, 'error'); return; }
   await loadPosMerchants(true);
   renderPosDetail();
@@ -16096,7 +16096,7 @@ async function removeAccountDocument(id, docId){
   if(!d) return;
   const { error: removeErr } = await supa.storage.from('lead-documents').remove([d.storage_path]);
   if(removeErr){ alert('Could not remove file: ' + removeErr.message); return; }
-  const { error } = await supa.from('lead_documents').delete().eq('id', docId);
+  const { error } = await deleteRows('lead_documents', 'id', docId);
   if(error){ alert('File removed, but could not delete the record: ' + error.message); return; }
   LEAD_DOCUMENTS = LEAD_DOCUMENTS.filter(x => x.id !== docId);
   openLeadDetail(id);
@@ -16676,6 +16676,37 @@ async function saveLeadBrand(id, brand){
 
    Asking for the updated row back and checking it came is the only way to
    tell the two apart. Every write that matters goes through here. */
+/* The delete twin of updateRow, and it exists for the same reason.
+
+   A DELETE that RLS refuses comes back the same way a successful one does:
+   no error, no rows. The page then removed the record from its own copy of
+   the data, the screen showed it gone, and the next refresh brought it
+   straight back — which reads as the app losing records at random rather
+   than as a permission it never had. .select() makes the refusal visible:
+   no rows back means nothing was deleted, and that is an error.
+
+   Deleting several at once can be partly refused — some of those rows are
+   yours and some are not — so the count comes back too, and the caller is
+   told how many actually went. */
+async function deleteRows(table, column, value, opts){
+  const o = opts || {};
+  const many = Array.isArray(value);
+  const q = supa.from(table).delete();
+  const res = await (many ? q.in(column, value) : q.eq(column, value)).select(column);
+  if(res.error) return { error: res.error };
+
+  const gone = (res.data || []).length;
+  if(gone === 0 && !o.allowNone){
+    return { error: { message: o.message ||
+      'Nothing was deleted — this is not yours to remove. Ask an admin if it should be.' } };
+  }
+  if(many && gone < value.length){
+    return { data: res.data, count: gone, error: { message:
+      `Only ${gone} of ${value.length} were deleted — the rest are not yours to remove.` } };
+  }
+  return { data: res.data, count: gone };
+}
+
 async function updateRow(table, id, fields){
   const res = await supa.from(table).update(fields).eq('id', id).select();
   if(res.error) return { error: res.error };
@@ -18257,7 +18288,7 @@ async function deleteAgreementTemplate(templateId){
     : `Delete the template "${t.name}"? This cannot be undone.`;
   if(!confirm(warning)) return;
 
-  const { error } = await supa.from('agreement_templates').delete().eq('id', templateId);
+  const { error } = await deleteRows('agreement_templates', 'id', templateId);
   if(error){ showToast('Could not delete: ' + error.message, 'error'); return; }
   AGREEMENT_TEMPLATES = AGREEMENT_TEMPLATES.filter(x => x.id !== templateId);
   closeTemplateDrawer();
@@ -18877,7 +18908,7 @@ async function deleteSignatureRequest(id){
     : '';
   if(!confirm(`Delete "${r.title}" for ${r.signer_name}?${extra}\n\nThis cannot be undone.`)) return;
 
-  const { error } = await supa.from('signature_requests').delete().eq('id', id);
+  const { error } = await deleteRows('signature_requests', 'id', id);
   if(error){ showToast('Could not delete: ' + error.message, 'error'); return; }
   SIGNATURE_REQUESTS = SIGNATURE_REQUESTS.filter(x => x.id !== id);
   closeSignRequestDrawer();
@@ -19875,7 +19906,7 @@ async function deleteMarketingMaterial(id){
   if(!m) return;
   if(!confirm(`Remove “${m.title}” from this page?\n\nEveryone loses access to it. This cannot be undone.`)) return;
 
-  const { error } = await supa.from('marketing_materials').delete().eq('id', id);
+  const { error } = await deleteRows('marketing_materials', 'id', id);
   if(error){ showToast('Could not remove: ' + error.message, 'error'); return; }
   if(m.kind === 'file' && m.file_path) supa.storage.from(MARKETING_BUCKET).remove([m.file_path]);
   MARKETING_MATERIALS = MARKETING_MATERIALS.filter(x => x.id !== id);
@@ -20204,7 +20235,7 @@ async function deleteColdLead(id){
 
   if(!confirm(`Delete the cold lead “${c.business_name}”?\n\n${notes.join('\n')}`)) return;
 
-  const { error } = await supa.from('cold_leads').delete().eq('id', id);
+  const { error } = await deleteRows('cold_leads', 'id', id);
   if(error){ showToast('Could not delete: ' + error.message, 'error'); return; }
 
   COLD_LEADS = COLD_LEADS.filter(x => x.id !== id);
@@ -20244,7 +20275,7 @@ async function deleteApplication(id){
     }
   }
 
-  const { error } = await supa.from('applications').delete().eq('id', id);
+  const { error } = await deleteRows('applications', 'id', id);
   if(error){ showToast('Could not delete: ' + error.message, 'error'); return; }
 
   APPLICATIONS = APPLICATIONS.filter(x => x.id !== id);
@@ -20316,7 +20347,7 @@ async function deleteLead(id){
   const l = LEADS.find(x => x.id === id);
   if(!l) return;
   if(!confirm(`Delete "${l.business_name}"? This can't be undone.`)) return;
-  const { error } = await supa.from('leads').delete().eq('id', id);
+  const { error } = await deleteRows('leads', 'id', id);
   if(error){ alert('Could not delete: ' + error.message); return; }
   // LEADS, not scopedLeads(): the scoped list is a filtered view — for a
   // portal login it holds only their own leads, and it now also excludes
@@ -20380,7 +20411,7 @@ document.getElementById('deleteSelectedAccountsBtn').addEventListener('click', a
   const ids = Array.from(document.querySelectorAll('.row-check-accounts:checked')).map(cb => cb.dataset.id);
   if(ids.length === 0) return;
   if(!confirm(`Delete ${ids.length} account${ids.length===1?'':'s'}? This removes the underlying lead record entirely and can't be undone.`)) return;
-  const { error } = await supa.from('leads').delete().in('id', ids);
+  const { error } = await deleteRows('leads', 'id', ids);
   if(error){ alert('Could not delete: ' + error.message); return; }
   LEADS = scopedLeads().filter(l => !ids.includes(l.id));
   renderAccountsTable();
@@ -21308,7 +21339,7 @@ document.getElementById('deleteSelectedColdLeadsBtn').addEventListener('click', 
   const ids = Array.from(document.querySelectorAll('.row-check-coldLeads:checked')).map(cb => cb.dataset.id);
   if(ids.length === 0) return;
   if(!confirm(`Delete ${ids.length} cold lead${ids.length===1?'':'s'}? This can't be undone.`)) return;
-  const { error } = await supa.from('cold_leads').delete().in('id', ids);
+  const { error } = await deleteRows('cold_leads', 'id', ids);
   if(error){ alert('Could not delete: ' + error.message); return; }
   // COLD_LEADS, not scopedColdLeads(): the scoped list is a filtered view, so
   // assigning it back discards every record it filtered out. Same bug
@@ -22642,7 +22673,7 @@ document.getElementById('nlSaveTemplateBtn').addEventListener('click', async fun
 });
 async function deleteNlTemplate(id){
   if(!confirm('Delete this template? This can\'t be undone.')) return;
-  const { error } = await supa.from('nl_templates').delete().eq('id', id);
+  const { error } = await deleteRows('nl_templates', 'id', id);
   if(error){ alert('Could not delete template: ' + error.message); return; }
   NL_TEMPLATES = NL_TEMPLATES.filter(t => t.id !== id);
   renderNewsletterView();
@@ -22765,7 +22796,7 @@ async function scheduleNewsletter(subject, body, scheduledFor, recipientMode, re
 }
 async function cancelScheduledNewsletter(id){
   if(!confirm('Cancel this scheduled send? This can\'t be undone.')) return;
-  const { error } = await supa.from('newsletters').delete().eq('id', id);
+  const { error } = await deleteRows('newsletters', 'id', id);
   if(error){ alert('Could not cancel: ' + error.message); return; }
   NEWSLETTERS = NEWSLETTERS.filter(n => n.id !== id);
   renderNewsletterView();
@@ -23025,7 +23056,7 @@ async function saveBookingAvailability(){
   }
   // Replacing the whole set is simpler and just as correct as reconciling a
   // partial update against rows that may have moved weekday or time.
-  const { error: delError } = await supa.from('booking_availability').delete().eq('user_id', currentUser.id);
+  const { error: delError } = await deleteRows('booking_availability', 'user_id', currentUser.id, { allowNone: true });
   if(delError){ showToast('Could not save your hours: ' + delError.message, 'error'); return; }
   BOOKING_AVAILABILITY = BOOKING_AVAILABILITY.filter(a => a.user_id !== currentUser.id);
   if(rows.length){
@@ -23143,7 +23174,7 @@ async function toggleBookingLinkActive(id){
 
 async function deleteBookingLink(id){
   if(!confirm('Delete this booking link? Meetings already booked through it are unaffected.')) return;
-  const { error } = await supa.from('booking_links').delete().eq('id', id);
+  const { error } = await deleteRows('booking_links', 'id', id);
   if(error){ showToast('Could not delete: ' + error.message, 'error'); return; }
   BOOKING_LINKS = BOOKING_LINKS.filter(l => l.id !== id);
   openBookingLinksDrawer();
@@ -23541,7 +23572,7 @@ async function toggleTaskComplete(id){
 
 async function deleteTask(id){
   if(!confirm('Delete this task?')) return;
-  const { error } = await supa.from('tasks').delete().eq('id', id);
+  const { error } = await deleteRows('tasks', 'id', id);
   if(error){ alert('Could not delete: ' + error.message); return; }
   TASKS = TASKS.filter(x => x.id !== id);
   renderTasksList();
@@ -23934,7 +23965,7 @@ async function addRecordNote(type, id, kind){
 
 async function deleteRecordNote(noteId, type, id, kind){
   if(!confirm('Delete this note? This can\'t be undone.')) return;
-  const { error } = await supa.from('record_notes').delete().eq('id', noteId);
+  const { error } = await deleteRows('record_notes', 'id', noteId);
   if(error){ showToast('Could not delete: ' + error.message, 'error'); return; }
   removeNote(noteId);
   if(noteDraft.id === noteId) noteDraft = { key: null, id: null, timer: null, saving: false, pending: false };
@@ -24558,7 +24589,7 @@ async function saveRecruit(id, thenConvert){
 async function deleteRecruit(id){
   const r = RECRUITS.find(x => x.id === id);
   if(!r || !confirm(`Delete ${r.name} from Recruiting?${r.converted ? '\n\nThe record they were converted into is not affected.' : ''}`)) return;
-  const { error } = await supa.from('recruit_leads').delete().eq('id', id);
+  const { error } = await deleteRows('recruit_leads', 'id', id);
   if(error){ showToast('Could not delete: ' + error.message, 'error'); return; }
   RECRUITS = RECRUITS.filter(x => x.id !== id);
   drawRecruitTable();
@@ -24964,7 +24995,7 @@ function renderConnectedCalendarsList(){
 // but not "connected" — connecting now means signing in as that person.
 async function removePlaceholderCalendar(id){
   if(!confirm('Remove this calendar? Meetings assigned to it stay in the CRM but lose their calendar label.')) return;
-  const { error } = await supa.from('connected_calendars').delete().eq('id', id);
+  const { error } = await deleteRows('connected_calendars', 'id', id);
   if(error){ showToast('Could not remove it: ' + error.message, 'error'); return; }
   CONNECTED_CALENDARS = CONNECTED_CALENDARS.filter(c => c.id !== id);
   renderConnectedCalendarsList();
@@ -25598,7 +25629,7 @@ async function deleteMeeting(eventId){
   const existing = CALENDAR_EVENTS.find(e => e.id === eventId);
   const googleEventId = existing && existing.google_event_id;
 
-  const { error } = await supa.from('calendar_events').delete().eq('id', eventId);
+  const { error } = await deleteRows('calendar_events', 'id', eventId);
   if(error){ showToast('Could not delete meeting: ' + error.message, 'error'); return; }
   CALENDAR_EVENTS = CALENDAR_EVENTS.filter(e => e.id !== eventId);
   renderCalendar();
@@ -26549,7 +26580,7 @@ async function deleteLendingLead(id){
   const l = LENDING_LEADS.find(x => x.id === id);
   if(!l) return;
   if(!confirm(`Delete "${l.business_name}"? This can't be undone.`)) return;
-  const { error } = await supa.from('lending_leads').delete().eq('id', id);
+  const { error } = await deleteRows('lending_leads', 'id', id);
   if(error){ alert('Could not delete: ' + error.message); return; }
   LENDING_LEADS = LENDING_LEADS.filter(x => x.id !== id);
   closeLendingLeadDrawer();
@@ -26830,7 +26861,7 @@ async function deleteIsoLead(id){
   const l = ISO_LEADS.find(x => x.id === id);
   if(!l) return;
   if(!confirm(`Delete "${l.business_name}"? This can't be undone.`)) return;
-  const { error } = await supa.from('iso_leads').delete().eq('id', id);
+  const { error } = await deleteRows('iso_leads', 'id', id);
   if(error){ alert('Could not delete: ' + error.message); return; }
   ISO_LEADS = ISO_LEADS.filter(x => x.id !== id);
   closeIsoLeadDrawer();
