@@ -1965,11 +1965,35 @@
   .drawer-body input, .drawer-body select, .drawer-body textarea{
     min-height:44px;border-radius:var(--radius-sm);border:1px solid var(--line-strong);
   }
-  .phase-toggle button{min-height:42px;border-radius:999px;font-weight:700;}
-  .phase-toggle button.active{background:var(--blue-400);color:#0B1B38;box-shadow:none;}
+  /* The toggles at the top of a page - Open/Completed/All, Board/Hierarchy/
+     Team, the cold lead filters. They were the one control still speaking
+     the old language: thin text, a white chip on a grey tray, nothing to
+     tell you where the group ended. They are now built like the brand
+     switch and the menu - an inset tray, 42px segments, and the brand's
+     cyan with navy text on the one you are in - so the eye reads them as
+     the same kind of control wherever they turn up. */
+  .phase-toggle, .view-toggle{
+    background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:4px;gap:4px;
+  }
+  .phase-toggle button, .view-toggle-btn{
+    min-height:42px;padding:0 16px;border-radius:9px;border:1px solid transparent;
+    font-size:13.5px;font-weight:700;color:var(--slate-500);
+  }
+  .phase-toggle button:hover, .view-toggle-btn:hover{background:var(--blue-50);color:var(--navy-700);}
+  /* Navy on cyan in both themes: the fill is bright either way. */
+  .phase-toggle button.active, .view-toggle-btn.active{
+    background:var(--blue-400);border-color:var(--blue-500);color:#0B1B38;
+    box-shadow:0 1px 2px rgba(11,27,56,.12);
+  }
+  .phase-toggle button.active .phase-dot{box-shadow:0 0 0 2px rgba(255,255,255,.65);}
+  /* The count rides in a pill of its own, white on the selected segment so
+     it stays readable against the cyan. */
+  .phase-toggle .count-badge{
+    min-width:22px;padding:2px 8px;border-radius:999px;
+    background:var(--blue-100);color:var(--navy-700);font-size:11.5px;font-weight:800;
+  }
   .phase-toggle button.active .count-badge{background:#FFFFFF;color:#0B1B38;}
-  .view-toggle-btn{min-height:38px;font-weight:700;}
-  .view-toggle-btn.active{background:var(--blue-400);color:#0B1B38;box-shadow:none;}
+  .view-toggle-btn{min-height:40px;}
 
   /* ---------- CARDS, PANELS, TABLES ---------- */
   .stat-card{border-top:5px solid var(--blue-400);padding:16px 18px;}
@@ -2054,7 +2078,6 @@
   .notif-bell-btn:hover{background:var(--blue-50);border-color:var(--blue-400);}
   .quick-action-btn{border-radius:12px;}
   .quick-action-btn .qa-icon{background:var(--blue-400);color:#0B1B38;}
-  .view-toggle{background:var(--blue-50);border-color:var(--line);}
   .select-search-opt.sel{background:var(--blue-50);}
   .link-chip, .merge-chip, .standing-chip{border-color:var(--blue-200);}
   .toast{border-radius:12px;}
