@@ -565,6 +565,25 @@
   .btn{padding:10px 16px;border-radius:8px;border:1px solid var(--line);background:var(--card);font-size:13.5px;font-weight:600;color:var(--navy-700);}
   .btn:hover{border-color:var(--brand-accent-2);}
 
+  /*
+   * A line of controls.
+   *
+   * Every use of this in the EPAY Back End sets `gap` inline, which does
+   * nothing without a flex container — and there was no rule here at all,
+   * so all of them fell back to inline layout. Buttons and chips sat
+   * touching each other, spans carrying `align-self:center` dropped onto
+   * their own line, and anything that wrapped misaligned on the baseline,
+   * which is what reads as overlapping.
+   *
+   * Wrapping by default, because the merchant sheet is 440px wide and
+   * several of these rows are wider than that. A row that overflows a
+   * drawer puts a button under the edge of the screen.
+   */
+  .row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0;}
+  /* Buttons and chips in a row never squeeze their own text onto two
+     lines — a two-line button is the thing that makes a row look broken. */
+  .row > .btn, .row > .chip{flex:0 0 auto;white-space:nowrap;}
+
   /* Training walkthrough */
   .training-card{
     position:relative;width:min(520px,calc(100vw - 32px));max-height:calc(100vh - 48px);overflow-y:auto;
@@ -2373,6 +2392,13 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
             Setup
           </button>
+          <!-- Not data-view: the Tasks page is the CRM's, so this leaves the
+               back end rather than pretending to be a page inside it. The
+               filter is what makes it useful from here. -->
+          <button class="nav-item" type="button" onclick="openBoardingTasks()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/><line x1="7" y1="8" x2="7.01" y2="8"/></svg>
+            Boarding tasks
+          </button>
           <button class="nav-item" data-view="posnew">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             New merchant
@@ -2380,6 +2406,10 @@
           <button class="nav-item" data-view="posbilling">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
             Billing
+          </button>
+          <button class="nav-item" data-view="possubs">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            Subscription editing
           </button>
           <button class="nav-item" data-view="posreferral">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12v10H4V12"/><path d="M2 7h20v5H2z"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
@@ -2759,6 +2789,7 @@
         </p>
 
         <div class="cards-row" id="repStats"></div>
+        <p id="repSourceNote" style="font-size:11.5px;color:var(--slate-500);margin:10px 0 0;"></p>
 
         <div class="panel">
           <div class="panel-head"><h2>Add-ons in this period</h2></div>
@@ -3044,6 +3075,7 @@
           that the database is the authority, not either screen.
         -->
         <div class="cards-row" id="backendStats"></div>
+        <div class="panel" id="backendTasksCard" style="padding:14px 18px;margin-top:18px;"></div>
         <div class="panel">
           <div class="panel-head"><h2>Recently boarded</h2></div>
           <div id="backendRecent"></div>
@@ -3089,6 +3121,22 @@
             </p>
           </div>
         </div>
+      </section>
+
+      <!-- EPAY BACK END: SUBSCRIPTION EDITING
+           Split out of Billing. Billing is a thing you read - what each
+           account is on and what has been agreed. This is a thing you
+           change, and changing a price here changes what every future
+           quote says. Two different jobs, and mixing them put an Edit
+           button on a page people open to look something up. -->
+      <section id="view-possubs" class="view" style="display:none;">
+        <div class="topbar">
+          <div>
+            <h1>EPAY subscription editing</h1>
+            <p class="subtext">What EPAY charges for a plan and for each add-on. Changing a price here changes what a new agreement quotes &mdash; it does not change what anybody is already on.</p>
+          </div>
+        </div>
+        <div class="panel"><div id="posSubsBox"></div></div>
       </section>
 
       <!-- EPAY BACK END: THE REFERRAL OFFER -->
@@ -9548,7 +9596,7 @@ function showView(view, fromHistory){
   }
   /* The same gate as the switch above it. Two different answers to "may
      they open this" is how somebody reaches a view with no way back to it. */
-  const posViews = ['backend','posmerchants','possetup','posnew','posreferral','posbilling'];
+  const posViews = ['backend','posmerchants','possetup','posnew','posreferral','posbilling','possubs'];
   if(posViews.includes(view) && !(currentUser && currentUser.epay_admin)) view = 'dashboard';
   /*
    * "New merchant" is an action wearing a nav item's clothes. It opens the
@@ -9566,6 +9614,7 @@ function showView(view, fromHistory){
       else if(view === 'possetup') renderPosSetupBoard();
       else if(view === 'posreferral') renderPosReferral();
       else if(view === 'posbilling') renderPosBilling();
+      else if(view === 'possubs') renderPosSubscriptions();
       else renderPosMerchants();
     });
   }
@@ -9582,6 +9631,20 @@ function showView(view, fromHistory){
   }
   document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
   document.getElementById('view-' + view).style.display = 'block';
+
+  /*
+   * Start at the top of the new page.
+   *
+   * Nothing here scrolls but the window, so the scroll position is shared by
+   * every view. Leave the EPAY Back End billing page halfway down, open
+   * Leads, and Leads opens halfway down too — on a short page that is a
+   * blank screen, and the usual reading of a blank screen is that the tab is
+   * broken rather than that it is scrolled past its own content.
+   *
+   * Not on a back press. The browser restores where somebody was, and that
+   * is the one case where the old position is the right one.
+   */
+  if(!fromHistory) window.scrollTo(0, 0);
 
   // A tab's own data, fetched the first time it is opened. The view is shown
   // straight away so navigation never feels blocked; if its data is not in
@@ -9616,7 +9679,24 @@ function showView(view, fromHistory){
   if(view === 'coldemail') renderColdEmailTable();
   if(view === 'newsletter') renderNewsletterView();
   if(view === 'residuals') renderResidualsReport();
-  if(view === 'reportsubs') renderSubscriptionReport();
+  if(view === 'reportsubs'){
+    /*
+     * The POS side first, where this person can see it. Only EPAY admins can
+     * read pos_*, so for everybody else there is nothing to fetch and the
+     * report falls back to what the leads say — which it says on the page,
+     * because two people opening the same money report and seeing different
+     * totals with no explanation is worse than either total.
+     *
+     * Agreements are pulled deeper than the Billing page needs them: this
+     * report goes back over past periods, and the agreed price is the one
+     * that was invoiced.
+     */
+    if(currentUser && currentUser.epay_admin){
+      Promise.all([loadPosMerchants(), loadPosBilling(), loadRecentAgreements(500)])
+        .then(() => renderSubscriptionReport());
+    }
+    renderSubscriptionReport();
+  }
   if(view === 'collections') renderCollectionsReport();
   if(view === 'lendingleads') renderLendingLeadsBoard();
   if(view === 'esign'){ renderEsignTable(); refreshSignatureRequests(); }
@@ -11861,7 +11941,7 @@ document.getElementById('fuSaveBtn').addEventListener('click', async function(){
   } else {
     const l = LEADS.find(x=>x.id===recordId);
     if(!l) return;
-    const { error } = updateRow('leads', recordId, { general_follow_up_date: date, general_follow_up_note: note });
+    const { error } = await updateRow('leads', recordId, { general_follow_up_date: date, general_follow_up_note: note });
     if(error){ alert('Could not save: ' + error.message); return; }
     l.general_follow_up_date = date;
     l.general_follow_up_note = note;
@@ -13339,6 +13419,40 @@ function posDeviceCount(m){
 }
 function posPrimaryLocation(m){ return (m.pos_locations || [])[0] || null; }
 
+/*
+ * The boarding jobs, from either side.
+ *
+ * The Tasks page belongs to the CRM, so this leaves the back end rather than
+ * building a second tasks page that would drift from the first. What it
+ * carries across is the filter: somebody who got here from the back end
+ * wants the boarding list, not every follow-up in the business.
+ */
+function openBoardingTasks(){
+  taskCategoryFilter = 'boarding';
+  // Everyone's, not just mine. Boarding is a relay - sales, then the
+  // processor, then whoever ships the hardware - and a list filtered to one
+  // person shows a job as finished when it has only been handed on.
+  taskPersonFilter = 'all';
+  if(typeof setBrand === 'function' && currentBrand === 'backend') setBrand('epay');
+  showView('tasks');
+}
+
+/**
+ * Open boarding tasks, how many there are, and how many are late.
+ *
+ * `ready` is false until the tasks dataset has actually been fetched, which
+ * it has not been if nobody has opened the Tasks page this session. An empty
+ * TASKS reads identically to a cleared list, and "Nothing open" on a screen
+ * that simply has not loaded is the kind of wrong that gets believed.
+ */
+function boardingTaskCounts(){
+  const ready = typeof dataReady === 'function' ? dataReady(['tasks']) : false;
+  const all = (typeof TASKS !== 'undefined' && Array.isArray(TASKS) ? TASKS : [])
+    .filter(t => isBoardingTask(t) && !t.completed);
+  const today = todayISO();
+  return { ready, open: all.length, overdue: all.filter(t => t.due_date && t.due_date < today).length };
+}
+
 function renderBackendOverview(){
   const live = POS_MERCHANTS.filter(m => m.status === 'live').length;
   const onboarding = POS_MERCHANTS.filter(m => m.status === 'onboarding').length;
@@ -13359,6 +13473,33 @@ function renderBackendOverview(){
     /* The one that is a job rather than a number: an account set up and
        waiting on the processor cannot take a payment. */
     stat('Waiting on a MID', noMid, noMid ? 'cannot process yet' : 'all boarded', noMid > 0);
+
+  /* A number that is a list of jobs, so it opens the list. */
+  const tasks = boardingTaskCounts();
+  const tasksCard = document.getElementById('backendTasksCard');
+  if(tasksCard){
+    tasksCard.innerHTML = `
+      <div class="row" style="justify-content:space-between;">
+        <div>
+          <h2 style="font-size:15.5px;margin:0 0 2px;">Boarding tasks</h2>
+          <p style="font-size:12px;color:var(--slate-500);margin:0;">
+            ${!tasks.ready
+              ? 'Tasks filed under Boarding, from anywhere in the CRM.'
+              : tasks.open === 0
+              ? 'Nothing open. Tasks filed under Boarding show up here and on the Tasks page.'
+              : `${tasks.open} open${tasks.overdue ? `, <strong style="color:var(--red);">${tasks.overdue} overdue</strong>` : ''}.`}
+          </p>
+        </div>
+        <button class="btn btn-accent btn-sm" onclick="openBoardingTasks()">Open the list</button>
+      </div>`;
+  }
+
+  /* Fetch once and draw again, rather than showing a count of nothing. */
+  if(!tasks.ready && typeof ensureData === 'function'){
+    ensureData(['tasks']).then(() => {
+      if(document.getElementById('view-backend').style.display !== 'none') renderBackendOverview();
+    }).catch(() => {});
+  }
 
   const recent = POS_MERCHANTS.slice(0, 6);
   document.getElementById('backendRecent').innerHTML = recent.length === 0
@@ -13503,6 +13644,18 @@ function openPosMerchantForm(id){
         ${m ? 'Save changes' : 'Board this merchant'}</button>
     </div>`;
   renderPosEditionCards();
+  openPosDrawer();
+}
+
+/*
+ * Opening the sheet starts at the top of it, whatever the last one was left
+ * at. The drawer element is reused, so its scroll position outlives the
+ * record it belonged to: open a merchant, read to the bottom, close it, open
+ * another, and the second one opens partway down somebody else's page.
+ */
+function openPosDrawer(){
+  const drawer = document.getElementById('posMerchantDrawer');
+  if(drawer) drawer.scrollTop = 0;
   document.getElementById('posMerchantOverlay').classList.add('open');
 }
 
@@ -13549,11 +13702,11 @@ async function savePosMerchant(id){
   };
 
   if(id){
-    const { error } = await supa.from('pos_merchants').update(merchant).eq('id', id);
+    const { error } = await updateRow('pos_merchants', id, merchant);
     if(error){ posProblem('Could not save: ' + error.message); return; }
     const existing = posPrimaryLocation(POS_MERCHANTS.find(x => x.id === id));
     if(existing){
-      const { error: le } = await supa.from('pos_locations').update(location).eq('id', existing.id);
+      const { error: le } = await updateRow('pos_locations', existing.id, location);
       if(le){ posProblem('Saved the business, but not the location: ' + le.message); return; }
     }
     showToast('Saved.', 'success');
@@ -13592,6 +13745,21 @@ async function savePosMerchant(id){
 
 let posDetailId = null;
 let posDetailTab = 'overview';
+
+/*
+ * Switching tabs inside the merchant sheet starts at the top of the new one.
+ *
+ * The sheet scrolls, not the page, and the scroll position belongs to the
+ * sheet rather than to the tab. Read to the bottom of the Plan tab - which
+ * is the longest, and got longer again when agreements landed on it - then
+ * open Log, and Log opens at a point past its own content.
+ */
+function setPosDetailTab(tab){
+  posDetailTab = tab;
+  renderPosDetail();
+  const drawer = document.getElementById('posMerchantDrawer');
+  if(drawer) drawer.scrollTop = 0;
+}
 let POS_NOTES = [];
 
 const POS_DEVICE_KINDS = {
@@ -13605,11 +13773,12 @@ async function openPosMerchant(id, tab){
   // Prices before the sheet draws, or the Locations tab renders its add-ons
   // with no catalogue and shows nothing at all.
   await loadPosBilling();
+  await loadPosAgreements(id);
   const { data } = await supa.from('pos_merchant_notes')
     .select('*').eq('merchant_id', id).order('created_at', { ascending:false });
   POS_NOTES = data || [];
   renderPosDetail();
-  document.getElementById('posMerchantOverlay').classList.add('open');
+  openPosDrawer();
 }
 
 function posDetailMerchant(){ return POS_MERCHANTS.find(m => m.id === posDetailId) || null; }
@@ -13634,7 +13803,7 @@ function renderPosDetail(){
     <div class="drawer-body" style="padding-top:0;">
       <div class="row" style="gap:6px;margin:0 0 16px;border-bottom:1px solid var(--line);padding:10px 0;">
         ${tabs.map(([k,label]) => `<button type="button" class="chip" aria-pressed="${posDetailTab===k}"
-            onclick="posDetailTab='${k}';renderPosDetail();">${label}</button>`).join('')}
+            onclick="setPosDetailTab('${k}')">${label}</button>`).join('')}
       </div>
       ${posDetailTab === 'overview' ? posDetailOverview(m)
         : posDetailTab === 'setup' ? posDetailSetup(m)
@@ -13682,7 +13851,8 @@ function posDetailPlan(m){
     </div>
     ${locs.length === 0 ? `<div class="stub-panel"><h3>No locations</h3>
         <p style="font-size:13px;">Nothing can be set up until there is one.</p></div>`
-      : locs.map(l => posLocationCard(l, m)).join('')}`;
+      : locs.map(l => posLocationCard(l, m)).join('')}
+    ${posAgreementsHtml(m)}`;
 }
 
 function posDetailDevices(m){
@@ -13851,10 +14021,10 @@ async function savePosLocation(id){
   if(tax === null){ say('Sales tax has to be a number.'); return; }
   if(!isFinite(fixed) || fixed < 0){ say('Per transaction has to be a whole number of cents.'); return; }
   say('');
-  const { error } = await supa.from('pos_locations').update({
+  const { error } = await updateRow('pos_locations', id, {
     name: get('plName'), edition: get('plEdition'),
     dual_pricing_ppm: pct, dual_pricing_fixed_cents: fixed, tax_ppm: tax,
-  }).eq('id', id);
+  });
   if(error){ say('Could not save: ' + error.message); return; }
   posLocEditing = null;
   await loadPosMerchants(true);
@@ -14059,7 +14229,7 @@ async function setPosAnswer(id, value){
   else next[id] = value;
   m.setup_answers = next;              // shown immediately
   renderPosDetail();
-  const { error } = await supa.from('pos_merchants').update({ setup_answers: next }).eq('id', m.id);
+  const { error } = await updateRow('pos_merchants', m.id, { setup_answers: next });
   if(error) showToast('That answer did not save: ' + error.message, 'error');
 }
 
@@ -14091,16 +14261,121 @@ function posBoardFromLeadHtml(l){
       Setting this up in EPAY POS needs admin portal access.</p>`;
   }
   if(l.pos_merchant_id){
+    /*
+     * Ticked and fixed. Unticking would have to mean deleting the account,
+     * and an account with tills paired to it is not something a stray click
+     * on a lead should be able to remove. Closing one is a decision taken in
+     * the back end, where whoever takes it can see what is attached to it.
+     */
     return `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);">
-      <p style="font-size:11.5px;color:var(--green);margin:0 0 7px;">&#10003; Set up in EPAY POS</p>
+      <label class="check" style="margin:0 0 7px;cursor:default;">
+        <input type="checkbox" checked disabled>
+        <span style="font-size:12px;color:var(--green);font-weight:600;">Set up in EPAY POS</span>
+      </label>
       <button class="btn" style="width:100%;" onclick="openPosMerchantFromLead('${l.pos_merchant_id}')">
         Open the POS account</button></div>`;
   }
   return `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);">
-    <p style="font-size:11.5px;color:var(--slate-500);margin:0 0 7px;">
-      Not set up in EPAY POS yet. This creates the account and its first location
-      from what is already on this lead.</p>
-    <button class="btn" style="width:100%;" onclick="boardLeadInPos('${l.id}')">Set up in EPAY POS &rarr;</button></div>`;
+    <label class="check" style="margin:0 0 6px;">
+      <input type="checkbox" id="posBoardCheck_${l.id}" onchange="boardLeadInPos('${l.id}')">
+      <span style="font-size:12px;font-weight:600;">Set up in EPAY POS</span>
+    </label>
+    <p style="font-size:11.5px;color:var(--slate-500);margin:0;">
+      Creates the account and its first location, and copies everything already on this
+      lead and its application across. Ticks itself when an EPAY product is added.</p></div>`;
+}
+
+/* ---------------------------------------------------------------------------
+   WHAT CARRIES ACROSS
+
+   Everything the lead and its application hold that an EPAY account has a
+   place for. Somebody who typed a legal name, a tax id and an address into
+   the pipeline should not type them again into the portal: a second typing
+   is a second chance to spell it differently, and the two records are then
+   about the same business without agreeing about it.
+
+   Blank rather than a guess. A field nobody filled in stays null so the
+   setup board can say it is missing — an invented value is worse than an
+   absent one, because nothing flags it.
+   --------------------------------------------------------------------------- */
+
+/** The first non-empty of its arguments, trimmed, or null. */
+function firstFilled(){
+  for(const v of arguments){
+    if(typeof v === 'string' && v.trim() !== '') return v.trim();
+    if(typeof v === 'number' && isFinite(v)) return String(v);
+  }
+  return null;
+}
+
+/* An address typed as one line, split into the four columns the POS keeps it
+   in. Best effort, and deliberately so: the whole string is kept as the
+   street when it does not parse, which leaves somebody a line to correct
+   rather than four empty boxes to retype. */
+function splitAddress(text){
+  const out = { street:null, city:null, state:null, zip:null };
+  if(!text || typeof text !== 'string') return out;
+  const parts = text.split(',').map(x => x.trim()).filter(Boolean);
+  if(parts.length < 2){ out.street = text.trim() || null; return out; }
+  out.street = parts[0];
+  out.city = parts[1] || null;
+  const tail = (parts[2] || '').trim();
+  const m = tail.match(/^([A-Za-z]{2})\s*([\d-]{5,10})?$/);
+  if(m){ out.state = m[1].toUpperCase(); out.zip = m[2] || null; }
+  else if(tail){ out.state = tail; }
+  if(!out.zip){
+    const z = text.match(/\b(\d{5}(?:-\d{4})?)\b/);
+    if(z) out.zip = z[1];
+  }
+  return out;
+}
+
+/* The application attached to this lead, where there is one. Applications
+   link by linked_account_id; the fields they collect mostly land on the lead
+   itself, so this is a fallback for the few that do not. */
+function applicationForLead(leadId){
+  if(typeof APPLICATIONS === 'undefined' || !Array.isArray(APPLICATIONS)) return null;
+  return APPLICATIONS.find(a => a.linked_account_id === leadId) || null;
+}
+
+/** Everything that carries from a lead (and its application) to an account. */
+function posMerchantFromLead(l, app){
+  const a = app || {};
+  const raw = (a.raw_payload && typeof a.raw_payload === 'object') ? a.raw_payload : {};
+  const addr = splitAddress(firstFilled(l.business_address, raw.business_address, l.personal_address));
+  return {
+    dba: firstFilled(l.dba_name, l.business_name, a.business_name) || 'Unnamed',
+    legal_name: firstFilled(l.legal_business_name, raw.legal_business_name),
+    status: 'onboarding',
+    owner_name: firstFilled(
+      [l.owner_first_name, l.owner_last_name].filter(Boolean).join(' '),
+      l.contact_name, a.contact_name),
+    owner_email: firstFilled(l.email, a.email, raw.owner_email),
+    owner_phone: firstFilled(l.phone, a.phone),
+    // The business's own line and inbox, which are not the owner's. Receipts
+    // and disputes use these, so getting them mixed up points a cardholder
+    // at somebody's mobile.
+    phone: firstFilled(l.business_phone, raw.business_phone),
+    website: firstFilled(l.website, raw.website),
+    street: addr.street, city: addr.city, state: addr.state, zip: addr.zip,
+    rep: (currentUser && currentUser.name) || null,
+    // Usually not issued yet. Carried if it is.
+    mid: firstFilled(l.mid, l.mid_number),
+    tax_id: firstFilled(l.business_tax_id, raw.business_tax_id),
+    created_by: (currentUser && currentUser.id) || null,
+  };
+}
+
+/* Which edition the lead already points at, where it says. `pos_plan` is the
+   sales side's word for it; anything unrecognised stays on the default
+   rather than being guessed into the wrong product. */
+function posEditionFromLead(l){
+  const said = (l.pos_plan || '').toLowerCase();
+  if(said.includes('salon') || said.includes('nail') || said.includes('hair')) return 'salon';
+  if(said.includes('retail') && said.includes('express')) return 'quick-retail';
+  if(said.includes('retail')) return 'retail-inventory';
+  if(said.includes('terminal') || said.includes('charge')) return 'epay-charge';
+  return 'restaurant';
 }
 
 async function openPosMerchantFromLead(merchantId){
@@ -14110,31 +14385,42 @@ async function openPosMerchantFromLead(merchantId){
   openPosMerchant(merchantId);
 }
 
-async function boardLeadInPos(leadId){
+async function boardLeadInPos(leadId, auto){
   const l = LEADS.find(x => x.id === leadId);
   if(!l) return;
-  if(!confirm('Set ' + (l.business_name||'this lead') + ' up in EPAY POS?\n\nIt creates the account and its first location from what is on this lead. Nothing about the lead changes.')) return;
+  /*
+   * Never twice. The box can be ticked by hand and ticked again by adding a
+   * product, and two accounts for one business is the kind of mess somebody
+   * has to unpick by hand later — with tills possibly paired to the wrong
+   * one.
+   */
+  if(l.pos_merchant_id){ if(!auto) showToast('Already set up in EPAY POS.', 'success'); return; }
+  if(!(currentUser && currentUser.epay_admin)){
+    showToast('Setting this up in EPAY POS needs admin portal access.', 'error');
+    if(typeof openLeadDetail === 'function'){ refreshActiveView(); openLeadDetail(leadId); }
+    return;
+  }
+  // Asked when somebody ticked it. Not asked when adding a product ticked
+  // it for them — they already said what they wanted by adding the product.
+  if(!auto && !confirm('Set ' + (l.business_name||'this lead') + ' up in EPAY POS?\n\nIt creates the account and its first location, and copies across what is on this lead and its application. Nothing about the lead changes.')){
+    const box = document.getElementById('posBoardCheck_' + leadId);
+    if(box) box.checked = false;
+    return;
+  }
 
-  const merchant = {
-    dba: l.business_name || 'Unnamed',
-    legal_name: l.legal_name || null,
-    status: 'onboarding',
-    owner_name: l.contact_name || null,
-    owner_email: l.email || null,
-    owner_phone: l.phone || null,
-    street: l.address || null, city: l.city || null, state: l.state || null, zip: l.zip || null,
-    rep: (currentUser && currentUser.name) || null,
-    // Carried across only if it is already here. Usually it is not yet.
-    mid: l.mid || null,
-    created_by: (currentUser && currentUser.id) || null,
-  };
+  const merchant = posMerchantFromLead(l, applicationForLead(leadId));
   const { data, error } = await supa.from('pos_merchants').insert(merchant).select().single();
   if(error){ showToast('Could not set it up: ' + error.message, 'error'); return; }
 
   const { error: le } = await supa.from('pos_locations').insert({
     merchant_id: data.id, name: merchant.dba,
     street: merchant.street, city: merchant.city, state: merchant.state, zip: merchant.zip,
-    edition: 'restaurant', dual_pricing_ppm: 0, dual_pricing_fixed_cents: 0, tax_ppm: 0,
+    // What the lead already says they are buying, where it says. The rate is
+    // left at zero on purpose: dual pricing is the commercial heart of the
+    // deal and a number carried over from a sales note is not the number to
+    // start charging cardholders on.
+    edition: posEditionFromLead(l),
+    add_ons: [], dual_pricing_ppm: 0, dual_pricing_fixed_cents: 0, tax_ppm: 0,
   });
   if(le) showToast('Account created, but its location did not: ' + le.message, 'error');
 
@@ -14142,19 +14428,47 @@ async function boardLeadInPos(leadId){
    * The link last, and reported separately if it fails. An account that
    * exists with no link is recoverable — somebody can join them by hand. An
    * account nobody can find because the link silently failed is not.
+   *
+   * Through updateRow, because a refused UPDATE comes back looking exactly
+   * like a successful one: the lead would show as linked until the next
+   * refresh, and the next tick would board the business a second time.
    */
-  const { error: ue } = await supa.from('leads').update({ pos_merchant_id: data.id }).eq('id', leadId);
+  const { error: ue } = await updateRow('leads', leadId, { pos_merchant_id: data.id });
   if(ue){
     showToast('Set up, but the lead did not link to it: ' + ue.message, 'error');
   } else {
     l.pos_merchant_id = data.id;
-    showToast('Set up in EPAY POS. Edition and rate still need setting.', 'success');
+    showToast(auto
+      ? 'EPAY product added — set up in EPAY POS. Rate still needs setting.'
+      : 'Set up in EPAY POS. Edition and rate still need setting.', 'success');
   }
   posMerchantsLoaded = false;
   // The same pair saveMid uses, so the panel redraws the way every other
   // stage action redraws it.
   refreshActiveView();
   openLeadDetail(leadId);
+}
+
+/*
+ * An EPAY product on a lead means that business is going on EPAY POS, so the
+ * box ticks itself.
+ *
+ * Called after somebody saves the stage panel, not on render. A lead that has
+ * had products on it for months must not get an account the moment anybody
+ * opens it — boarding is a thing somebody does, and this is the moment they
+ * did it.
+ */
+function leadHasEpayProduct(l){
+  const apps = Array.isArray(l.epay_apps_selected) ? l.epay_apps_selected : [];
+  const integrations = Array.isArray(l.integrations_selected) ? l.integrations_selected : [];
+  return apps.length > 0 || integrations.length > 0;
+}
+
+async function autoBoardIfEpayProducts(l){
+  if(!l || l.pos_merchant_id) return;
+  if(!(currentUser && currentUser.epay_admin)) return;
+  if(!leadHasEpayProduct(l)) return;
+  await boardLeadInPos(l.id, true);
 }
 
 /* ---------------------------------------------------------------------------
@@ -14356,7 +14670,7 @@ async function setPosOffer(patch){
   });
   POS_OFFER = next;
   renderPosReferral();
-  const { error } = await supa.from('pos_referral_offer').update(patch).eq('id', true);
+  const { error } = await updateRow('pos_referral_offer', true, patch);
   if(error) showToast('That did not save: ' + error.message, 'error');
 }
 
@@ -14456,49 +14770,36 @@ function posMerchantMonthly(m){
   }, { cents: 0, unpriced: 0 });
 }
 
-async function renderPosBilling(){
+/*
+ * What EPAY charges, and the only screen that changes it.
+ *
+ * Split out of Billing. Billing is read - what each account is on, what has
+ * been agreed, what it adds up to. This is written, and a price changed here
+ * is quoted to every merchant from that moment. Those are two different jobs
+ * for two different moods, and keeping them on one page put an Edit button
+ * beside figures somebody opened the page to look up.
+ *
+ * It still changes nothing anybody is already on. An agreement holds the
+ * price it was made at - see migration 102 - so this is the quote, not the
+ * invoice.
+ */
+async function renderPosSubscriptions(){
   await loadPosBilling();
-  const box = document.getElementById('posBillingBox');
-  const rows = POS_MERCHANTS.filter(m => m.status !== 'closed');
-  const total = rows.reduce((n,m) => n + posMerchantMonthly(m).cents, 0);
-  const unpriced = POS_ADDONS.filter(a => a.price_cents === null);
+  const box = document.getElementById('posSubsBox');
+  if(!box) return;
+  const unpriced = POS_ADDONS.filter(a => a.price_cents === null && a.sellable !== false);
 
   box.innerHTML = `
-    <div class="cards-row" style="margin-bottom:18px;">
-      <div class="stat-card"><div class="label">Billed monthly</div>
-        <div class="value">${posMoney(total)}</div>
-        <div class="delta" style="color:var(--slate-500);">${rows.length} open ${rows.length===1?'account':'accounts'}</div></div>
-      <div class="stat-card"><div class="label">Plans</div>
-        <div class="value">${POS_PLANS.length}</div></div>
-      <div class="stat-card${unpriced.length?' attention':''}"><div class="label">Add-ons without a price</div>
-        <div class="value">${unpriced.length}</div>
-        <div class="delta" style="color:var(--slate-500);">${unpriced.length ? 'cannot be sold yet' : 'all priced'}</div></div>
-    </div>
-
-    <p style="font-size:12px;color:var(--slate-500);margin:0 0 14px;">
-      Software only. Card processing fees come from the processor and never from here.</p>
-
-    <h3 style="font-size:14px;margin:0 0 8px;">What each account is on</h3>
-    ${rows.length === 0 ? `<p style="font-size:12.5px;color:var(--slate-500);">No merchants yet.</p>` : `
-      <div class="table-wrap" style="margin-bottom:22px;"><table><thead><tr>
-        <th>Merchant</th><th>Locations</th><th>Add-ons</th><th>Monthly</th></tr></thead><tbody>
-        ${rows.map(m => {
-          const x = posMerchantMonthly(m);
-          const addons = (m.pos_locations||[]).reduce((n,l) => n + (l.add_ons||[]).length, 0);
-          return `<tr onclick="openPosMerchant('${m.id}','plan')">
-            <td class="name-cell">${escAttr(m.dba)}<div class="sub">${escAttr(m.status)}</div></td>
-            <td>${(m.pos_locations||[]).length}</td>
-            <td>${addons}</td>
-            <td><strong>${posMoney(x.cents)}</strong>${x.unpriced
-              ? `<div class="sub" style="color:var(--warn-text);">${x.unpriced} not priced</div>` : ''}</td>
-          </tr>`;
-        }).join('')}
-      </tbody></table></div>`}
+    ${unpriced.length ? `<div class="panel" style="margin-bottom:18px;padding:12px 14px;font-size:12.5px;">
+      <strong>${unpriced.length} add-on${unpriced.length===1?'':'s'} cannot be sold yet.</strong>
+      <span style="color:var(--slate-500);">An add-on with no price has no paywall to show, so
+      merchants are told to ask EPAY instead of being able to buy it.</span></div>` : ''}
 
     <h3 style="font-size:14px;margin:0 0 4px;">Plans</h3>
     <p style="font-size:11.5px;color:var(--slate-500);margin:0 0 8px;">
-      Changing a price here changes what a new agreement quotes. It does not change what anybody is already on.</p>
-    <div class="table-wrap" style="margin-bottom:22px;"><table><thead><tr>
+      One per account, per location. This is the software subscription &mdash; card processing is
+      charged by the processor and never from here.</p>
+    <div class="table-wrap" style="margin-bottom:26px;"><table><thead><tr>
       <th>Plan</th><th>Edition</th><th>Price</th><th></th></tr></thead><tbody>
       ${POS_PLANS.map(p => `<tr>
         <td class="name-cell">${escAttr(p.label)}${p.note?`<div class="sub">${escAttr(p.note)}</div>`:''}</td>
@@ -14513,20 +14814,145 @@ async function renderPosBilling(){
 
     <h3 style="font-size:14px;margin:0 0 4px;">Add-ons</h3>
     <p style="font-size:11.5px;color:var(--slate-500);margin:0 0 8px;">
-      What a merchant is charged on top. An add-on with no price cannot be put on an account.</p>
+      What a merchant is charged on top, per location. An add-on with no price cannot be put on an
+      account or sold through a paywall. &ldquo;Not sold&rdquo; is a settled answer rather than a
+      missing one &mdash; those rows are indicators, not products.</p>
     <div class="table-wrap"><table><thead><tr>
       <th>Add-on</th><th>Price</th><th>Needs</th><th></th></tr></thead><tbody>
       ${POS_ADDONS.map(a => `<tr>
         <td class="name-cell">${escAttr(a.label)}${a.blurb?`<div class="sub">${escAttr(a.blurb)}</div>`:''}</td>
-        <td>${a.price_cents===null
+        <td>${a.sellable === false
+          ? `<span class="pill pill-agent-auth">Not sold</span>`
+          : a.price_cents===null
           ? `<span class="pill pill-commission">Price not set</span>`
           : a.price_cents===0 ? `<span class="pill pill-agent-auth">Included</span>`
           : `<strong>${posMoney(a.price_cents)}</strong><span class="sub">/mo</span>`}</td>
         <td class="sub">${a.requires ? escAttr((posAddon(a.requires)||{}).label || a.requires) : '—'}</td>
-        <td style="text-align:right;"><button class="btn btn-xs"
-          onclick="editPosPrice('pos_addons','${a.key}',${a.price_cents===null?'null':a.price_cents},'${escAttr(a.label)}')">Edit</button></td>
+        <td style="text-align:right;">${a.sellable === false
+          ? `<span class="sub">indicator only</span>`
+          : `<button class="btn btn-xs"
+          onclick="editPosPrice('pos_addons','${a.key}',${a.price_cents===null?'null':a.price_cents},'${escAttr(a.label)}')">Edit</button>`}</td>
       </tr>`).join('')}
     </tbody></table></div>`;
+}
+
+/*
+ * Who is on billing, and what they are on.
+ *
+ * EPAY's own clients only, and only the ones with a subscription that is
+ * running or being set up. A closed account is history and a lead is not a
+ * client yet; putting either in a billing figure makes a number nobody can
+ * reconcile against what was actually invoiced. Everything bought through
+ * somebody else lives in the CRM's subscription report, which carries both.
+ */
+let posBillingWindow = 0;   // 0 = everyone, otherwise a number of days
+
+function setPosBillingWindow(days){
+  posBillingWindow = days;
+  renderPosBilling();
+}
+
+/* When this account started billing: the first of its locations to exist.
+   An account with no location has nothing to bill for and no date. */
+function posBillingSince(m){
+  const dates = (m.pos_locations||[]).map(l => l.created_at).filter(Boolean).sort();
+  return dates[0] || m.created_at || null;
+}
+
+function posBillingIsNew(m, days){
+  const since = posBillingSince(m);
+  if(!since) return false;
+  return (Date.now() - new Date(since).getTime()) <= days * 86400000;
+}
+
+async function renderPosBilling(){
+  await loadPosBilling();
+  await loadRecentAgreements();
+  const box = document.getElementById('posBillingBox');
+  // Being set up, or set up. Not closed, and never a lead.
+  const live = POS_MERCHANTS.filter(m => m.status === 'live' || m.status === 'onboarding');
+  const rows = posBillingWindow
+    ? live.filter(m => posBillingIsNew(m, posBillingWindow))
+    : live;
+  const total = rows.reduce((n,m) => n + posMerchantMonthly(m).cents, 0);
+  /* Only rows somebody intends to sell. An indicator with no price is not
+     a job anybody has to do; counting it would be a warning nobody can clear. */
+  const unpriced = POS_ADDONS.filter(a => a.price_cents === null && a.sellable !== false);
+
+  box.innerHTML = `
+    <div class="cards-row" style="margin-bottom:18px;">
+      <div class="stat-card"><div class="label">Billed monthly</div>
+        <div class="value">${posMoney(total)}</div>
+        <div class="delta" style="color:var(--slate-500);">${rows.length}
+          ${posBillingWindow ? `of ${live.length} ` : ''}${rows.length===1?'account':'accounts'}</div></div>
+      <div class="stat-card"><div class="label">New in 30 days</div>
+        <div class="value">${live.filter(m => posBillingIsNew(m, 30)).length}</div>
+        <div class="delta" style="color:var(--slate-500);">started billing</div></div>
+      <div class="stat-card${unpriced.length?' attention':''}"><div class="label">Add-ons without a price</div>
+        <div class="value">${unpriced.length}</div>
+        <div class="delta" style="color:var(--slate-500);">${unpriced.length ? 'cannot be sold yet' : 'all priced'}</div></div>
+    </div>
+
+    <p style="font-size:12px;color:var(--slate-500);margin:0 0 14px;">
+      Software only. Card processing fees come from the processor and never from here.</p>
+
+    <div class="row" style="margin:0 0 10px;">
+      ${[[0,'All accounts'],[30,'Added in 30 days'],[90,'Added in 90 days']].map(([d,label]) =>
+        `<button type="button" class="chip" aria-pressed="${posBillingWindow===d}"
+           onclick="setPosBillingWindow(${d})">${label}</button>`).join('')}
+    </div>
+
+    <h3 style="font-size:14px;margin:0 0 8px;">What each account is on</h3>
+    ${rows.length === 0 ? `<p style="font-size:12.5px;color:var(--slate-500);">${posBillingWindow
+        ? `Nothing started billing in the last ${posBillingWindow} days.`
+        : 'No merchants yet.'}</p>` : `
+      <div class="table-wrap" style="margin-bottom:22px;"><table><thead><tr>
+        <th>Merchant</th><th>Billing since</th><th>Locations</th><th>Add-ons</th><th>Monthly</th></tr></thead><tbody>
+        ${rows.map(m => {
+          const x = posMerchantMonthly(m);
+          const addons = (m.pos_locations||[]).reduce((n,l) => n + (l.add_ons||[]).length, 0);
+          const since = posBillingSince(m);
+          return `<tr onclick="openPosMerchant('${m.id}','plan')">
+            <td class="name-cell">${escAttr(m.dba)}<div class="sub">${escAttr(m.status)}</div></td>
+            <td class="sub">${since ? new Date(since).toLocaleDateString() : '—'}</td>
+            <td>${(m.pos_locations||[]).length}</td>
+            <td>${addons}</td>
+            <td><strong>${posMoney(x.cents)}</strong>${x.unpriced
+              ? `<div class="sub" style="color:var(--warn-text);">${x.unpriced} not priced</div>` : ''}</td>
+          </tr>`;
+        }).join('')}
+      </tbody></table></div>`}
+
+    <h3 style="font-size:14px;margin:0 0 4px;">Recently accepted</h3>
+    <p style="font-size:11.5px;color:var(--slate-500);margin:0 0 8px;">
+      Somebody at the business ticked a box next to a price. The price shown is the one they were
+      shown &mdash; it does not follow the catalogue afterwards.</p>
+    ${POS_AGREEMENTS_ALL.length === 0 ? `<p style="font-size:12.5px;color:var(--slate-500);margin-bottom:22px;">
+        Nothing yet. Switching an add-on on from this side does not create an agreement &mdash;
+        only a merchant accepting one does.</p>` : `
+      <div class="table-wrap" style="margin-bottom:22px;"><table><thead><tr>
+        <th>Merchant</th><th>Add-on</th><th>Agreed</th><th>Who</th><th>Terms</th><th>When</th></tr></thead><tbody>
+        ${POS_AGREEMENTS_ALL.map(a => {
+          const m = POS_MERCHANTS.find(x => x.id === a.merchant_id);
+          const addon = posAddon(a.addon_key);
+          return `<tr${a.cancelled_at?' style="opacity:.6;"':''}
+              onclick="openPosMerchant('${a.merchant_id}','plan')">
+            <td class="name-cell">${escAttr(m ? m.dba : 'Unknown')}</td>
+            <td>${escAttr((addon||{}).label || a.addon_key)}
+              ${a.cancelled_at?`<div class="sub">cancelled ${new Date(a.cancelled_at).toLocaleDateString()}</div>`:''}</td>
+            <td>${a.price_cents===null?'—':a.price_cents===0
+              ? `<span class="pill pill-agent-auth">Included</span>`
+              : `<strong>${posMoney(a.price_cents)}</strong><span class="sub">/mo</span>`}</td>
+            <td class="sub">${escAttr(a.accepted_by)}${a.accepted_in?`<div class="sub">${escAttr(a.accepted_in)}</div>`:''}</td>
+            <td class="sub">${escAttr(a.terms_version||'')}</td>
+            <td class="sub">${new Date(a.accepted_at).toLocaleDateString()}</td>
+          </tr>`;
+        }).join('')}
+      </tbody></table></div>`}
+
+    <p style="font-size:12px;color:var(--slate-500);margin:22px 0 0;">
+      Prices themselves are set under <a href="#possubs" onclick="showView('possubs');return false;"
+        style="color:var(--brand-accent-2);font-weight:600;">Subscription editing</a>.</p>`;
 }
 
 async function editPosPrice(table, key, current, label){
@@ -14569,7 +14995,7 @@ function posAddonsPicker(l){
           ${escAttr(p.label)} — ${priceLabel(p.price_cents)}</option>`).join('')}
       </select>
       <div class="label" style="margin-bottom:6px;">Add-ons</div>
-      ${POS_ADDONS.filter(a => a.active !== false).map(a => {
+      ${POS_ADDONS.filter(a => a.active !== false && a.sellable !== false).map(a => {
         const blocked = a.requires && !on.includes(a.requires);
         const unpriced = a.price_cents === null;
         return `<label class="check" style="margin-bottom:4px;${(blocked||unpriced)?'opacity:.55;':''}">
@@ -14591,7 +15017,7 @@ function posAddonsPicker(l){
 }
 
 async function setPosLocationPlan(id, key){
-  const { error } = await supa.from('pos_locations').update({ plan_key: key || null }).eq('id', id);
+  const { error } = await updateRow('pos_locations', id, { plan_key: key || null });
   if(error){ showToast('Could not save the plan: ' + error.message, 'error'); return; }
   await loadPosMerchants(true); renderPosDetail();
 }
@@ -14612,7 +15038,7 @@ async function setPosLocationAddon(id, key, on){
     const orphaned = POS_ADDONS.filter(a => a.requires === key).map(a => a.key);
     next = next.filter(k => !orphaned.includes(k));
   }
-  const { error } = await supa.from('pos_locations').update({ add_ons: next }).eq('id', id);
+  const { error } = await updateRow('pos_locations', id, { add_ons: next });
   if(error){ showToast('Could not save: ' + error.message, 'error'); return; }
   await loadPosMerchants(true); renderPosDetail();
 }
@@ -14661,11 +15087,11 @@ async function pausePosMerchant(id){
   const n = Number(t);
   const reason = (Number.isInteger(n) && n >= 1 && n <= POS_PAUSE_REASONS.length)
     ? POS_PAUSE_REASONS[n-1] : t;
-  const { error } = await supa.from('pos_merchants').update({
+  const { error } = await updateRow('pos_merchants', id, {
     status: 'paused', pause_reason: reason,
     paused_at: new Date().toISOString(),
     paused_by: (currentUser && currentUser.name) || 'Unknown',
-  }).eq('id', id);
+  });
   if(error){ showToast('Could not pause it: ' + error.message, 'error'); return; }
   // On their own log too, so the reason survives whoever typed it.
   await supa.from('pos_merchant_notes').insert({
@@ -14676,9 +15102,9 @@ async function pausePosMerchant(id){
 }
 
 async function unpausePosMerchant(id){
-  const { error } = await supa.from('pos_merchants').update({
+  const { error } = await updateRow('pos_merchants', id, {
     status: 'live', pause_reason: null, paused_at: null, paused_by: null,
-  }).eq('id', id);
+  });
   if(error){ showToast('Could not do that: ' + error.message, 'error'); return; }
   await supa.from('pos_merchant_notes').insert({
     merchant_id: id, kind: 'system', body: 'Account put back live.',
@@ -14717,14 +15143,99 @@ function posPairLabel(d){
 
 async function pairPosDevice(id){
   const code = posPairCode();
-  const { error } = await supa.from('pos_devices').update({
+  const { error } = await updateRow('pos_devices', id, {
     pairing_code: code,
     pairing_expires_at: new Date(Date.now() + POS_PAIR_MINUTES*60000).toISOString(),
     paired_at: null,
-  }).eq('id', id);
+  });
   if(error){ showToast('Could not make a code: ' + error.message, 'error'); return; }
   await loadPosMerchants(true); renderPosDetail();
   showToast('Pairing code ' + code + ' — good for ' + POS_PAIR_MINUTES + ' minutes.', 'success');
+}
+
+/* ---------------------------------------------------------------------------
+   WHAT A MERCHANT AGREED TO
+
+   The other half of the paywall. Somebody at the merchant ticked a box, and
+   this is where that shows up — who, when, at what price, under which terms.
+
+   The price here is the one they were shown, copied at the time. It is not
+   looked up from the catalogue: when a list price changes next quarter, an
+   agreement that pointed at the catalogue would quietly rewrite what somebody
+   was promised, and the first they would hear of it is an invoice.
+   --------------------------------------------------------------------------- */
+
+let POS_AGREEMENTS = [];
+let POS_AGREEMENTS_ALL = [];
+
+/* Everything accepted, newest first, across every account. Capped: this is a
+   glance at what is being agreed to, not an audit — the audit is per merchant,
+   where somebody actually needs it. */
+async function loadRecentAgreements(limit){
+  const { data, error } = await supa.from('pos_addon_agreements')
+    .select('*').order('accepted_at', { ascending:false }).limit(limit || 40);
+  if(error){ POS_AGREEMENTS_ALL = []; return; }
+  POS_AGREEMENTS_ALL = data || [];
+}
+
+/* A table that is not there yet is not a fault worth a toast: migration 102
+   may simply not have been run. Anything else is, because an agreements list
+   that is quietly empty when it should not be is the one failure here nobody
+   would notice. */
+function agreementsTableMissing(error){
+  return error.code === '42P01' || error.code === 'PGRST205'
+    || /pos_addon_agreements/.test(error.message || '');
+}
+
+async function loadPosAgreements(merchantId){
+  const { data, error } = await supa.from('pos_addon_agreements')
+    .select('*').eq('merchant_id', merchantId).order('accepted_at', { ascending:false });
+  if(error){
+    POS_AGREEMENTS = [];
+    if(!agreementsTableMissing(error)) showToast('Could not load agreements: ' + error.message, 'error');
+    return POS_AGREEMENTS;
+  }
+  POS_AGREEMENTS = data || [];
+  return POS_AGREEMENTS;
+}
+
+function posAgreementsHtml(m){
+  const live = POS_AGREEMENTS.filter(a => !a.cancelled_at);
+  const past = POS_AGREEMENTS.filter(a => a.cancelled_at);
+  const row = (a) => {
+    const addon = posAddon(a.addon_key);
+    const nowPrice = addon ? addon.price_cents : null;
+    /*
+     * Flagged where the list price has moved since. Not corrected — they
+     * keep what they accepted — but somebody reconciling an invoice needs
+     * to see that the two differ rather than wonder why the sum is wrong.
+     */
+    const moved = nowPrice !== null && nowPrice !== undefined
+      && a.price_cents !== null && nowPrice !== a.price_cents;
+    return `<tr${a.cancelled_at?' style="opacity:.6;"':''}>
+      <td class="name-cell">${escAttr((addon||{}).label || a.addon_key)}
+        <div class="sub">${escAttr(a.accepted_by)}${a.accepted_in?` · ${escAttr(a.accepted_in)}`:''}</div></td>
+      <td>${a.price_cents===null?'—':`<strong>${posMoney(a.price_cents)}</strong><span class="sub">/mo</span>`}
+        ${moved?`<div class="sub" style="color:var(--warn-text);">list is now ${posMoney(nowPrice)}</div>`:''}</td>
+      <td class="sub">${escAttr(a.terms_version||'')}</td>
+      <td class="sub">${new Date(a.accepted_at).toLocaleDateString()}</td>
+      <td class="sub">${a.cancelled_at
+        ? 'Cancelled ' + new Date(a.cancelled_at).toLocaleDateString()
+        : '<span class="pill pill-agent-auth">Live</span>'}</td>
+    </tr>`;
+  };
+
+  return `
+    <h3 style="font-size:14px;margin:18px 0 4px;">Agreed to</h3>
+    <p style="font-size:11.5px;color:var(--slate-500);margin:0 0 8px;">
+      What somebody at this business accepted, at the price and terms they were shown.
+      Kept whatever the list price does afterwards.</p>
+    ${POS_AGREEMENTS.length === 0
+      ? `<p style="font-size:12.5px;color:var(--slate-500);">Nothing accepted yet. Add-ons switched on
+           from this side do not create an agreement &mdash; only a merchant accepting one does.</p>`
+      : `<div class="table-wrap"><table><thead><tr>
+           <th>Add-on</th><th>Agreed price</th><th>Terms</th><th>When</th><th></th></tr></thead>
+           <tbody>${live.map(row).join('')}${past.map(row).join('')}</tbody></table></div>`}`;
 }
 
 function renderUsersTable(){
@@ -15853,7 +16364,7 @@ async function toggleAccountCollections(id, checked){
     fields.collections_marked_at = new Date().toISOString().slice(0,10);
     fields.collections_marked_by = currentUser.email;
   }
-  const { error } = updateRow('leads', id, fields);
+  const { error } = await updateRow('leads', id, fields);
   if(error){ alert('Could not update collections status: ' + error.message); return; }
   Object.assign(l, fields);
   openLeadDetail(id);
@@ -15864,7 +16375,7 @@ async function saveAccountCollectionsNote(id){
   if(!l) return;
   const noteInput = document.getElementById('acCollectionsNote');
   const note = noteInput ? noteInput.value.trim() : '';
-  const { error } = updateRow('leads', id, { collections_note: note });
+  const { error } = await updateRow('leads', id, { collections_note: note });
   if(error){ alert('Could not save collections note: ' + error.message); return; }
   l.collections_note = note;
   refreshActiveView();
@@ -15955,7 +16466,7 @@ async function saveAccountDetails(id){
   // set_lead_dob with the other sensitive fields instead.
   const dobInput = document.getElementById('acDob');
 
-  const { error } = updateRow('leads', id, fields);
+  const { error } = await updateRow('leads', id, fields);
   if(error){ alert('Could not save: ' + error.message); return; }
   Object.assign(l, fields);
 
@@ -16432,7 +16943,7 @@ function atmStagePanelHtml(l){
 async function saveAtmTid(id){
   const l = LEADS.find(x=>x.id===id); if(!l) return;
   const tid = document.getElementById('atmTid').value.trim();
-  const { error } = updateRow('leads', id, { tid });
+  const { error } = await updateRow('leads', id, { tid });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.tid = tid;
   renderLeadsBoard();
@@ -16442,7 +16953,7 @@ async function saveAtmCommission(id){
   const l = LEADS.find(x=>x.id===id); if(!l) return;
   const commission_type = document.getElementById('atmCommissionType').value;
   const commission_value = document.getElementById('atmCommissionValue').value.trim();
-  const { error } = updateRow('leads', id, { commission_type, commission_value });
+  const { error } = await updateRow('leads', id, { commission_type, commission_value });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.commission_type = commission_type;
   l.commission_value = commission_value;
@@ -16462,7 +16973,7 @@ async function saveAtmInstallDate(id){
     converted_to_account = true;
     converted_at = new Date().toISOString().slice(0,10);
   }
-  const { error } = updateRow('leads', id, { installation_date, converted_to_account, converted_at });
+  const { error } = await updateRow('leads', id, { installation_date, converted_to_account, converted_at });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.installation_date = installation_date;
   l.converted_to_account = converted_to_account;
@@ -16632,7 +17143,7 @@ function followupStagePanel(l, n){
 async function saveLeadPartnerLink(id, partnerId){
   const l = LEADS.find(x=>x.id===id); if(!l) return;
   const linked_partner_id = partnerId || null;
-  const { error } = updateRow('leads', id, { linked_partner_id });
+  const { error } = await updateRow('leads', id, { linked_partner_id });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.linked_partner_id = linked_partner_id;
   refreshActiveView();
@@ -16663,7 +17174,7 @@ async function saveLeadBrand(id, brand){
     }
   }
 
-  const { error } = updateRow('leads', id, { brand });
+  const { error } = await updateRow('leads', id, { brand });
   if(error){
     alert('Could not change the brand: ' + error.message);
     const sel = document.getElementById('leadBrandSelect');
@@ -16792,7 +17303,7 @@ async function saveInboundLeadFields(id){
     const other = (document.getElementById('spLeadSourceOtherInput') || {}).value || '';
     if(other.trim()) lead_source = 'Other \u2014 ' + other.trim();
   }
-  const { error } = updateRow('leads', id, { lead_source });
+  const { error } = await updateRow('leads', id, { lead_source });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.lead_source = lead_source;
   unlockedLeadSourceIds.delete(id);
@@ -16816,6 +17327,18 @@ async function saveOutreachFields(id){
     extra_subscriptions: l.extra_subscriptions,
   });
   if(error){ alert('Could not save: ' + error.message); return; }
+  /*
+   * An EPAY product on the lead means this business is going on EPAY POS, so
+   * the box ticks itself and the account is created here. After the save, so
+   * it is only ever done for products that actually stuck; and only here,
+   * when somebody pressed save, rather than on render — a lead that has had
+   * products on it for months must not get an account the moment anybody
+   * opens it.
+   *
+   * It returns without doing anything if the lead is already linked, so
+   * saving this panel again is not a second account.
+   */
+  await autoBoardIfEpayProducts(l);
   refreshActiveView();
   openLeadDetail(id);
 }
@@ -16824,7 +17347,7 @@ async function saveFollowupFields(id, n){
   const dateField = 'followup'+n+'_date', ideaField = 'followup'+n+'_idea';
   const dateVal = document.getElementById('spFuDate').value || null;
   const ideaVal = document.getElementById('spFuIdea').value.trim();
-  const { error } = updateRow('leads', id, { [dateField]: dateVal, [ideaField]: ideaVal });
+  const { error } = await updateRow('leads', id, { [dateField]: dateVal, [ideaField]: ideaVal });
   if(error){ alert('Could not save: ' + error.message); return; }
   l[dateField] = dateVal;
   l[ideaField] = ideaVal;
@@ -16851,7 +17374,7 @@ async function savePendingCadence(id){
   const val = document.getElementById('spPendingCadence').value;
   const pending_cadence_days = val ? parseInt(val,10) : null;
   const pending_next_reminder = pending_cadence_days ? addDays(null, pending_cadence_days) : null;
-  const { error } = updateRow('leads', id, { pending_cadence_days, pending_next_reminder });
+  const { error } = await updateRow('leads', id, { pending_cadence_days, pending_next_reminder });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.pending_cadence_days = pending_cadence_days;
   l.pending_next_reminder = pending_next_reminder;
@@ -16883,7 +17406,7 @@ async function saveApplicationLinkChoice(id){
   const l = LEADS.find(x=>x.id===id); if(!l) return;
   const application_link_choice = document.getElementById('spAppLinkChoice').value;
   const application_link_custom = document.getElementById('spAppLinkCustomInput') ? document.getElementById('spAppLinkCustomInput').value.trim() : '';
-  const { error } = updateRow('leads', id, { application_link_choice, application_link_custom });
+  const { error } = await updateRow('leads', id, { application_link_choice, application_link_custom });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.application_link_choice = application_link_choice;
   l.application_link_custom = application_link_custom;
@@ -16893,7 +17416,7 @@ async function saveApplicationLinkChoice(id){
 async function saveAppId(id){
   const l = LEADS.find(x=>x.id===id); if(!l) return;
   const app_id = document.getElementById('spAppId').value.trim();
-  const { error } = updateRow('leads', id, { app_id });
+  const { error } = await updateRow('leads', id, { app_id });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.app_id = app_id;
   refreshActiveView();
@@ -16905,7 +17428,7 @@ async function convertToPostBoarding(id){
 async function saveMid(id){
   const l = LEADS.find(x=>x.id===id); if(!l) return;
   const mid = document.getElementById('spMid').value.trim();
-  const { error } = updateRow('leads', id, { mid });
+  const { error } = await updateRow('leads', id, { mid });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.mid = mid;
   refreshActiveView();
@@ -16921,7 +17444,7 @@ async function saveEquipmentShipment(id){
     tracking_number: in_person_install ? '' : document.getElementById('spTrackingNumber').value.trim(),
   };
   if(in_person_install){ fields.tracking_email_sent = false; fields.tracking_email_sent_at = null; }
-  const { error } = updateRow('leads', id, fields);
+  const { error } = await updateRow('leads', id, fields);
   if(error){ alert('Could not save: ' + error.message); return; }
   Object.assign(l, fields);
   refreshActiveView();
@@ -16969,7 +17492,7 @@ async function sendTrackingEmail(id){
   if(!l) return;
   const tracking_email_sent = true;
   const tracking_email_sent_at = new Date().toISOString().slice(0,10);
-  const { error } = updateRow('leads', id, { tracking_email_sent, tracking_email_sent_at });
+  const { error } = await updateRow('leads', id, { tracking_email_sent, tracking_email_sent_at });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.tracking_email_sent = tracking_email_sent;
   l.tracking_email_sent_at = tracking_email_sent_at;
@@ -17044,7 +17567,7 @@ async function sendAccountWelcomeEmail(id){
 
   const welcome_email_sent = true;
   const welcome_email_sent_at = new Date().toISOString().slice(0,10);
-  const { error } = updateRow('leads', id, { welcome_email_sent, welcome_email_sent_at });
+  const { error } = await updateRow('leads', id, { welcome_email_sent, welcome_email_sent_at });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.welcome_email_sent = welcome_email_sent;
   l.welcome_email_sent_at = welcome_email_sent_at;
@@ -17081,7 +17604,7 @@ async function addShipment(id){
     emailed: false,
     emailed_at: null,
   }, ...(l.shipments || [])];
-  const { error } = updateRow('leads', id, { shipments });
+  const { error } = await updateRow('leads', id, { shipments });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.shipments = shipments;
   openLeadDetail(id);
@@ -17092,7 +17615,7 @@ async function removeShipment(id, shipmentId){
   if(!l || !l.shipments) return;
   if(!confirm('Delete this shipment entry? This can\'t be undone.')) return;
   const shipments = l.shipments.filter(s => s.id !== shipmentId);
-  const { error } = updateRow('leads', id, { shipments });
+  const { error } = await updateRow('leads', id, { shipments });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.shipments = shipments;
   openLeadDetail(id);
@@ -17140,7 +17663,7 @@ async function markShipmentEmailed(id, shipmentId){
   const l = LEADS.find(x => x.id === id);
   if(!l || !l.shipments) return;
   const shipments = l.shipments.map(s => s.id === shipmentId ? Object.assign({}, s, { emailed: true, emailed_at: new Date().toISOString().slice(0,10) }) : s);
-  const { error } = updateRow('leads', id, { shipments });
+  const { error } = await updateRow('leads', id, { shipments });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.shipments = shipments;
   closeEmailPreviewDrawer();
@@ -17317,7 +17840,7 @@ async function sendApplicationEmail(id){
   if(!l) return;
   const application_email_sent = true;
   const application_email_sent_at = new Date().toISOString().slice(0,10);
-  const { error } = updateRow('leads', id, { application_email_sent, application_email_sent_at });
+  const { error } = await updateRow('leads', id, { application_email_sent, application_email_sent_at });
   if(error){ alert('Could not save: ' + error.message); return; }
   l.application_email_sent = application_email_sent;
   l.application_email_sent_at = application_email_sent_at;
@@ -23366,7 +23889,24 @@ function taskLinkedRecordHtml(t){
 let taskGroupBy = 'due';
 let taskPersonFilter = 'mine';
 let taskPriorityFilter = 'all';
+let taskCategoryFilter = 'all';
 let taskSearch = '';
+
+/*
+ * Getting a merchant from "signed" to "taking cards" is a list of jobs with
+ * a processor and a shipping company in the middle of it, and those jobs
+ * were mixed in with every follow-up and call-back in the CRM. One category,
+ * spelled one way, so the filter can find them from either side.
+ *
+ * Matched case-insensitively against whatever somebody typed, rather than
+ * requiring this exact string: a task filed as "boarding" or "Boarding —
+ * Maple Street" is the same job, and a filter that misses it is a filter
+ * nobody trusts twice.
+ */
+const BOARDING_CATEGORY = 'Boarding';
+function isBoardingTask(t){
+  return /boarding/i.test(String((t && t.category) || ''));
+}
 
 const TASK_PRIORITIES = {
   high:   { label:'High',   color:'var(--red)' },
@@ -23487,6 +24027,12 @@ function renderTasksList(){
     sel('taskGroupSel', [['due','Group: Due date'],['priority','Group: Priority'],['person','Group: Person'],['category','Group: Category'],['record','Group: Record']], taskGroupBy, "taskGroupBy=this.value;renderTasksList()")
     + sel('taskPersonSel', [['mine','Assigned to me'],['all', canSeeOthers ? 'Everyone' : 'Everything I can see']].concat(people.map(p => [p.id, p.name])), taskPersonFilter, "taskPersonFilter=this.value;renderTasksList()")
     + sel('taskPrioSel', [['all','Any priority'],['high','High'],['normal','Normal'],['low','Low']], taskPriorityFilter, "taskPriorityFilter=this.value;renderTasksList()")
+    /* Boarding is offered whether or not anything is filed under it yet, so
+       the filter is there to be found before the first one exists. */
+    + sel('taskCatSel',
+        [['all','Any category'],['boarding','Boarding only']]
+          .concat(taskCategories().filter(c => !/boarding/i.test(c)).map(c => [c, c])),
+        taskCategoryFilter, "taskCategoryFilter=this.value;renderTasksList()")
     + `<input class="search-input" id="taskSearchBox" placeholder="Search tasks..." value="${escAttr(taskSearch)}" oninput="taskSearch=this.value;renderTasksList(true)">`;
 
   let rows = visible.slice();
@@ -23494,6 +24040,8 @@ function renderTasksList(){
   if(taskPersonFilter === 'mine') rows = rows.filter(t => taskHasAssignee(t, currentUser.id) || (!t.assigned_to && !(t.assigned_to_ids||[]).length && t.created_by === currentUser.id));
   else if(taskPersonFilter !== 'all') rows = rows.filter(t => taskHasAssignee(t, taskPersonFilter));
   if(taskPriorityFilter !== 'all') rows = rows.filter(t => (t.priority || 'normal') === taskPriorityFilter);
+  if(taskCategoryFilter === 'boarding') rows = rows.filter(isBoardingTask);
+  else if(taskCategoryFilter !== 'all') rows = rows.filter(t => (t.category||'').trim() === taskCategoryFilter);
   const q = taskSearch.trim().toLowerCase();
   if(q) rows = rows.filter(t => [t.title, t.notes, t.category, taskRecordLabel(t)].some(v => (v || '').toLowerCase().includes(q)));
 
@@ -26196,6 +26744,55 @@ async function removeSubscriptionLine(leadId, source, index){
   showToast('Removed', 'success');
 }
 
+/* ---------------------------------------------------------------------------
+   WHAT A BOARDED ACCOUNT IS ACTUALLY ON
+
+   Once a lead is set up in EPAY POS, the POS account is the truth and the
+   lead's picks are the sales record of how it got there. The report has to
+   prefer the first, or it reports what somebody intended to sell rather than
+   what is being billed.
+
+   Two ways that goes wrong if it is done carelessly, and both are guarded:
+
+   - The same thing counted twice. Gift cards picked on the lead and then put
+     on the account is one $15 subscription, not two. Lead lines whose name
+     matches something on the account are dropped.
+   - The POS side invisible to whoever is looking. Only EPAY admins can read
+     pos_* at all, so for everybody else there is nothing to prefer and the
+     lead lines stand. The report says which it used rather than quietly
+     showing two people different totals.
+   --------------------------------------------------------------------------- */
+
+function posSubscriptionLines(l){
+  if(!l.pos_merchant_id) return null;
+  const m = POS_MERCHANTS.find(x => x.id === l.pos_merchant_id);
+  if(!m) return null;
+  // Closed accounts are history. Being set up still counts: the plan is
+  // agreed and it is what the first invoice will say.
+  if(m.status === 'closed') return null;
+  const out = [];
+  (m.pos_locations || []).forEach(loc => {
+    const when = (loc.created_at ? String(loc.created_at).slice(0,10) : null);
+    const plan = POS_PLANS.find(p => p.key === loc.plan_key);
+    if(plan && plan.price_cents !== null){
+      out.push({ category:'EPAY software', name: plan.label + ' — ' + loc.name,
+        price: plan.price_cents / 100, added_at: when });
+    }
+    (loc.add_ons || []).forEach(key => {
+      const a = POS_ADDONS.find(x => x.key === key);
+      if(!a || a.price_cents === null || a.sellable === false) return;
+      // The price that was agreed, where there is an agreement for it. The
+      // catalogue is today's price; an invoice is not.
+      const agreed = POS_AGREEMENTS_ALL.find(g => g.merchant_id === m.id
+        && g.addon_key === key && !g.cancelled_at);
+      out.push({ category:'EPAY POS add-on', name: a.label + ' — ' + loc.name,
+        price: (agreed && agreed.price_cents !== null ? agreed.price_cents : a.price_cents) / 100,
+        added_at: agreed ? String(agreed.accepted_at).slice(0,10) : when });
+    });
+  });
+  return out;
+}
+
 function collectSubscriptionReportItems(start, end){
   const items = [];
   LEADS.forEach(l => {
@@ -26209,15 +26806,30 @@ function collectSubscriptionReportItems(start, end){
         });
       }
     };
-    (l.integrations_selected || []).forEach(item => pushIfInPeriod(item, 'Integration'));
-    (l.epay_apps_selected || []).forEach(item => pushIfInPeriod(item, 'EPAY App'));
-    // Added by hand on the account rather than picked from a catalogue —
-    // the only kind an account created outside the pipeline can have.
+    const onAccount = posSubscriptionLines(l);
+    /* Anything already on the POS account, matched by name, so one
+       subscription is not counted on both sides of being boarded. */
+    const alreadyBilled = new Set((onAccount || []).map(x => x.name.split(' — ')[0].toLowerCase()));
+    const notDuplicated = (item) => !alreadyBilled.has(String(item.name||'').toLowerCase());
+
+    (l.integrations_selected || []).filter(notDuplicated)
+      .forEach(item => pushIfInPeriod(item, 'Integration'));
+    (l.epay_apps_selected || []).filter(notDuplicated)
+      .forEach(item => pushIfInPeriod(item, 'EPAY App'));
+    // Added by hand on the account rather than picked from a catalogue — a
+    // third-party subscription, or anything an account created outside the
+    // pipeline carries.
     (l.extra_subscriptions || []).forEach(item => pushIfInPeriod(item, item.category || 'Other'));
-    // The software plan itself. Left out until now, which made the monthly
-    // recurring figure smaller than what merchants actually pay.
-    const plan = posPlanLine(l);
-    if(plan) pushIfInPeriod(plan, 'EPAY software');
+
+    if(onAccount){
+      // The real thing, from the POS account.
+      onAccount.forEach(item => pushIfInPeriod(item, item.category));
+    } else {
+      // Not boarded, or the POS side is not readable from here. The plan the
+      // lead says they are going on is the best anybody has.
+      const plan = posPlanLine(l);
+      if(plan) pushIfInPeriod(plan, 'EPAY software');
+    }
   });
   return items.sort((a,b) => (b.added_at||'0000-00-00').localeCompare(a.added_at||'0000-00-00'));
 }
@@ -26236,6 +26848,22 @@ function renderSubscriptionReport(){
     <div class="stat-card"><div class="label">Accounts/leads involved</div><div class="value">${uniqueAccounts}</div></div>
     <div class="stat-card"><div class="label">Monthly recurring value</div><div class="value">$${totalMRR.toFixed(2)}</div></div>
   `;
+
+  /*
+   * Which figures these are. An EPAY admin sees what the POS accounts are
+   * actually on; everybody else sees what the leads say they were sold.
+   * Said out loud, because the two can differ and a money report that
+   * quietly shows two people different totals is worse than either.
+   */
+  const note = document.getElementById('repSourceNote');
+  if(note){
+    const boarded = LEADS.filter(l => l.pos_merchant_id).length;
+    note.textContent = (currentUser && currentUser.epay_admin)
+      ? (boarded
+          ? boarded + ' account' + (boarded===1?' is':'s are') + ' set up in EPAY POS; those lines come from the account rather than from the lead.'
+          : 'Nothing is set up in EPAY POS yet, so every line here comes from the leads.')
+      : 'From the leads. Lines for accounts already set up in EPAY POS need admin portal access to show.';
+  }
 
   if(items.length === 0){
     document.getElementById('repTableBody').innerHTML = '';
