@@ -24062,7 +24062,31 @@ function renderTasksList(){
   if(!rows.length){
     list.innerHTML = '';
     empty.style.display = 'block';
-    empty.textContent = q ? 'No tasks match that search.' : (taskFilter === 'completed' ? 'Nothing completed yet.' : 'No tasks here.');
+    /* An empty list and a list you have filtered down to nothing look
+       identical, and the second one reads as "my tasks are gone" - which is
+       exactly how it was read. If there ARE tasks and the filters are what
+       is hiding them, say so and offer the way back in one click. The page
+       opens on Open + Assigned to me, so a task that is completed, or
+       assigned to somebody else, disappears without explanation. */
+    const hidden = visible.length;
+    if(hidden){
+      const bits = [];
+      if(taskFilter !== 'all') bits.push(taskFilter === 'open' ? 'only open ones' : 'only completed ones');
+      if(taskPersonFilter === 'mine') bits.push('only yours');
+      else if(taskPersonFilter !== 'all') bits.push('one person');
+      if(taskPriorityFilter !== 'all') bits.push(taskPriorityFilter + ' priority');
+      if(q) bits.push('a search');
+      empty.innerHTML = `
+        <div style="font-weight:700;margin-bottom:4px;">
+          ${hidden} task${hidden === 1 ? '' : 's'} ${hidden === 1 ? 'is' : 'are'} hidden by your filters
+        </div>
+        <div style="font-size:12.5px;color:var(--slate-500);margin-bottom:12px;">
+          Showing ${bits.length ? bits.join(', ') : 'a filtered view'}. Nothing has been deleted.
+        </div>
+        <button class="btn btn-sm" onclick="showEveryTask()">Show everything</button>`;
+    } else {
+      empty.textContent = q ? 'No tasks match that search.' : (taskFilter === 'completed' ? 'Nothing completed yet.' : 'No tasks here.');
+    }
     return;
   }
   empty.style.display = 'none';
@@ -24082,6 +24106,15 @@ function renderTasksList(){
 
 function setTaskFilter(f){
   taskFilter = f;
+  renderTasksList();
+}
+
+/* The way back from a filtered-to-nothing list. */
+function showEveryTask(){
+  taskFilter = 'all';
+  taskPersonFilter = 'all';
+  taskPriorityFilter = 'all';
+  taskSearch = '';
   renderTasksList();
 }
 
