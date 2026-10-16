@@ -14288,6 +14288,176 @@ function posReadiness(answers){
     percent: asked === 0 ? 100 : Math.round((got/asked)*100),
     canOpen: blocking.length === 0 };
 }
+/* ---------------------------------------------------------------------------
+   WHAT HAS TO BE TRUE BEFORE A SHOP OPENS
+
+   The questionnaire counts answers. Answers are not a working shop: an
+   account can be 14 of 14 and still have no MID, no till anybody has paired,
+   and a dual pricing rate of zero - which is the EPAY program switched off,
+   on the business whose whole deal is the EPAY program.
+
+   So "ready to open" is these, and each one is true or it is not. The
+   questionnaire goes back to being how the answers get collected.
+
+   Each gate carries `fix`: the words that go on a task when it is the thing
+   standing in the way. A gate that says "not ready" without saying what to
+   do about it is a gate somebody learns to ignore.
+   --------------------------------------------------------------------------- */
+
+function posGates(m){
+  const locs = (m && m.pos_locations) || [];
+  const answers = (m && m.setup_answers) || {};
+  const r = posReadiness(answers);
+  const devices = locs.reduce((n,l) => n.concat(l.pos_devices || []), []);
+  const noPlan = locs.filter(l => !l.plan_key);
+  const noRate = locs.filter(l => !(l.dual_pricing_ppm > 0 || l.dual_pricing_fixed_cents > 0));
+  const noTax  = locs.filter(l => !(l.tax_ppm > 0));
+
+  const gates = [
+    { key:'location', label:'A location to put a till in',
+      ok: locs.length > 0,
+      why:'No location on the account.',
+      fix:'Add the first location to this EPAY POS account.' },
+
+    { key:'plan', label:'Every location on a plan',
+      ok: locs.length > 0 && noPlan.length === 0,
+      why: noPlan.length ? noPlan.map(l => l.name).join(', ') + ' has no plan.' : '',
+      fix:'Put every location on a plan — nothing can be invoiced without one.' },
+
+    /*
+     * Zero is a configured value and an unconfigured one at the same time,
+     * and there is no way to tell them apart in the column. Treated as not
+     * set, because the cost of asking somebody to confirm 3.99% they
+     * already entered is a question; the cost of opening on 0% is every
+     * card sale that day run at a loss.
+     */
+    { key:'rate', label:'Dual pricing set',
+      ok: locs.length > 0 && noRate.length === 0,
+      why: noRate.length ? noRate.map(l => l.name).join(', ') + ' is at 0% and 0¢.' : '',
+      fix:'Set the card price difference. At zero the EPAY program is off.' },
+
+    { key:'tax', label:'Sales tax set',
+      ok: locs.length > 0 && noTax.length === 0,
+      why: noTax.length ? noTax.map(l => l.name).join(', ') + ' has no tax rate.' : '',
+      fix:'Set the sales tax rate, or every receipt understates it.' },
+
+    { key:'mid', label:'MID issued',
+      ok: !!(m && m.mid),
+      why:'No MID on the account yet.',
+      fix:'Chase the MID. Until it exists the tills cannot take a card.' },
+
+    { key:'device', label:'A till paired',
+      ok: devices.some(d => d.paired_at),
+      why: devices.length === 0 ? 'No devices on the account.' : 'No device has been paired.',
+      fix: 'Add a device and pair it. An unpaired till is a box in a cupboard.' },
+
+    { key:'answers', label:'The questions that block opening',
+      ok: r.blocking.length === 0,
+      why: r.blocking.length ? r.blocking.length + ' still unanswered.' : '',
+      fix:'Finish the setup questions marked needed.' },
+  ];
+  const failing = gates.filter(g => !g.ok);
+  return { gates, failing, ok: failing.length === 0 };
+}
+
+/** Whether this account could actually trade today. */
+function posCanOpen(m){ return posGates(m).ok; }
+
+/* ---------------------------------------------------------------------------
+   THE CHECKLIST WRITES ITSELF
+
+   Boarding failed quietly when it depended on somebody remembering to write
+   the jobs down. The gates already know what is missing and say what to do
+   about it, so the tasks come from there: one task per failing gate, filed
+   under Boarding, attached to the lead so it shows on the record too.
+
+   Run again whenever - on boarding, and from the button on the sheet. It
+   never writes a second copy of a job that is already open, because a list
+   that grows a duplicate every time somebody presses it is a list people
+   stop reading.
+   --------------------------------------------------------------------------- */
+
+/** The title a gate gets as a task. Stable, because it is also the dedupe key. */
+function boardingTaskTitle(merchant, gate){
+  return `${merchant.dba}: ${gate.label}`;
+}
+
+async function makeBoardingTasks(merchantId, opts){
+  const o = opts || {};
+  const m = POS_MERCHANTS.find(x => x.id === merchantId);
+  if(!m) return 0;
+  if(typeof ensureData === 'function') await ensureData(['tasks']);
+
+  const failing = posGates(m).failing;
+  if(!failing.length){
+    if(!o.silent) showToast('Nothing outstanding — no tasks needed.', 'success');
+    return 0;
+  }
+
+  const lead = LEADS.find(l => l.pos_merchant_id === m.id) || null;
+  // Already open, by title. Completed ones do not block a new task: a job
+  // that was done and has come undone is a job again.
+  const openTitles = new Set(TASKS.filter(t => !t.completed).map(t => t.title));
+
+  const rows = failing
+    .filter(g => !openTitles.has(boardingTaskTitle(m, g)))
+    .map(g => ({
+      title: boardingTaskTitle(m, g),
+      notes: g.why ? g.fix + ' (' + g.why + ')' : g.fix,
+      category: BOARDING_CATEGORY,
+      priority: 'normal',
+      due_date: null,
+      assigned_to: currentUser.id,
+      created_by: currentUser.id,
+      linked_lead_id: lead ? lead.id : null,
+      linked_cold_lead_id: null,
+      linked_application_id: null,
+    }));
+
+  if(!rows.length){
+    if(!o.silent) showToast('Those tasks are already open.', 'success');
+    return 0;
+  }
+
+  const { data, error } = await supa.from('tasks').insert(rows).select();
+  if(error){
+    if(!o.silent) showToast('Could not make the tasks: ' + error.message, 'error');
+    return 0;
+  }
+  (data || []).forEach(t => TASKS.unshift(t));
+  if(!o.silent){
+    showToast(data.length + (data.length === 1 ? ' boarding task added.' : ' boarding tasks added.'), 'success');
+    renderPosDetail();
+  }
+  if(document.getElementById('view-tasks').style.display !== 'none') renderTasksList();
+  if(document.getElementById('view-postasks').style.display !== 'none') renderPosTasks();
+  return data.length;
+}
+
+function posGatesHtml(m){
+  const g = posGates(m);
+  return `
+    <div style="border:1px solid var(--line);border-radius:10px;padding:13px;margin-bottom:12px;">
+      <div class="row" style="justify-content:space-between;margin-bottom:8px;">
+        <strong style="font-size:13.5px;">Before they open</strong>
+        <span class="pill ${g.ok?'pill-agent-auth':'pill-commission'}">
+          ${g.ok ? 'Ready to open' : g.failing.length + ' still to do'}</span>
+      </div>
+      ${g.gates.map(x => `
+        <div class="row" style="gap:8px;padding:6px 0;border-top:1px solid var(--line);align-items:flex-start;">
+          <span style="flex:0 0 auto;width:16px;text-align:center;color:${x.ok?'var(--green)':'var(--warn-text)'};font-weight:700;">
+            ${x.ok ? '&#10003;' : '&middot;'}</span>
+          <div style="flex:1 1 auto;min-width:0;">
+            <div style="font-size:12.5px;font-weight:${x.ok?'500':'700'};">${escAttr(x.label)}</div>
+            ${x.ok ? '' : `<div style="font-size:11px;color:var(--slate-500);">${escAttr(x.why || x.fix)}</div>`}
+          </div>
+        </div>`).join('')}
+      ${g.ok ? '' : `<div class="row" style="margin-top:10px;">
+        <button class="btn btn-xs" onclick="makeBoardingTasks('${m.id}')">Make these into tasks</button>
+      </div>`}
+    </div>`;
+}
+
 function posReadinessLine(r){
   if(r.asked === 0) return 'Nothing to fill in';
   if(r.canOpen && r.got === r.asked) return 'Setup complete';
@@ -14321,7 +14491,7 @@ function posSetupField(q, answers){
 function posDetailSetup(m){
   const answers = m.setup_answers || {};
   const r = posReadiness(answers);
-  return `
+  return posGatesHtml(m) + `
     <div class="stat-card" style="margin-bottom:14px;">
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;">
         <div class="label">${r.canOpen ? 'Everything we need' : 'Before they open'}</div>
@@ -14579,6 +14749,22 @@ async function boardLeadInPos(leadId, auto){
       : 'Set up in EPAY POS. Edition and rate still need setting.', 'success');
   }
   posMerchantsLoaded = false;
+
+  /*
+   * The jobs, written down at the moment the account exists.
+   *
+   * A freshly boarded account fails nearly every gate by definition - no
+   * MID, no device, no plan - so this is the whole boarding checklist,
+   * generated rather than remembered. It is the step that used to depend on
+   * whoever boarded the account also opening the tasks page.
+   *
+   * Reloaded first so the gates are read from what the database actually
+   * stored rather than from what was sent to it.
+   */
+  await loadPosMerchants(true);
+  const made = await makeBoardingTasks(data.id, { silent:true });
+  if(made) showToast(made + ' boarding ' + (made===1?'task':'tasks') + ' added.', 'success');
+
   // The same pair saveMid uses, so the panel redraws the way every other
   // stage action redraws it.
   refreshActiveView();
@@ -14701,30 +14887,36 @@ function posSupportActionsHtml(m){
 
 function renderPosSetupBoard(){
   const open = POS_MERCHANTS.filter(m => m.status !== 'closed');
-  const rows = open.map(m => ({ m, r: posReadiness(m.setup_answers || {}) }))
-    .sort((a,b) => (a.r.canOpen === b.r.canOpen)
-      ? b.r.percent - a.r.percent
-      : (a.r.canOpen ? 1 : -1));
+  /*
+   * Sorted by what is standing in the way, not by how much has been typed.
+   * An account one gate from trading belongs above one that has answered
+   * every question and has no MID.
+   */
+  const rows = open.map(m => ({ m, r: posReadiness(m.setup_answers || {}), g: posGates(m) }))
+    .sort((a,b) => (a.g.ok === b.g.ok)
+      ? (a.g.failing.length - b.g.failing.length) || (b.r.percent - a.r.percent)
+      : (a.g.ok ? 1 : -1));
 
-  const ready = rows.filter(x => x.r.canOpen).length;
+  const ready = rows.filter(x => x.g.ok).length;
   document.getElementById('posSetupBoard').innerHTML = rows.length === 0
     ? `<div class="stub-panel"><h3>No merchants yet</h3>
          <p style="font-size:13px;">Board one and its setup appears here.</p></div>`
     : `<p style="font-size:12px;color:var(--slate-500);margin:0 0 12px;">
-         ${ready} of ${rows.length} could open today. The rest are listed by how close they are.</p>
+         ${ready} of ${rows.length} could open today &mdash; meaning a MID, a paired till, a plan,
+         a card price difference and a tax rate, not just the questions answered.</p>
        <div class="table-wrap"><table><thead><tr>
-         <th>Merchant</th><th>Status</th><th>Answered</th><th>Still needed</th></tr></thead><tbody>` +
-      rows.map(({m,r}) => `<tr onclick="openPosMerchant('${m.id}','setup')">
+         <th>Merchant</th><th>Status</th><th>Questions</th><th>Standing in the way</th></tr></thead><tbody>` +
+      rows.map(({m,r,g}) => `<tr onclick="openPosMerchant('${m.id}','setup')">
         <td class="name-cell">${escAttr(m.dba)}<div class="sub">${escAttr(m.city||'')}</div></td>
         <td>${posStatusPill(m.status)}</td>
         <td style="min-width:140px;">
           <div style="height:6px;border-radius:999px;background:var(--surface-2);overflow:hidden;
                       box-shadow:inset 0 0 0 1px var(--line);margin-bottom:3px;">
             <div style="height:100%;width:${r.percent}%;background:var(--blue-400);"></div></div>
-          <span class="sub">${r.got} of ${r.asked}</span></td>
-        <td>${r.canOpen
+          <span class="sub">${r.got} of ${r.asked} answered</span></td>
+        <td>${g.ok
           ? `<span class="pill pill-agent-auth">Ready to open</span>`
-          : `<span class="sub">${escAttr(r.blocking[0].label)}${r.blocking.length>1?` and ${r.blocking.length-1} more`:''}</span>`}</td>
+          : `<span class="sub">${escAttr(g.failing[0].label)}${g.failing.length>1?` and ${g.failing.length-1} more`:''}</span>`}</td>
       </tr>`).join('') + `</tbody></table></div>`;
 }
 
