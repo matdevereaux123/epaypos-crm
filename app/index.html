@@ -580,6 +580,50 @@
    * drawer puts a button under the edge of the screen.
    */
   .row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0;}
+
+  /*
+   * A row of short fields, inside the 440px merchant sheet.
+   *
+   * Fixed three-column grids put ~120px under a two-line uppercase label,
+   * and a label that wraps to two lines while its neighbours wrap to one
+   * pushes its input half a line lower than theirs. Three boxes at three
+   * heights is what reads as a broken form.
+   *
+   * auto-fit drops to two columns rather than squeezing, and aligning to
+   * the end of each cell puts every input on the same line however the
+   * labels above them wrap.
+   */
+  .grid-fields{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));
+    gap:10px;align-items:end;
+  }
+  .grid-fields .field{margin-bottom:0;display:flex;flex-direction:column;justify-content:flex-end;}
+  .grid-fields .field label{min-height:0;}
+
+  /*
+   * The setup questions.
+   *
+   * .field label is uppercase with letter-spacing, which is right for a
+   * one-word field name and wrong for "Who signs for the hardware when it
+   * lands?" — a sentence in caps is slower to read, and a question mark in
+   * caps stops looking like a question at all. These are questions somebody
+   * reads down a phone, so they are set as questions.
+   */
+  .field.setup-field label{
+    text-transform:none;letter-spacing:0;font-size:13px;font-weight:600;
+    color:var(--navy-700);margin-bottom:7px;line-height:1.4;
+  }
+  /* The one word that has to carry, so it is a badge rather than more
+     caps in a line that is already all caps. */
+  .setup-needed{
+    display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;
+    background:var(--warn-bg,#fef3c7);color:var(--warn-text);
+    font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+    vertical-align:1px;
+  }
+  /* Help belongs with the question, above the answer: it is how to answer,
+     not a footnote about what was answered. */
+  .setup-help{font-size:11px;color:var(--slate-500);margin:0 0 7px;line-height:1.45;}
   /* Buttons and chips in a row never squeeze their own text onto two
      lines — a two-line button is the thing that makes a row look broken. */
   .row > .btn, .row > .chip{flex:0 0 auto;white-space:nowrap;}
@@ -13687,7 +13731,7 @@ function openPosMerchantForm(id){
         <input id="pmLegal" value="${v(m&&m.legal_name)}" placeholder="Maple Street Hospitality LLC"></div>
 
       <div class="field"><label>Street</label><input id="pmStreet" value="${v(m&&m.street)}"></div>
-      <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;">
+      <div class="grid-fields" style="grid-template-columns:2fr 1fr 1fr;">
         <div class="field"><label>City</label><input id="pmCity" value="${v(m&&m.city)}"></div>
         <div class="field"><label>State</label><input id="pmState" value="${v(m&&m.state)}" maxlength="2"></div>
         <div class="field"><label>ZIP</label><input id="pmZip" value="${v(m&&m.zip)}"></div>
@@ -13717,7 +13761,7 @@ function openPosMerchantForm(id){
       <input type="hidden" id="pmEdition" value="${v(loc ? loc.edition : 'restaurant')}">
       <div class="field"><label>Edition</label><div id="pmEditionCards"></div></div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+      <div class="grid-fields">
         <div class="field"><label>Card price adds (%)</label>
           <input id="pmPct" value="${loc ? ppmPercent(loc.dual_pricing_ppm) : '3.99'}" inputmode="decimal"></div>
         <div class="field"><label>Per transaction (&cent;)</label>
@@ -14086,7 +14130,7 @@ function posLocationCard(l, m){
       <div class="field"><label>Edition</label>
         <select id="plEdition">${Object.keys(POS_EDITIONS).map(k =>
           `<option value="${k}" ${k===l.edition?'selected':''}>${POS_EDITIONS[k].label}</option>`).join('')}</select></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+      <div class="grid-fields">
         <div class="field"><label>Card price adds (%)</label>
           <input id="plPct" value="${ppmPercent(l.dual_pricing_ppm)}" inputmode="decimal"></div>
         <div class="field"><label>Per transaction (&cent;)</label>
@@ -14255,11 +14299,11 @@ function posReadinessLine(r){
 function posSetupField(q, answers){
   const v = answers[q.id];
   const id = 'ps_' + q.id;
-  const needed = q.needed ? ` <span style="color:var(--warn-text);font-weight:700;">&middot; needed</span>` : '';
+  const needed = q.needed ? ` <span class="setup-needed">needed</span>` : '';
   let control;
   if(q.kind === 'yesno'){
-    control = [true,false].map(choice => `<button type="button" class="chip" aria-pressed="${v===choice}"
-      onclick="setPosAnswer('${q.id}', ${choice})">${choice?'Yes':'No'}</button>`).join(' ');
+    control = `<div class="row">` + [true,false].map(choice => `<button type="button" class="chip" aria-pressed="${v===choice}"
+      onclick="setPosAnswer('${q.id}', ${choice})">${choice?'Yes':'No'}</button>`).join('') + `</div>`;
   } else if(q.kind === 'choice'){
     control = `<select id="${id}" onchange="setPosAnswer('${q.id}', this.value)">
       <option value="">Choose&hellip;</option>
@@ -14270,8 +14314,8 @@ function posSetupField(q, answers){
       inputmode="${q.kind==='number'?'numeric':'text'}"
       onchange="setPosAnswer('${q.id}', ${q.kind==='number'?'this.value===\'\'?\'\':Number(this.value)':'this.value'})">`;
   }
-  return `<div class="field"><label>${escAttr(q.label)}${needed}</label>${control}
-    ${q.help ? `<p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">${escAttr(q.help)}</p>` : ''}</div>`;
+  return `<div class="field setup-field"><label>${escAttr(q.label)}${needed}</label>
+    ${q.help ? `<p class="setup-help">${escAttr(q.help)}</p>` : ''}${control}</div>`;
 }
 
 function posDetailSetup(m){
