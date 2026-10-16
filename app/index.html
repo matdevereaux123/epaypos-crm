@@ -2392,10 +2392,7 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
             Setup
           </button>
-          <!-- Not data-view: the Tasks page is the CRM's, so this leaves the
-               back end rather than pretending to be a page inside it. The
-               filter is what makes it useful from here. -->
-          <button class="nav-item" type="button" onclick="openBoardingTasks()">
+          <button class="nav-item" data-view="postasks">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/><line x1="7" y1="8" x2="7.01" y2="8"/></svg>
             Boarding tasks
           </button>
@@ -3121,6 +3118,25 @@
             </p>
           </div>
         </div>
+      </section>
+
+      <!-- EPAY BACK END: BOARDING TASKS
+           The same tasks as the CRM's Tasks page, filtered to boarding and
+           shown without leaving the back end. It reuses that page's rows,
+           its drawer and its complete/delete actions rather than growing a
+           second set that would drift from the first. -->
+      <section id="view-postasks" class="view" style="display:none;">
+        <div class="topbar">
+          <div>
+            <h1>Boarding tasks</h1>
+            <p class="subtext">Getting merchants from signed to taking cards. The same tasks as the CRM's Tasks page, filed under Boarding.</p>
+          </div>
+          <div class="topbar-actions">
+            <button class="btn btn-accent btn-sm" onclick="newBoardingTask()">+ New boarding task</button>
+            <button class="btn btn-sm" onclick="openBoardingTasks()">Open in Tasks</button>
+          </div>
+        </div>
+        <div class="panel"><div id="posTasksBox" style="padding:16px 20px;"></div></div>
       </section>
 
       <!-- EPAY BACK END: SUBSCRIPTION EDITING
@@ -9596,7 +9612,7 @@ function showView(view, fromHistory){
   }
   /* The same gate as the switch above it. Two different answers to "may
      they open this" is how somebody reaches a view with no way back to it. */
-  const posViews = ['backend','posmerchants','possetup','posnew','posreferral','posbilling','possubs'];
+  const posViews = ['backend','posmerchants','possetup','posnew','posreferral','posbilling','possubs','postasks'];
   if(posViews.includes(view) && !(currentUser && currentUser.epay_admin)) view = 'dashboard';
   /*
    * "New merchant" is an action wearing a nav item's clothes. It opens the
@@ -9615,6 +9631,7 @@ function showView(view, fromHistory){
       else if(view === 'posreferral') renderPosReferral();
       else if(view === 'posbilling') renderPosBilling();
       else if(view === 'possubs') renderPosSubscriptions();
+      else if(view === 'postasks') renderPosTasks();
       else renderPosMerchants();
     });
   }
@@ -13420,12 +13437,16 @@ function posDeviceCount(m){
 function posPrimaryLocation(m){ return (m.pos_locations || [])[0] || null; }
 
 /*
- * The boarding jobs, from either side.
+ * The way out to the full Tasks page, carrying the filter.
  *
- * The Tasks page belongs to the CRM, so this leaves the back end rather than
- * building a second tasks page that would drift from the first. What it
- * carries across is the filter: somebody who got here from the back end
- * wants the boarding list, not every follow-up in the business.
+ * Only reached from the button that says so. Boarding tasks are read inside
+ * the back end now; this is for when somebody wants the rest of the Tasks
+ * page around them - grouping, search, the other categories.
+ *
+ * It does set a filter on a shared page, which is how somebody ends up
+ * looking at a list that appears empty. The empty state names every filter
+ * that is narrowing it and offers one button to clear them, because "No
+ * tasks here" under a filter nobody knew was set reads as lost work.
  */
 function openBoardingTasks(){
   taskCategoryFilter = 'boarding';
@@ -13451,6 +13472,77 @@ function boardingTaskCounts(){
     .filter(t => isBoardingTask(t) && !t.completed);
   const today = todayISO();
   return { ready, open: all.length, overdue: all.filter(t => t.due_date && t.due_date < today).length };
+}
+
+/* ---------------------------------------------------------------------------
+   BOARDING TASKS, INSIDE THE BACK END
+
+   The same records as the CRM's Tasks page and the same rows, drawer and
+   actions - taskRowHtml, openTaskDrawer, toggleTaskComplete, deleteTask all
+   come from there. Nothing about a task is defined twice; what is different
+   here is only which ones are shown and that you do not leave the back end
+   to see them.
+   --------------------------------------------------------------------------- */
+
+function renderPosTasks(){
+  const box = document.getElementById('posTasksBox');
+  if(!box) return;
+
+  if(typeof dataReady === 'function' && !dataReady(['tasks'])){
+    box.innerHTML = `<p style="font-size:13px;color:var(--slate-500);">Loading tasks&hellip;</p>`;
+    ensureData(['tasks']).then(() => {
+      if(document.getElementById('view-postasks').style.display !== 'none') renderPosTasks();
+    }).catch(() => {
+      box.innerHTML = `<p style="font-size:13px;color:var(--red);">Could not load tasks.</p>`;
+    });
+    return;
+  }
+
+  // Everyone's, not just mine: boarding is a relay between sales, the
+  // processor and whoever ships the hardware, and a list filtered to one
+  // person shows a job as finished when it has only been handed on.
+  const mine = myTasks().filter(isBoardingTask);
+  const openRows = mine.filter(t => !t.completed);
+  const done = mine.filter(t => t.completed);
+  const today = todayISO();
+  const overdue = openRows.filter(t => t.due_date && t.due_date < today);
+
+  box.innerHTML = `
+    <div class="cards-row" style="margin-bottom:16px;">
+      <div class="stat-card"><div class="label">Open</div><div class="value">${openRows.length}</div></div>
+      <div class="stat-card${overdue.length ? ' attention' : ''}"><div class="label">Overdue</div>
+        <div class="value">${overdue.length}</div>
+        ${overdue.length ? `<div class="delta" style="color:var(--slate-500);">somebody is waiting</div>` : ''}</div>
+      <div class="stat-card"><div class="label">Done</div><div class="value">${done.length}</div></div>
+    </div>
+
+    ${mine.length === 0 ? `<div class="stub-panel"><h3>No boarding tasks</h3>
+        <p style="max-width:460px;margin:0 auto;font-size:13px;line-height:1.6;">
+          Anything filed under the Boarding category shows here, wherever in the CRM it was
+          created. Nothing has been yet &mdash; this list being empty does not mean tasks are
+          missing from the Tasks page.</p></div>` :
+      TASK_BUCKETS.map(b => {
+        const items = openRows.filter(t => taskDueBucket(t) === b.key);
+        if(!items.length) return '';
+        return `<div class="task-group">
+          <div class="task-group-head"><span class="bar" style="background:${b.color};"></span>${b.label}<span class="count">${items.length}</span></div>
+          ${items.map(taskRowHtml).join('')}
+        </div>`;
+      }).join('') +
+      (done.length ? `<div class="task-group">
+        <div class="task-group-head"><span class="bar" style="background:var(--slate-300);"></span>Done<span class="count">${done.length}</span></div>
+        ${done.map(taskRowHtml).join('')}
+      </div>` : '')}`;
+}
+
+/* Opens the ordinary task drawer. The category is typed in there as
+   Boarding, which is what puts it on this list and on the filter. */
+function newBoardingTask(){
+  openTaskDrawer(null, null, null);
+  setTimeout(() => {
+    const cat = document.getElementById('taskCategory');
+    if(cat && !cat.value) cat.value = BOARDING_CATEGORY;
+  }, 0);
 }
 
 function renderBackendOverview(){
@@ -13490,7 +13582,7 @@ function renderBackendOverview(){
               : `${tasks.open} open${tasks.overdue ? `, <strong style="color:var(--red);">${tasks.overdue} overdue</strong>` : ''}.`}
           </p>
         </div>
-        <button class="btn btn-accent btn-sm" onclick="openBoardingTasks()">Open the list</button>
+        <button class="btn btn-accent btn-sm" onclick="showView('postasks')">Open the list</button>
       </div>`;
   }
 
@@ -24005,6 +24097,16 @@ function taskRowHtml(t){
   </div>`;
 }
 
+/** Back to everything. One button, because four dropdowns is not an undo. */
+function clearTaskFilters(){
+  taskCategoryFilter = 'all';
+  taskPriorityFilter = 'all';
+  taskPersonFilter = 'all';
+  taskSearch = '';
+  taskFilter = 'open';
+  renderTasksList();
+}
+
 function renderTasksList(){
   const canSeeOthers = !!roleOf(currentUser).perms.fullDashboard;
   const visible = myTasks();
@@ -24062,7 +24164,26 @@ function renderTasksList(){
   if(!rows.length){
     list.innerHTML = '';
     empty.style.display = 'block';
-    empty.textContent = q ? 'No tasks match that search.' : (taskFilter === 'completed' ? 'Nothing completed yet.' : 'No tasks here.');
+    /*
+     * Why it is empty, and how to undo it.
+     *
+     * "No tasks here" under a filter somebody did not knowingly set reads as
+     * "my tasks are gone", and that is not a small misunderstanding to cause
+     * on a page full of other people's work. Every filter that is narrowing
+     * the list gets named, with one button that clears the lot.
+     */
+    const narrowing = [];
+    if(taskCategoryFilter === 'boarding') narrowing.push('Boarding only');
+    else if(taskCategoryFilter !== 'all') narrowing.push('category ' + taskCategoryFilter);
+    if(taskPriorityFilter !== 'all') narrowing.push(taskPriorityFilter + ' priority');
+    if(taskPersonFilter === 'mine') narrowing.push('assigned to me');
+    else if(taskPersonFilter !== 'all') narrowing.push('one person');
+    if(q) narrowing.push('a search');
+
+    empty.innerHTML = narrowing.length
+      ? `Nothing matches the filters on this list &mdash; ${escAttr(narrowing.join(', '))}.
+         <br><button class="btn btn-sm" style="margin-top:10px;" onclick="clearTaskFilters()">Show all tasks</button>`
+      : (taskFilter === 'completed' ? 'Nothing completed yet.' : 'No tasks yet.');
     return;
   }
   empty.style.display = 'none';
