@@ -2448,6 +2448,10 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
             Billing
           </button>
+          <button class="nav-item" data-view="posconfig">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.2.47.63.81 1.14.91H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            Register settings
+          </button>
           <button class="nav-item" data-view="possubs">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
             Subscription editing
@@ -3117,6 +3121,7 @@
         -->
         <div class="cards-row" id="backendStats"></div>
         <div class="panel" id="backendTasksCard" style="padding:14px 18px;margin-top:18px;"></div>
+        <div class="panel" id="backendHealthCard" style="padding:14px 18px;margin-top:14px;"></div>
         <div class="panel">
           <div class="panel-head"><h2>Recently boarded</h2></div>
           <div id="backendRecent"></div>
@@ -3181,6 +3186,20 @@
           </div>
         </div>
         <div class="panel"><div id="posTasksBox" style="padding:16px 20px;"></div></div>
+      </section>
+
+      <!-- EPAY BACK END: REGISTER SETTINGS
+           The things a merchant asks for on a Friday. Records, not code:
+           pos_addons and pos_referral_offer already worked this way, and
+           anything that needs a deploy to change goes stale instead. -->
+      <section id="view-posconfig" class="view" style="display:none;">
+        <div class="topbar">
+          <div>
+            <h1>Register settings</h1>
+            <p class="subtext">Receipt wording, tip buttons, the reasons a till asks for, and which connectors are live. Changed here, not in a release.</p>
+          </div>
+        </div>
+        <div class="panel"><div id="posConfigBox" style="padding:18px 20px;"></div></div>
       </section>
 
       <!-- EPAY BACK END: SUBSCRIPTION EDITING
@@ -9656,7 +9675,7 @@ function showView(view, fromHistory){
   }
   /* The same gate as the switch above it. Two different answers to "may
      they open this" is how somebody reaches a view with no way back to it. */
-  const posViews = ['backend','posmerchants','possetup','posnew','posreferral','posbilling','possubs','postasks'];
+  const posViews = ['backend','posmerchants','possetup','posnew','posreferral','posbilling','possubs','postasks','posconfig'];
   if(posViews.includes(view) && !(currentUser && currentUser.epay_admin)) view = 'dashboard';
   /*
    * "New merchant" is an action wearing a nav item's clothes. It opens the
@@ -9676,6 +9695,7 @@ function showView(view, fromHistory){
       else if(view === 'posbilling') renderPosBilling();
       else if(view === 'possubs') renderPosSubscriptions();
       else if(view === 'postasks') renderPosTasks();
+      else if(view === 'posconfig') renderPosConfig();
       else renderPosMerchants();
     });
   }
@@ -13610,7 +13630,41 @@ function renderBackendOverview(){
        waiting on the processor cannot take a payment. */
     stat('Waiting on a MID', noMid, noMid ? 'cannot process yet' : 'all boarded', noMid > 0);
 
-  /* A number that is a list of jobs, so it opens the list. */
+    /*
+   * Tills that have gone quiet, across every account. On the overview
+   * because it is the kind of thing nobody goes looking for.
+   */
+  const quiet = POS_MERCHANTS.filter(m => m.status !== 'closed')
+    .flatMap(m => posUnhealthyDevices(m).map(x => ({ ...x, m })));
+  const healthCard = document.getElementById('backendHealthCard');
+  if(healthCard){
+    healthCard.innerHTML = quiet.length === 0
+      ? `<div class="row" style="justify-content:space-between;">
+           <div><h2 style="font-size:15.5px;margin:0 0 2px;">Registers</h2>
+             <p style="font-size:12px;color:var(--slate-500);margin:0;">
+               Every paired till has checked in within the hour.</p></div>
+         </div>`
+      : `<div class="row" style="justify-content:space-between;margin-bottom:8px;">
+           <div><h2 style="font-size:15.5px;margin:0 0 2px;">${quiet.length}
+             ${quiet.length===1?'till has':'tills have'} gone quiet</h2>
+             <p style="font-size:12px;color:var(--slate-500);margin:0;">
+               Their figures are stale and anything sent from here has not arrived.</p></div>
+         </div>
+         ${quiet.slice(0,6).map(x => `
+           <div class="row" style="justify-content:space-between;gap:10px;padding:6px 0;border-top:1px solid var(--line);">
+             <div style="min-width:0;">
+               <strong style="font-size:12.5px;">${escAttr(x.m.dba)}</strong>
+               <span class="sub"> &middot; ${escAttr(x.d.label || x.d.kind || 'till')} at ${escAttr(x.l.name)}</span>
+             </div>
+             <div class="row" style="gap:8px;">
+               ${posHealthPill(x.h)}
+               <button class="btn btn-xs" onclick="openPosMerchant('${x.m.id}','devices')">Open</button>
+             </div>
+           </div>`).join('')}
+         ${quiet.length > 6 ? `<p class="sub" style="margin:8px 0 0;">and ${quiet.length-6} more</p>` : ''}`;
+  }
+
+/* A number that is a list of jobs, so it opens the list. */
   const tasks = boardingTaskCounts();
   const tasksCard = document.getElementById('backendTasksCard');
   if(tasksCard){
@@ -13910,6 +13964,7 @@ async function openPosMerchant(id, tab){
   // with no catalogue and shows nothing at all.
   await loadPosBilling();
   await loadPosAgreements(id);
+  await loadPosChanges(id);
   const { data } = await supa.from('pos_merchant_notes')
     .select('*').eq('merchant_id', id).order('created_at', { ascending:false });
   POS_NOTES = data || [];
@@ -14013,6 +14068,7 @@ function posDetailDevices(m){
               <td>${posPairLabel(d)}</td>
               <td class="sub">${d.last_seen_at ? new Date(d.last_seen_at).toLocaleString() : 'Never checked in'}</td>
               <td style="text-align:right;white-space:nowrap;">
+                ${posHealthPill(posDeviceHealth(d))}
                 <button class="btn btn-xs" onclick="pairPosDevice('${d.id}')">${d.paired_at?'Re-pair':'Pair'}</button>
                 <button class="btn btn-xs" style="color:var(--red);"
                   onclick="removePosDevice('${d.id}')">Remove</button></td>
@@ -14040,7 +14096,8 @@ function posDetailLog(m){
             ${escAttr(n.kind)} &middot; ${new Date(n.created_at).toLocaleString()}</div>
           <div style="font-size:13px;line-height:1.5;margin-top:3px;">${escAttr(n.body)}</div>
           <div style="font-size:11px;color:var(--slate-500);margin-top:2px;">${escAttr(n.by_name)}</div>
-        </div>`).join('')}`;
+        </div>`).join('')}
+    ${posChangesHtml()}`;
 }
 
 async function addPosNote(id){
@@ -14093,6 +14150,62 @@ async function removePosDevice(id){
 
 let posLocEditing = null;
 
+/* ---------------------------------------------------------------------------
+   THE TWO PRICING PROGRAMS
+
+   Not two settings of one thing. Interchange plus bills the merchant and
+   passes nothing to the cardholder - the cash price and the card price are
+   the same price. Consumer choice puts an adjustable percentage on the card
+   price, shown to the customer before they choose how to pay.
+
+   The difference matters to the setup gates. Zero used to mean both "on
+   interchange plus, correctly passing nothing on" and "nobody has set this
+   up yet", which are opposite situations: one is finished and the other is
+   every card sale that day run at a loss. The program is its own answer now,
+   and the percentage only means anything under one of them.
+   --------------------------------------------------------------------------- */
+
+const POS_PRICING_MODES = {
+  interchange_plus: {
+    label: 'Interchange plus',
+    blurb: 'EPAY bills the merchant. Nothing is added to the customer — the cash price and the card price are the same.',
+    passesOn: false,
+  },
+  consumer_choice: {
+    label: 'Consumer choice',
+    blurb: 'The card price carries a percentage the customer pays, shown to them before they choose how to pay.',
+    passesOn: true,
+  },
+};
+
+function posPricingMode(l){ return (l && l.pricing_mode) || null; }
+
+/** What a location's pricing says, in one line. */
+function posPricingLine(l){
+  const mode = posPricingMode(l);
+  if(!mode) return 'No pricing program chosen';
+  const m = POS_PRICING_MODES[mode] || {};
+  if(!m.passesOn) return m.label + ' — nothing added to the customer';
+  return m.label + ' — ' + ppmLabel(l.dual_pricing_ppm, l.dual_pricing_fixed_cents) + ' on the card price';
+}
+
+/*
+ * Whether this location's pricing is finished.
+ *
+ * Interchange plus is finished the moment it is chosen: there is no rate to
+ * set, and asking for one would be asking for a number that must stay zero.
+ * Consumer choice needs an amount, because the whole programme is that an
+ * amount is passed on, and zero passes nothing.
+ */
+function posPricingSet(l){
+  const mode = posPricingMode(l);
+  if(mode === 'interchange_plus') return true;
+  if(mode === 'consumer_choice'){
+    return Number(l.dual_pricing_ppm || 0) > 0 || Number(l.dual_pricing_fixed_cents || 0) > 0;
+  }
+  return false;
+}
+
 function posLocationCard(l, m){
   const editing = posLocEditing === l.id;
   const e = POS_EDITIONS[l.edition] || {};
@@ -14104,9 +14217,9 @@ function posLocationCard(l, m){
           <span class="pill pill-inhouse">${escAttr(e.label || l.edition)}</span>
         </div>
         <p style="font-size:11.5px;color:var(--slate-500);margin:6px 0 0;">${escAttr(e.offers || '')}</p>
+        <p style="font-size:12px;margin:8px 0 0;${posPricingMode(l)?'':'color:var(--warn-text);font-weight:600;'}">
+          ${escAttr(posPricingLine(l))}</p>
         <div style="display:flex;gap:18px;margin-top:10px;font-size:12.5px;flex-wrap:wrap;">
-          <span><strong>${ppmLabel(l.dual_pricing_ppm, l.dual_pricing_fixed_cents)}</strong>
-            <span style="color:var(--slate-500);"> card price</span></span>
           <span><strong>${ppmPercent(l.tax_ppm)}%</strong>
             <span style="color:var(--slate-500);"> sales tax</span></span>
           <span><strong>${(l.pos_devices||[]).length}</strong>
@@ -14130,11 +14243,23 @@ function posLocationCard(l, m){
       <div class="field"><label>Edition</label>
         <select id="plEdition">${Object.keys(POS_EDITIONS).map(k =>
           `<option value="${k}" ${k===l.edition?'selected':''}>${POS_EDITIONS[k].label}</option>`).join('')}</select></div>
-      <div class="grid-fields">
+      <div class="field"><label>Pricing program</label>
+        <select id="plMode" onchange="posPricingModeChanged()">
+          <option value="" ${!posPricingMode(l)?'selected':''}>Not chosen yet</option>
+          ${Object.keys(POS_PRICING_MODES).map(k =>
+            `<option value="${k}" ${posPricingMode(l)===k?'selected':''}>${POS_PRICING_MODES[k].label}</option>`).join('')}
+        </select>
+        <p id="plModeBlurb" class="setup-help" style="margin-top:6px;">
+          ${escAttr((POS_PRICING_MODES[posPricingMode(l)]||{}).blurb || 'Interchange plus bills the merchant. Consumer choice passes a percentage to the customer.')}</p>
+      </div>
+      <div class="grid-fields" id="plRateFields"
+           style="${posPricingMode(l)==='consumer_choice'?'':'display:none;'}">
         <div class="field"><label>Card price adds (%)</label>
           <input id="plPct" value="${ppmPercent(l.dual_pricing_ppm)}" inputmode="decimal"></div>
         <div class="field"><label>Per transaction (&cent;)</label>
           <input id="plFixed" value="${Number(l.dual_pricing_fixed_cents||0)}" inputmode="numeric"></div>
+      </div>
+      <div class="grid-fields">
         <div class="field"><label>Sales tax (%)</label>
           <input id="plTax" value="${ppmPercent(l.tax_ppm)}" inputmode="decimal"></div>
       </div>
@@ -14146,22 +14271,87 @@ function posLocationCard(l, m){
     </div>`;
 }
 
+/* Interchange plus has no rate to ask for, so the boxes go away rather than
+   sitting there inviting a number that has to stay zero. */
+function posPricingModeChanged(){
+  const mode = (document.getElementById('plMode') || {}).value || '';
+  const fields = document.getElementById('plRateFields');
+  const blurb = document.getElementById('plModeBlurb');
+  if(fields) fields.style.display = mode === 'consumer_choice' ? '' : 'none';
+  if(blurb) blurb.textContent = (POS_PRICING_MODES[mode] || {}).blurb
+    || 'Interchange plus bills the merchant. Consumer choice passes a percentage to the customer.';
+}
+
+/* ---------------------------------------------------------------------------
+   WHO CHANGED IT
+
+   Rate disputes are the expensive kind and a change left no trace at all.
+   Written after the change lands, never instead of it: a log entry for a
+   save that failed is worse than no entry, because it is a record of
+   something that did not happen.
+   --------------------------------------------------------------------------- */
+async function logPosChange(entity, entityId, merchantId, field, oldValue, newValue, note){
+  if(String(oldValue === null || oldValue === undefined ? '' : oldValue)
+     === String(newValue === null || newValue === undefined ? '' : newValue)) return;
+  const { error } = await supa.from('pos_change_log').insert({
+    entity, entity_id: entityId ? String(entityId) : null,
+    merchant_id: merchantId || null,
+    field,
+    old_value: oldValue === null || oldValue === undefined ? null : String(oldValue),
+    new_value: newValue === null || newValue === undefined ? null : String(newValue),
+    changed_by: (currentUser && currentUser.name) || 'Unknown',
+    note: note || null,
+  });
+  // Never blocks the change it describes, and never silent either: a trail
+  // with a hole in it is worth knowing about.
+  if(error) console.warn('Change not logged:', field, error.message);
+}
+
 async function savePosLocation(id){
-  const get = (k) => (document.getElementById(k).value || '').trim();
+  const get = (k) => ((document.getElementById(k) || {}).value || '').trim();
   const say = (t) => { const el=document.getElementById('plProblem'); el.textContent=t; el.style.display=t?'block':'none'; };
-  const pct = pctToPpm(get('plPct'));
+  const m = posDetailMerchant();
+  const before = ((m && m.pos_locations) || []).find(x => x.id === id) || {};
+  const mode = get('plMode') || null;
   const tax = pctToPpm(get('plTax'));
-  const fixed = Math.round(Number(get('plFixed') || 0));
+
+  /*
+   * Interchange plus is stored at zero because zero is what it passes on.
+   * Whatever was in the boxes before the programme was switched is not
+   * carried across — a leftover 3.99 sitting under an interchange plus
+   * account is the number somebody finds later and cannot explain.
+   */
+  const passesOn = mode === 'consumer_choice';
+  const pct = passesOn ? pctToPpm(get('plPct')) : 0;
+  const fixed = passesOn ? Math.round(Number(get('plFixed') || 0)) : 0;
+
   if(!get('plName')){ say('What is this location called?'); return; }
-  if(pct === null){ say('The card price has to be a number. Enter 0 to run without the program.'); return; }
+  if(!mode){ say('Which pricing program is this location on?'); return; }
+  if(pct === null){ say('The card price has to be a number.'); return; }
   if(tax === null){ say('Sales tax has to be a number.'); return; }
   if(!isFinite(fixed) || fixed < 0){ say('Per transaction has to be a whole number of cents.'); return; }
+  if(passesOn && pct === 0 && fixed === 0){
+    say('Consumer choice passes something to the customer. At 0% and 0¢ it passes nothing — choose interchange plus instead.');
+    return;
+  }
   say('');
   const { error } = await updateRow('pos_locations', id, {
-    name: get('plName'), edition: get('plEdition'),
+    name: get('plName'), edition: get('plEdition'), pricing_mode: mode,
     dual_pricing_ppm: pct, dual_pricing_fixed_cents: fixed, tax_ppm: tax,
   });
   if(error){ say('Could not save: ' + error.message); return; }
+
+  // After it landed, not before. Money fields only: this is the trail a rate
+  // dispute is argued from, and padding it with cosmetic edits makes the
+  // one entry that matters harder to find.
+  const mid = m ? m.id : null;
+  await logPosChange('pos_locations', id, mid, 'pricing_mode', before.pricing_mode, mode);
+  await logPosChange('pos_locations', id, mid, 'dual_pricing_ppm', before.dual_pricing_ppm, pct,
+    passesOn ? null : 'Zeroed by moving to interchange plus.');
+  await logPosChange('pos_locations', id, mid, 'dual_pricing_fixed_cents', before.dual_pricing_fixed_cents, fixed);
+  await logPosChange('pos_locations', id, mid, 'tax_ppm', before.tax_ppm, tax);
+  await logPosChange('pos_locations', id, mid, 'edition', before.edition, get('plEdition'));
+
   posLocEditing = null;
   await loadPosMerchants(true);
   renderPosDetail();
@@ -14310,7 +14500,8 @@ function posGates(m){
   const r = posReadiness(answers);
   const devices = locs.reduce((n,l) => n.concat(l.pos_devices || []), []);
   const noPlan = locs.filter(l => !l.plan_key);
-  const noRate = locs.filter(l => !(l.dual_pricing_ppm > 0 || l.dual_pricing_fixed_cents > 0));
+  const noMode = locs.filter(l => !posPricingMode(l));
+  const noRate = locs.filter(l => posPricingMode(l) && !posPricingSet(l));
   const noTax  = locs.filter(l => !(l.tax_ppm > 0));
 
   const gates = [
@@ -14325,16 +14516,19 @@ function posGates(m){
       fix:'Put every location on a plan — nothing can be invoiced without one.' },
 
     /*
-     * Zero is a configured value and an unconfigured one at the same time,
-     * and there is no way to tell them apart in the column. Treated as not
-     * set, because the cost of asking somebody to confirm 3.99% they
-     * already entered is a question; the cost of opening on 0% is every
-     * card sale that day run at a loss.
+     * Which programme, before how much. A zero rate is correct on
+     * interchange plus and catastrophic on consumer choice, so the rate
+     * cannot be checked until the programme is known.
      */
-    { key:'rate', label:'Dual pricing set',
-      ok: locs.length > 0 && noRate.length === 0,
-      why: noRate.length ? noRate.map(l => l.name).join(', ') + ' is at 0% and 0¢.' : '',
-      fix:'Set the card price difference. At zero the EPAY program is off.' },
+    { key:'pricing_mode', label:'A pricing program chosen',
+      ok: locs.length > 0 && noMode.length === 0,
+      why: noMode.length ? noMode.map(l => l.name).join(', ') + ' has neither programme set.' : '',
+      fix:'Choose interchange plus or consumer choice. Nothing else about pricing can be checked until this is answered.' },
+
+    { key:'rate', label:'Consumer choice percentage set',
+      ok: noRate.length === 0,
+      why: noRate.length ? noRate.map(l => l.name).join(', ') + ' is on consumer choice at 0% and 0¢.' : '',
+      fix:'Set what the card price adds. On consumer choice, zero passes nothing on and the programme is off.' },
 
     { key:'tax', label:'Sales tax set',
       ok: locs.length > 0 && noTax.length === 0,
@@ -15111,6 +15305,153 @@ function posMerchantMonthly(m){
  * price it was made at - see migration 102 - so this is the quote, not the
  * invoice.
  */
+/* ---------------------------------------------------------------------------
+   REGISTER SETTINGS
+
+   The things a merchant rings about on a Friday: a different receipt footer,
+   a tip button somebody wants removed, a void reason their staff actually
+   use. All of it was in code, so all of it needed a release, which means in
+   practice none of it changed and the defaults quietly became the product.
+
+   Records, like pos_addons and pos_referral_offer. One table keyed by scope
+   rather than six, because these are read together and written by this one
+   screen, and six tables is six sets of policies to keep in step.
+
+   What it does NOT do is let somebody put arbitrary shapes in. Each row
+   declares its kind here, the editor matches, and what goes back to the
+   database is the same shape that came out — a list stays a list and a flag
+   stays a boolean, whatever gets typed into the box.
+   --------------------------------------------------------------------------- */
+
+let POS_CONFIG = [];
+
+const POS_CONFIG_GROUPS = [
+  { scope:'receipt', title:'Receipts',
+    blurb:'What prints at the top and bottom of every receipt from these tills.' },
+  { scope:'tips', title:'Tips',
+    blurb:'The buttons a customer sees, and whether a tip is asked for on cash.' },
+  { scope:'reasons', title:'Reasons the till asks for',
+    blurb:'A reason somebody can pick is a reason that gets recorded. A free-text box is one that gets left blank.' },
+  { scope:'connectors', title:'What merchants can switch on',
+    blurb:'Anything not on this list shows as coming soon rather than being sellable.' },
+];
+
+/* Lists are edited a line at a time: a comma is a thing people put inside a
+   receipt line, so it cannot also be the separator. */
+const POS_CONFIG_KIND = (row) => Array.isArray(row.value) ? 'list'
+  : (typeof row.value === 'boolean' ? 'flag' : 'text');
+
+async function loadPosConfig(force){
+  if(POS_CONFIG.length && !force) return POS_CONFIG;
+  const { data, error } = await supa.from('pos_config').select('*').order('scope').order('sort');
+  if(error){
+    POS_CONFIG = [];
+    if(!/pos_config/.test(error.message || '')) showToast('Could not load settings: ' + error.message, 'error');
+    return POS_CONFIG;
+  }
+  POS_CONFIG = data || [];
+  return POS_CONFIG;
+}
+
+async function renderPosConfig(){
+  await loadPosConfig(true);
+  const box = document.getElementById('posConfigBox');
+  if(!box) return;
+
+  if(POS_CONFIG.length === 0){
+    box.innerHTML = `<div class="stub-panel"><h3>Nothing to change yet</h3>
+      <p style="max-width:460px;margin:0 auto;font-size:13px;line-height:1.6;">
+        Run migration 106 and these appear. Until then the registers use what they ship with.</p></div>`;
+    return;
+  }
+
+  box.innerHTML = POS_CONFIG_GROUPS.map(g => {
+    const rows = POS_CONFIG.filter(r => r.scope === g.scope);
+    if(!rows.length) return '';
+    return `
+      <div style="margin-bottom:26px;">
+        <h3 style="font-size:14px;margin:0 0 3px;">${escAttr(g.title)}</h3>
+        <p style="font-size:11.5px;color:var(--slate-500);margin:0 0 12px;">${escAttr(g.blurb)}</p>
+        ${rows.map(r => posConfigField(r)).join('')}
+      </div>`;
+  }).join('');
+}
+
+function posConfigField(r){
+  const kind = POS_CONFIG_KIND(r);
+  const id = 'cfg_' + r.scope + '_' + r.key;
+  const changed = r.updated_by
+    ? `<div class="sub">Last changed by ${escAttr(r.updated_by)} on ${new Date(r.updated_at).toLocaleDateString()}</div>`
+    : '';
+  let control;
+  if(kind === 'flag'){
+    control = `<div class="row">` + [true,false].map(v =>
+      `<button type="button" class="chip" aria-pressed="${r.value===v}"
+         onclick="savePosConfig('${r.scope}','${r.key}', ${v})">${v?'Yes':'No'}</button>`).join('') + `</div>`;
+  } else if(kind === 'list'){
+    control = `
+      <textarea id="${id}" rows="${Math.max(2, r.value.length + 1)}"
+        style="width:100%;font-size:13px;">${escAttr(r.value.join('\n'))}</textarea>
+      <div class="row" style="margin-top:7px;">
+        <button class="btn btn-xs" onclick="savePosConfigList('${r.scope}','${r.key}')">Save</button>
+        <span class="sub">One per line.</span>
+      </div>`;
+  } else {
+    control = `
+      <input id="${id}" value="${escAttr(String(r.value))}">
+      <div class="row" style="margin-top:7px;">
+        <button class="btn btn-xs" onclick="savePosConfigText('${r.scope}','${r.key}')">Save</button>
+      </div>`;
+  }
+  return `<div class="field setup-field" style="margin-bottom:18px;">
+    <label>${escAttr(r.label || r.key)}</label>${control}${changed}</div>`;
+}
+
+/*
+ * Tip buttons are numbers and the reasons are not, so a list of numbers goes
+ * back as numbers. A "20" that became the string "20" is a tip button the
+ * register cannot do arithmetic with.
+ */
+function posConfigListValue(scope, key, lines){
+  const numeric = scope === 'tips' && key === 'presets';
+  if(!numeric) return lines;
+  const out = lines.map(x => Number(x)).filter(n => isFinite(n) && n >= 0);
+  return out;
+}
+
+async function savePosConfigList(scope, key){
+  const el = document.getElementById('cfg_' + scope + '_' + key);
+  if(!el) return;
+  const lines = el.value.split('\n').map(x => x.trim()).filter(Boolean);
+  await savePosConfig(scope, key, posConfigListValue(scope, key, lines));
+}
+
+async function savePosConfigText(scope, key){
+  const el = document.getElementById('cfg_' + scope + '_' + key);
+  if(!el) return;
+  await savePosConfig(scope, key, el.value.trim());
+}
+
+async function savePosConfig(scope, key, value){
+  const before = POS_CONFIG.find(r => r.scope === scope && r.key === key);
+  const { data, error } = await supa.from('pos_config')
+    .update({ value, updated_at: new Date().toISOString(),
+              updated_by: (currentUser && currentUser.name) || 'Unknown' })
+    .eq('scope', scope).eq('key', key).select();
+  /* pos_config is keyed by (scope,key) rather than id, so updateRow does not
+     fit — but the same rule does: no rows back means RLS refused it, and
+     "Saved" over a refused write is the bug updateRow exists to stop. */
+  if(error){ showToast('Could not save: ' + error.message, 'error'); return; }
+  if(!data || !data.length){
+    showToast('Nothing was saved — this needs admin portal access.', 'error');
+    return;
+  }
+  await logPosChange('pos_config', scope + '.' + key, null, key,
+    before ? JSON.stringify(before.value) : null, JSON.stringify(value));
+  showToast('Saved. Registers pick this up on their next sync.', 'success');
+  await renderPosConfig();
+}
+
 async function renderPosSubscriptions(){
   await loadPosBilling();
   const box = document.getElementById('posSubsBox');
@@ -15493,8 +15834,102 @@ async function pairPosDevice(id){
    was promised, and the first they would hear of it is an invoice.
    --------------------------------------------------------------------------- */
 
+/* ---------------------------------------------------------------------------
+   A TILL THAT HAS STOPPED TALKING
+
+   The registers already report in; the back office never looked. A shop
+   whose till last synced three days ago is a shop whose figures are three
+   days old and whose menu changes never arrived — and the first anybody
+   hears of it is usually the merchant ringing about something else.
+
+   Thresholds are deliberately short. A till in a trading shop checks in
+   constantly, so an hour of silence during the day is already a question.
+   --------------------------------------------------------------------------- */
+
+const POS_DEVICE_QUIET_MINUTES = 60;
+const POS_DEVICE_DARK_HOURS = 24;
+
+function posDeviceHealth(d){
+  if(!d) return { state:'unknown', words:'Never heard from' };
+  if(!d.paired_at) return { state:'unpaired', words:'Not paired yet' };
+  if(!d.last_seen_at) return { state:'unknown', words:'Paired, never checked in' };
+  const mins = (Date.now() - new Date(d.last_seen_at).getTime()) / 60000;
+  if(mins >= POS_DEVICE_DARK_HOURS * 60){
+    return { state:'dark', words:'Silent for ' + Math.floor(mins/60/24) + ' day' + (mins >= 48*60 ? 's' : '') };
+  }
+  if(mins >= POS_DEVICE_QUIET_MINUTES){
+    return { state:'quiet', words:'No contact for ' + Math.floor(mins/60) + 'h' };
+  }
+  return { state:'ok', words:'Checked in ' + Math.max(1, Math.round(mins)) + ' min ago' };
+}
+
+/** Every till on an account that somebody should be asking about. */
+function posUnhealthyDevices(m){
+  return ((m && m.pos_locations) || [])
+    .flatMap(l => (l.pos_devices || []).map(d => ({ d, l, h: posDeviceHealth(d) })))
+    .filter(x => x.h.state === 'quiet' || x.h.state === 'dark');
+}
+
+function posHealthPill(h){
+  const cls = h.state === 'ok' ? 'pill-agent-auth'
+    : h.state === 'dark' ? 'pill-commission'
+    : h.state === 'quiet' ? 'pill-commission' : 'pill-referral';
+  return `<span class="pill ${cls}">${escAttr(h.words)}</span>`;
+}
+
 let POS_AGREEMENTS = [];
 let POS_AGREEMENTS_ALL = [];
+let POS_CHANGES = [];
+
+/* What was changed on this account, newest first. Read when the sheet opens
+   so the Log tab can show it beside the notes: a note is what somebody said
+   happened and this is what did. */
+async function loadPosChanges(merchantId){
+  const { data, error } = await supa.from('pos_change_log')
+    .select('*').eq('merchant_id', merchantId)
+    .order('changed_at', { ascending:false }).limit(50);
+  POS_CHANGES = error ? [] : (data || []);
+  return POS_CHANGES;
+}
+
+/* The money fields as a person reads them. ppm is not a unit anybody
+   arguing about a rate should have to convert in their head. */
+function posChangeValue(field, raw){
+  if(raw === null || raw === undefined || raw === '') return '—';
+  if(field === 'dual_pricing_ppm' || field === 'tax_ppm') return ppmPercent(Number(raw)) + '%';
+  if(field === 'dual_pricing_fixed_cents') return Number(raw) + '¢';
+  if(field === 'pricing_mode') return (POS_PRICING_MODES[raw] || {}).label || raw;
+  return String(raw);
+}
+
+const POS_CHANGE_LABEL = {
+  pricing_mode: 'Pricing program',
+  dual_pricing_ppm: 'Card price adds',
+  dual_pricing_fixed_cents: 'Per transaction',
+  tax_ppm: 'Sales tax',
+  edition: 'Edition',
+};
+
+function posChangesHtml(){
+  if(POS_CHANGES.length === 0){
+    return `<p style="font-size:11.5px;color:var(--slate-500);margin:14px 0 0;">
+      No pricing or plan changes recorded yet. Anything changed from here on is listed with who
+      changed it.</p>`;
+  }
+  return `
+    <h3 style="font-size:13.5px;margin:18px 0 4px;">What was changed</h3>
+    <p style="font-size:11px;color:var(--slate-500);margin:0 0 8px;">
+      Pricing and plan only. A note is what somebody said happened; this is what did.</p>
+    ${POS_CHANGES.map(c => `
+      <div style="padding:7px 0;border-top:1px solid var(--line);font-size:12px;">
+        <strong>${escAttr(POS_CHANGE_LABEL[c.field] || c.field)}</strong>
+        <span style="color:var(--slate-500);">
+          ${escAttr(posChangeValue(c.field, c.old_value))} &rarr;
+          <strong style="color:var(--navy-700);">${escAttr(posChangeValue(c.field, c.new_value))}</strong></span>
+        <div class="sub">${escAttr(c.changed_by)} &middot; ${new Date(c.changed_at).toLocaleString()}
+          ${c.note ? ' &middot; ' + escAttr(c.note) : ''}</div>
+      </div>`).join('')}`;
+}
 
 /* Everything accepted, newest first, across every account. Capped: this is a
    glance at what is being agreed to, not an audit — the audit is per merchant,
