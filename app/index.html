@@ -1714,27 +1714,55 @@
   #quickAddFab{ position:fixed; right:26px; bottom:26px; z-index:900; display:flex; flex-direction:column; align-items:flex-end; gap:10px; pointer-events:none; }
   #quickAddFabBtn{ pointer-events:auto; }
   #quickAddFabBtn{
-    width:56px; height:56px; border-radius:50%; border:none; cursor:pointer;
-    background:linear-gradient(135deg, var(--brand-accent), var(--brand-accent-2));
+    width:60px; height:60px; border-radius:50%; border:1px solid rgba(0,213,255,.35); cursor:pointer;
+    /* Deep navy, lit from the top left, so the mark reads as lit rather than
+       printed on a flat disc. */
+    background:
+      radial-gradient(120% 120% at 28% 22%, #1B3358 0%, #0E1E3C 55%, #0B1B38 100%);
     color:#fff; display:flex; align-items:center; justify-content:center;
-    box-shadow:0 6px 20px rgba(0,0,0,.28); position:relative; overflow:hidden;
-    transition:transform .15s ease, box-shadow .15s ease;
+    position:relative; overflow:visible;
+    /* The ambient part: a close contact shadow to sit it on the page, and a
+       wide cyan bloom underneath it that the page tint picks up. */
+    box-shadow:
+      0 10px 24px -10px rgba(5,20,45,.65),
+      0 0 34px -6px rgba(0,163,214,.45),
+      inset 0 1px 0 rgba(255,255,255,.14);
+    transition:transform .15s ease, box-shadow .25s ease;
   }
-  #quickAddFabBtn svg{ width:22px; height:22px; fill:#fff; transition:transform .2s ease; }
-  /* Traced from app/icon-512.png (apex ~255,124; base corners ~105/406,380 in the
-     512px mark) so this matches the logo's actual triangle proportions, not a
-     generic one — slight stroke-linejoin round echoes its softened base corners. */
-  #quickAddFabBtn svg polygon{ stroke:#fff; stroke-width:1.3; stroke-linejoin:round; }
-  #quickAddFabBtn:hover{ transform:translateY(-2px); box-shadow:0 8px 24px rgba(0,0,0,.34); }
-  #quickAddFabBtn:active{ transform:translateY(0) scale(.94); }
-  #quickAddFab.open #quickAddFabBtn svg{ transform:rotate(135deg); }
+  /* The bloom, as its own layer so it can breathe without moving the button
+     or catching clicks. */
+  #quickAddFabBtn::before{
+    content:''; position:absolute; inset:-14px; border-radius:50%; z-index:-1;
+    background:radial-gradient(circle, rgba(0,213,255,.34) 0%, rgba(42,63,224,.18) 45%, transparent 70%);
+    opacity:.85; pointer-events:none;
+    animation:fabBreathe 5.5s ease-in-out infinite;
+  }
+  @keyframes fabBreathe{
+    0%,100%{ transform:scale(1);    opacity:.75; }
+    50%    { transform:scale(1.12); opacity:1;   }
+  }
+  @media (prefers-reduced-motion:reduce){
+    #quickAddFabBtn::before{ animation:none; }
+  }
+  #quickAddFabBtn svg{ width:26px; height:26px; transition:transform .25s ease; }
+  #quickAddFabBtn:hover{
+    transform:translateY(-2px);
+    box-shadow:
+      0 14px 30px -10px rgba(5,20,45,.7),
+      0 0 46px -6px rgba(0,196,255,.6),
+      inset 0 1px 0 rgba(255,255,255,.18);
+  }
+  #quickAddFabBtn:active{ transform:translateY(0) scale(.95); }
+  /* Open: the peak turns over, which is the same gesture the old plus made
+     and says "this closes" without a second icon. */
+  #quickAddFab.open #quickAddFabBtn svg{ transform:rotate(180deg); }
+  #quickAddFab.open #quickAddFabBtn{ box-shadow:0 10px 24px -10px rgba(5,20,45,.65), 0 0 46px -4px rgba(0,196,255,.55); }
 
-  /* Click feedback: an expanding ring that fires on every press, plus the
-     brief scale-down above — a visible "something happened" pulse, on top
-     of (not instead of) the menu opening. */
+  /* Click feedback: an expanding ring on every press, on top of the brief
+     scale-down above. */
   #quickAddFabBtn::after{
     content:''; position:absolute; inset:0; border-radius:50%;
-    background:#fff; opacity:0; transform:scale(1); pointer-events:none;
+    background:rgba(0,213,255,.5); opacity:0; transform:scale(1); pointer-events:none;
   }
   #quickAddFabBtn.pulse::after{ animation:fabPulse .5s ease-out; }
   @keyframes fabPulse{
@@ -2117,17 +2145,9 @@
     accent-color:var(--blue-600);vertical-align:middle;flex:0 0 auto;
   }
 
-  /* The quick-add button. Cyan with the navy mark, which is the same pair as
-     an active menu row and a primary button — the gradient read as a third
-     brand colour sitting on top of the page. */
-  #quickAddFabBtn{
-    background:var(--blue-400);
-    box-shadow:0 6px 20px -4px rgba(0,106,133,.45);
-  }
-  #quickAddFabBtn svg{ fill:#0B1B38; }
-  #quickAddFabBtn svg polygon{ stroke:#0B1B38; }
-  #quickAddFabBtn:hover{ background:var(--blue-300);box-shadow:0 8px 24px -4px rgba(0,106,133,.5); }
-  #quickAddFabBtn::after{ background:#0B1B38; }
+  /* The quick-add button is styled in full where it is defined - the flat
+     cyan version that used to be overridden here has been replaced by the
+     lit navy one with the logo's mark. */
 
   /* and the buttons it opens */
   .quick-add-menu button{
@@ -4026,7 +4046,23 @@
     </button>
   </div>
   <button id="quickAddFabBtn" onclick="toggleQuickAddMenu(event)" aria-label="Quick add">
-    <svg viewBox="0 0 24 24"><polygon points="12,5.8 19.3,18.2 4.7,18.2"/></svg>
+    <!-- The mark from the logo: a peak with a second ridge rising inside it,
+         in the logo's own cyan-to-indigo run. Drawn rather than traced - the
+         icon file is a PNG, so there is no path to lift. -->
+    <svg viewBox="0 0 48 48" aria-hidden="true">
+      <defs>
+        <linearGradient id="fabMark" x1="4" y1="42" x2="44" y2="8" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stop-color="#00D5FF"/>
+          <stop offset="0.55" stop-color="#2E8BE0"/>
+          <stop offset="1" stop-color="#2A3FE0"/>
+        </linearGradient>
+      </defs>
+      <!-- outer peak, hollow -->
+      <path fill="url(#fabMark)" fill-rule="evenodd"
+            d="M24 6 44 42H4L24 6Zm0 9.5L13.6 34h20.8L24 15.5Z"/>
+      <!-- inner ridge -->
+      <path fill="url(#fabMark)" d="M30.5 42 24 30.2 17.5 42h13Z"/>
+    </svg>
   </button>
 </div>
 </div>
