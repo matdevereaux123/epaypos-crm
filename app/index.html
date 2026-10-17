@@ -2195,20 +2195,22 @@
   .office-empty{font-size:12.5px;color:var(--slate-500);margin:0 0 4px;}
 
 
-  /* ---------- PAGE TOGGLES IN THE TOP BAR ---------- */
-  .topnav-toggles{
-    display:flex;align-items:center;gap:10px;min-width:0;flex:1 1 auto;
-    overflow-x:auto;overscroll-behavior-x:contain;padding:0 4px;
+  /* ---------- THE BRAND SWITCH, IN THE TOP BAR ---------- */
+  /* Which company you are working in is the widest thing this app can
+     change, so it sits in the widest piece of furniture rather than in a
+     corner of the menu. A row of segments at bar height, with the same
+     tray, icons and cyan-on-navy selection as everywhere else. */
+  .topnav-brand{display:flex;align-items:center;min-width:0;flex:0 1 auto;}
+  .topnav .brand-switch{
+    flex-direction:row;gap:2px;padding:3px;border-radius:10px;
+    background:var(--surface-2);border:1px solid var(--line);
   }
-  .topnav-toggles::-webkit-scrollbar{height:0;}
-  /* The bottom margin was spacing them off the page content they used to sit
-     above; in a 60px bar it only pushes them off centre. */
-  .topnav-toggles .phase-toggle{margin-bottom:0;flex-shrink:0;}
-  .topnav-toggles .view-toggle{flex-shrink:0;}
-  /* A label that wraps makes the bar grow a second line. In a fixed-height
-     bar it just has to stay on one and let the row scroll. */
-  .topnav-toggles .phase-toggle button,
-  .topnav-toggles .view-toggle-btn{white-space:nowrap;}
+  .topnav .brand-switch button{
+    width:auto;min-height:34px;padding:0 12px;border-radius:7px;
+    font-size:12.5px;white-space:nowrap;
+  }
+  .topnav .brand-switch button svg{width:16px;height:16px;}
+  .topnav .brand-switch .bs-tick{display:none !important;}
 
   /* The menu starts closer to the rule under the logo. Three paddings used
      to stack below the brand switch - the header's, the menu's and the
@@ -2569,9 +2571,9 @@
         <button class="sidebar-toggle-btn" id="sidebarToggleBtn" type="button" title="Collapse menu">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
         </button>
-        <!-- The open page's own toggles are moved in here by showView; see
-             parkViewToggles(). Empty, and hidden, on a page that has none. -->
-        <div class="topnav-toggles" id="topnavToggles" style="display:none;"></div>
+        <!-- The brand switch lives here. renderBrandSwitch() moves the
+             element itself in, so it keeps its id and its handlers. -->
+        <div class="topnav-brand" id="topnavBrandHost"></div>
         <div class="topnav-right">
           <div class="notif-bell-wrap" id="notifBellWrap">
             <button class="notif-bell-btn" id="notifBellBtn" type="button" title="Notifications">
@@ -5667,6 +5669,12 @@ function renderBrandSwitch(){
     btn.classList.toggle('active', btn.dataset.brand === currentBrand);
     btn.addEventListener('click', ()=> setBrand(btn.dataset.brand));
   });
+  /* Written in the sidebar, shown in the top bar. Moving the element rather
+     than rebuilding it up there keeps its id, so every caller of
+     renderBrandSwitch - including the single-brand branch above - works
+     unchanged. */
+  const host = document.getElementById('topnavBrandHost');
+  if(host && switchEl.parentNode !== host) host.appendChild(switchEl);
 }
 
 function brandSwitchLabel(b){
@@ -9683,40 +9691,6 @@ function refreshActiveView(){
   }
 }
 
-/* The page's toggles ride in the top bar.
-
-   Open/Completed/All, Board/Hierarchy/Team and the cold lead filters were
-   each stacked above their own page, which pushed the content down by a row
-   or three and put the same kind of control in a different place on every
-   screen. They are moved into the top bar instead, in a line, so the bar
-   reads as "where you are and how you are filtering it" and the page below
-   starts with the page.
-
-   Moved, not duplicated: the elements keep their ids, so every renderer
-   that writes to them by id - and every click handler already bound - works
-   untouched. Where each one came from is remembered so it goes back when
-   you leave, which is what keeps this reversible and keeps a view that is
-   re-entered from accumulating copies. */
-let _parkedToggles = [];
-function parkViewToggles(view){
-  _parkedToggles.forEach(p => {
-    if(p.parent && p.parent.isConnected) p.parent.insertBefore(p.el, p.next);
-  });
-  _parkedToggles = [];
-
-  const slot = document.getElementById('topnavToggles');
-  const section = document.getElementById('view-' + view);
-  if(!slot || !section) return;
-
-  section.querySelectorAll('.phase-toggle, .view-toggle').forEach(el => {
-    // Controls that belong to a drawer or a modal stay with it.
-    if(el.closest('.drawer') || el.closest('.overlay') || el.closest('.modal-card')) return;
-    _parkedToggles.push({ el: el, parent: el.parentNode, next: el.nextSibling });
-    slot.appendChild(el);
-  });
-  slot.style.display = _parkedToggles.length ? 'flex' : 'none';
-}
-
 function showView(view, fromHistory){
   // Hard gate, checked on every navigation (not just at login/role-switch) —
   // this is what actually stops a non-admin from landing on these views if
@@ -9771,7 +9745,6 @@ function showView(view, fromHistory){
   }
   document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
   document.getElementById('view-' + view).style.display = 'block';
-  parkViewToggles(view);
 
   /*
    * Start at the top of the new page.
