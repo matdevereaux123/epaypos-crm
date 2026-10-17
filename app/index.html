@@ -2221,6 +2221,11 @@
   nav.nav-main > .nav-section-label:first-child,
   nav.nav-main > .nav-section-toggle:first-child{margin-top:6px;}
 
+  .profile-dropdown-build{
+    padding:8px 14px 10px;font-size:10.5px;color:var(--slate-300);
+    border-top:1px solid var(--line);text-align:center;letter-spacing:.02em;
+  }
+
 </style>
 </head><body data-brand="epay">
 
@@ -2625,6 +2630,11 @@
                 <span id="sessionUserLabel">admin@epaypos.net</span>
                 <button id="logoutBtn">Sign out</button>
               </div>
+              <!-- Which build is in front of you, without signing out to read
+                   it off the login screen. A deploy that is live and a tab
+                   that is stale look identical from inside the app, and the
+                   only way to tell them apart was to sign out. -->
+              <div class="profile-dropdown-build" id="profileBuildLabel"></div>
             </div>
           </div>
         </div>
@@ -6109,6 +6119,9 @@ applySidebarCollapsed(savedSidebarPref !== null ? savedSidebarPref === 'true' : 
 
 function showLoginScreen(){
   const ver = document.getElementById('loginVersion');
+  // The same string in the profile menu, for anyone already signed in.
+  const buildLabel = document.getElementById('profileBuildLabel');
+  if(buildLabel) buildLabel.textContent = 'Build ' + APP_VERSION;
   if(ver) ver.textContent = appVersionLabel();
   // Drop any leftover view hash so a logged-out URL isn't pointing at a tab.
   if(history.state && history.state.app){
