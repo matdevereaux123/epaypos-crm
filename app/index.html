@@ -1713,60 +1713,40 @@
 
   #quickAddFab{ position:fixed; right:26px; bottom:26px; z-index:900; display:flex; flex-direction:column; align-items:flex-end; gap:10px; pointer-events:none; }
   #quickAddFabBtn{ pointer-events:auto; }
+  /* Built to match the EPAY AI button in the POS back office (.ai-mark
+     there): a white disc with a faint blue ring, one soft shadow, and a
+     slow conic halo at low opacity behind it. The navy-and-bloom version
+     this replaces was louder than anything else on the page. */
   #quickAddFabBtn{
-    width:60px; height:60px; border-radius:50%; border:1px solid rgba(0,213,255,.35); cursor:pointer;
-    /* Deep navy, lit from the top left, so the mark reads as lit rather than
-       printed on a flat disc. */
-    background:
-      radial-gradient(120% 120% at 28% 22%, #1B3358 0%, #0E1E3C 55%, #0B1B38 100%);
-    color:#fff; display:flex; align-items:center; justify-content:center;
-    position:relative; overflow:visible;
-    /* The ambient part: a close contact shadow to sit it on the page, and a
-       wide cyan bloom underneath it that the page tint picks up. */
-    box-shadow:
-      0 10px 24px -10px rgba(5,20,45,.65),
-      0 0 34px -6px rgba(0,163,214,.45),
-      inset 0 1px 0 rgba(255,255,255,.14);
-    transition:transform .15s ease, box-shadow .25s ease;
+    width:54px; height:54px; border-radius:50%; border:0; cursor:pointer;
+    display:grid; place-items:center; position:relative;
+    background:radial-gradient(120% 120% at 30% 20%, #fff, #f3fbff 55%, #e4f4ff);
+    box-shadow:0 10px 24px rgba(11,27,56,.2), inset 0 1px rgba(255,255,255,.9), 0 0 0 1px var(--blue-200);
+    transition:transform .18s cubic-bezier(.2,.9,.3,1.2), box-shadow .18s ease;
   }
-  /* The bloom, as its own layer so it can breathe without moving the button
-     or catching clicks. */
+  /* The ambient ring: blurred, 22% opacity, one turn every seven seconds. */
   #quickAddFabBtn::before{
-    content:''; position:absolute; inset:-14px; border-radius:50%; z-index:-1;
-    background:radial-gradient(circle, rgba(0,213,255,.34) 0%, rgba(42,63,224,.18) 45%, transparent 70%);
-    opacity:.85; pointer-events:none;
-    animation:fabBreathe 5.5s ease-in-out infinite;
+    content:''; position:absolute; inset:-6px; border-radius:50%; z-index:0;
+    background:conic-gradient(from 180deg, #00d5ff, #2e4be0, #00d5ff);
+    opacity:.22; filter:blur(6px); pointer-events:none;
+    animation:fabHalo 7s linear infinite;
   }
-  @keyframes fabBreathe{
-    0%,100%{ transform:scale(1);    opacity:.75; }
-    50%    { transform:scale(1.12); opacity:1;   }
-  }
-  @media (prefers-reduced-motion:reduce){
-    #quickAddFabBtn::before{ animation:none; }
-  }
-  #quickAddFabBtn svg{ width:26px; height:26px; transition:transform .25s ease; }
-  #quickAddFabBtn:hover{
-    transform:translateY(-2px);
-    box-shadow:
-      0 14px 30px -10px rgba(5,20,45,.7),
-      0 0 46px -6px rgba(0,196,255,.6),
-      inset 0 1px 0 rgba(255,255,255,.18);
-  }
-  #quickAddFabBtn:active{ transform:translateY(0) scale(.95); }
-  /* Open: the peak turns over, which is the same gesture the old plus made
-     and says "this closes" without a second icon. */
+  @keyframes fabHalo{ to{ transform:rotate(1turn); } }
+  @media (prefers-reduced-motion:reduce){ #quickAddFabBtn::before{ animation:none; } }
+  #quickAddFabBtn svg{ position:relative; z-index:1; width:24px; height:24px;
+    transition:transform .22s cubic-bezier(.2,.9,.3,1.2); }
+  #quickAddFabBtn:hover{ transform:translateY(-2px); box-shadow:0 16px 32px rgba(11,27,56,.26), 0 0 0 1px var(--blue-400); }
+  #quickAddFabBtn:hover svg{ transform:rotate(-6deg) scale(1.06); }
+  #quickAddFabBtn:active{ transform:translateY(0) scale(.97); }
   #quickAddFab.open #quickAddFabBtn svg{ transform:rotate(180deg); }
-  #quickAddFab.open #quickAddFabBtn{ box-shadow:0 10px 24px -10px rgba(5,20,45,.65), 0 0 46px -4px rgba(0,196,255,.55); }
 
-  /* Click feedback: an expanding ring on every press, on top of the brief
-     scale-down above. */
   #quickAddFabBtn::after{
-    content:''; position:absolute; inset:0; border-radius:50%;
-    background:rgba(0,213,255,.5); opacity:0; transform:scale(1); pointer-events:none;
+    content:''; position:absolute; inset:0; border-radius:50%; z-index:2;
+    background:rgba(0,213,255,.45); opacity:0; transform:scale(1); pointer-events:none;
   }
   #quickAddFabBtn.pulse::after{ animation:fabPulse .5s ease-out; }
   @keyframes fabPulse{
-    0%{ opacity:.55; transform:scale(.3); }
+    0%{ opacity:.5; transform:scale(.3); }
     100%{ opacity:0; transform:scale(1.8); }
   }
 
@@ -4051,17 +4031,13 @@
          icon file is a PNG, so there is no path to lift. -->
     <svg viewBox="0 0 48 48" aria-hidden="true">
       <defs>
-        <linearGradient id="fabMark" x1="4" y1="42" x2="44" y2="8" gradientUnits="userSpaceOnUse">
+        <linearGradient id="fabMark" x1="6" y1="40" x2="42" y2="10" gradientUnits="userSpaceOnUse">
           <stop offset="0" stop-color="#00D5FF"/>
-          <stop offset="0.55" stop-color="#2E8BE0"/>
           <stop offset="1" stop-color="#2A3FE0"/>
         </linearGradient>
       </defs>
-      <!-- outer peak, hollow -->
       <path fill="url(#fabMark)" fill-rule="evenodd"
             d="M24 6 44 42H4L24 6Zm0 9.5L13.6 34h20.8L24 15.5Z"/>
-      <!-- inner ridge -->
-      <path fill="url(#fabMark)" d="M30.5 42 24 30.2 17.5 42h13Z"/>
     </svg>
   </button>
 </div>
