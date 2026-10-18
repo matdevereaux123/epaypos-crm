@@ -15212,7 +15212,18 @@ async function autoBoardIfEpayProducts(l){
    --------------------------------------------------------------------------- */
 
 /* Where the merchant portal lives. Set once, here, when the domain exists. */
-const POS_PORTAL_URL = '';
+/*
+ * Where the merchant portal lives.
+ *
+ * Its own subdomain rather than a path on the CRM: a different origin means
+ * a merchant's browser cannot reach the Control Center's session, which is
+ * the point. Support reaches their portal by minting a token here and
+ * handing it over, never by sharing a login.
+ *
+ * Set before this does anything — "Visit their portal" says so rather than
+ * opening a broken tab.
+ */
+const POS_PORTAL_URL = 'https://epayportal.epaypos.net';
 
 const POS_SUPPORT_MINUTES = 10;
 
