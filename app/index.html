@@ -581,6 +581,43 @@
    */
   .row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0;}
 
+  /* -------------------------------------------------------------------
+     EPAY BACK END PAGES
+
+     These are read at a desk on a wide screen, and the CRM's defaults were
+     built for narrower panels. Measured on the billing page at 1240px:
+     explanatory paragraphs ran the full 1189px — about 180 characters a
+     line, roughly twice what anybody reads comfortably — three stat cards
+     took 385px each to hold a two-digit number, and table rows stood 61px
+     tall, so two accounts filled half a screen.
+
+     The fix is density and a readable measure, not a redesign: the same
+     components, held to sensible widths.
+     ------------------------------------------------------------------- */
+
+  /* Prose stops at a readable line. Tables and cards still use the width. */
+  .pos-page p, .pos-page .pos-note{max-width:78ch;}
+
+  /* A number and a label do not need 385px. */
+  .pos-page .cards-row{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,220px));
+    gap:12px;justify-content:start;
+  }
+
+  /* Rows a third shorter, so a screen holds a dozen accounts rather than
+     four. Headings stay as they were — they are what somebody scans. */
+  .pos-page table td{padding:9px 14px;}
+  .pos-page table th{padding:9px 14px;}
+  .pos-page .name-cell{line-height:1.3;}
+
+  /* The action column, pinned narrow and right, so an Edit button is beside
+     what it edits rather than across a desert of whitespace. */
+  .pos-page table td:last-child, .pos-page table th:last-child{width:1%;white-space:nowrap;}
+
+  /* Sections get air between them, rows do not. */
+  .pos-page h3{margin-top:26px;}
+  .pos-page h3:first-child{margin-top:0;}
+
   /*
    * A row of short fields, inside the 440px merchant sheet.
    *
@@ -2440,10 +2477,6 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/><line x1="7" y1="8" x2="7.01" y2="8"/></svg>
             Boarding tasks
           </button>
-          <button class="nav-item" data-view="posnew">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            New merchant
-          </button>
           <button class="nav-item" data-view="posbilling">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
             Billing
@@ -3137,7 +3170,7 @@
             <p class="subtext">Which merchants are ready to open, and what is holding up the ones that are not.</p>
           </div>
         </div>
-        <div class="panel"><div id="posSetupBoard"></div></div>
+        <div class="panel"><div class="pos-page" id="posSetupBoard"></div></div>
       </section>
 
       <!-- EPAY BACK END: BILLING (not built) -->
@@ -3148,7 +3181,7 @@
             <p class="subtext">What EPAY charges a merchant for the software, and what they have paid.</p>
           </div>
         </div>
-        <div class="panel"><div id="posBillingBox"></div></div>
+        <div class="panel"><div class="pos-page" id="posBillingBox"></div></div>
         <div class="panel" style="display:none;">
           <div class="stub-panel">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
@@ -3185,7 +3218,7 @@
             <button class="btn btn-sm" onclick="openBoardingTasks()">Open in Tasks</button>
           </div>
         </div>
-        <div class="panel"><div id="posTasksBox" style="padding:16px 20px;"></div></div>
+        <div class="panel"><div class="pos-page" id="posTasksBox" style="padding:16px 20px;"></div></div>
       </section>
 
       <!-- EPAY BACK END: REGISTER SETTINGS
@@ -3199,7 +3232,7 @@
             <p class="subtext">Receipt wording, tip buttons, the reasons a till asks for, and which connectors are live. Changed here, not in a release.</p>
           </div>
         </div>
-        <div class="panel"><div id="posConfigBox" style="padding:18px 20px;"></div></div>
+        <div class="panel"><div class="pos-page" id="posConfigBox" style="padding:18px 20px;"></div></div>
       </section>
 
       <!-- EPAY BACK END: SUBSCRIPTION EDITING
@@ -3214,9 +3247,16 @@
             <h1>EPAY subscription editing</h1>
             <p class="subtext">What EPAY charges for a plan and for each add-on. Changing a price here changes what a new agreement quotes &mdash; it does not change what anybody is already on.</p>
           </div>
+          <div class="topbar-actions">
+            <button class="btn btn-accent btn-sm" onclick="openPosSubForm('pos_addons')">+ Add a subscription</button>
+          </div>
         </div>
-        <div class="panel"><div id="posSubsBox"></div></div>
+        <div class="panel"><div class="pos-page" id="posSubsBox"></div></div>
       </section>
+
+      <div class="overlay" id="posSubFormOverlay">
+        <div class="drawer" id="posSubFormDrawer"></div>
+      </div>
 
       <!-- EPAY BACK END: THE REFERRAL OFFER -->
       <section id="view-posreferral" class="view" style="display:none;">
@@ -3225,8 +3265,11 @@
             <h1>Referral offer</h1>
             <p class="subtext">What EPAY pays a merchant for sending another business. Every merchant portal reads this.</p>
           </div>
+          <div class="topbar-actions">
+            <button class="btn btn-accent btn-sm" onclick="addPosTier()">+ Add a tier</button>
+          </div>
         </div>
-        <div class="panel"><div id="posReferralBox"></div></div>
+        <div class="panel"><div class="pos-page" id="posReferralBox"></div></div>
       </section>
 
       <!-- EPAY BACK END: MERCHANTS -->
@@ -9682,6 +9725,8 @@ function showView(view, fromHistory){
    * boarding drawer over the Merchants list rather than being a page of its
    * own — a page you can only leave by finishing or cancelling is a page.
    */
+  /* No nav item any more — boarding is started from the Merchants page. The
+     route is kept because an old link or bookmark to it should still work. */
   if(view === 'posnew'){
     view = 'posmerchants';
     loadPosMerchants().then(() => { renderPosMerchants(); openPosMerchantForm(null); });
@@ -13735,7 +13780,7 @@ function renderPosMerchants(){
           <td>${loc ? escAttr((POS_EDITIONS[loc.edition]||{}).label || loc.edition) : '—'}</td>
           <td>${(m.pos_locations||[]).length}</td>
           <td>${posDeviceCount(m)}</td>
-          <td>${loc ? ppmLabel(loc.dual_pricing_ppm, loc.dual_pricing_fixed_cents) : '—'}</td>
+          <td>${loc ? posRateShort(loc) : '—'}</td>
           <td class="sub">${escAttr(m.rep || '')}</td>
         </tr>`;
       }).join('');
@@ -14026,7 +14071,7 @@ function posDetailOverview(m){
     ${row('Business phone', escAttr(m.phone))}
     ${row('Address', [m.street, m.city, m.state, m.zip].filter(Boolean).map(escAttr).join(', '))}
     ${row('Edition', loc ? escAttr((POS_EDITIONS[loc.edition]||{}).label || loc.edition) : '')}
-    ${row('Card price adds', loc ? ppmLabel(loc.dual_pricing_ppm, loc.dual_pricing_fixed_cents) : '')}
+    ${row('Pricing', loc ? posRateShort(loc) : '')}
     ${row('Sales tax', loc ? ppmPercent(loc.tax_ppm) + '%' : '')}
     ${row('Boarded', new Date(m.created_at).toLocaleDateString())}`;
 }
@@ -14180,6 +14225,25 @@ const POS_PRICING_MODES = {
 
 function posPricingMode(l){ return (l && l.pricing_mode) || null; }
 
+/**
+ * A location's pricing, short enough for a table cell.
+ *
+ * Interchange plus never carries a percentage or a cent figure. There is no
+ * number to show: nothing is added to the card price, so printing "0.00%"
+ * beside it invents a rate that does not exist and reads, to anybody
+ * scanning a column of them, as a merchant whose program was left switched
+ * off. The programme's name is the whole answer.
+ *
+ * Only consumer choice has a figure, because only consumer choice passes
+ * one on.
+ */
+function posRateShort(l){
+  const mode = posPricingMode(l);
+  if(!mode) return '<span style="color:var(--warn-text);font-weight:600;">Not set</span>';
+  if(mode === 'interchange_plus') return 'Interchange Plus';
+  return ppmLabel(l.dual_pricing_ppm, l.dual_pricing_fixed_cents);
+}
+
 /** What a location's pricing says, in one line. */
 function posPricingLine(l){
   const mode = posPricingMode(l);
@@ -14187,6 +14251,13 @@ function posPricingLine(l){
   const m = POS_PRICING_MODES[mode] || {};
   if(!m.passesOn) return m.label + ' — nothing added to the customer';
   return m.label + ' — ' + ppmLabel(l.dual_pricing_ppm, l.dual_pricing_fixed_cents) + ' on the card price';
+}
+
+/* The change log reads the same way: a move to interchange plus is a change
+   of programme, not a change to zero per cent. */
+function posChangeRate(field, raw, mode){
+  if(mode === 'interchange_plus' && field !== 'tax_ppm') return 'n/a — Interchange Plus';
+  return null;
 }
 
 /*
@@ -15182,7 +15253,8 @@ async function renderPosReferral(){
                 onclick="removePosTier(${i})">Remove</button>
       </div>`).join('')}
 
-    <button class="btn btn-xs" onclick="addPosTier()">+ Tier</button>`;
+    ${tiers.length ? '' : `<p style="font-size:12px;color:var(--slate-500);margin-top:10px;">
+      Add the first tier from the button at the top of this page.</p>`}`;
 }
 
 async function setPosOffer(patch){
@@ -15450,6 +15522,125 @@ async function savePosConfig(scope, key, value){
     before ? JSON.stringify(before.value) : null, JSON.stringify(value));
   showToast('Saved. Registers pick this up on their next sync.', 'success');
   await renderPosConfig();
+}
+
+/* ---------------------------------------------------------------------------
+   ADDING A SUBSCRIPTION
+
+   A new add-on, from the back office, without a migration. The key is what
+   the software gates on, so it is typed once and never edited afterwards -
+   changing a key on a row merchants are already paying for orphans their
+   agreements, which is the one mistake on this screen that costs money
+   rather than a correction.
+   --------------------------------------------------------------------------- */
+
+let posSubFormTable = 'pos_addons';
+
+function openPosSubForm(table){
+  posSubFormTable = table || 'pos_addons';
+  const isAddon = posSubFormTable === 'pos_addons';
+  document.getElementById('posSubFormDrawer').innerHTML = `
+    <div class="drawer-head">
+      <h2>${isAddon ? 'Add an add-on' : 'Add a plan'}</h2>
+      <button class="icon-btn" onclick="closePosSubForm()">&times;</button>
+    </div>
+    <div class="drawer-body">
+      <div class="field"><label>Which kind</label>
+        <select id="psfTable" onchange="openPosSubForm(this.value)">
+          <option value="pos_addons" ${isAddon?'selected':''}>Add-on — charged on top of a plan</option>
+          <option value="pos_plans" ${!isAddon?'selected':''}>Plan — the subscription itself</option>
+        </select></div>
+
+      <div class="field setup-field"><label>Name</label>
+        <p class="setup-help">What a merchant sees on their bill and on the paywall.</p>
+        <input id="psfLabel" placeholder="${isAddon ? 'Table-side ordering' : 'Food truck'}"></div>
+
+      <div class="field setup-field"><label>Key</label>
+        <p class="setup-help">Lower case, no spaces. The software gates on this and it
+          cannot be changed later without orphaning the agreements already signed against it.</p>
+        <input id="psfKey" placeholder="${isAddon ? 'table_ordering' : 'food_truck'}"></div>
+
+      <div class="grid-fields">
+        <div class="field"><label>Price a month ($)</label>
+          <input id="psfPrice" inputmode="decimal" placeholder="19.99"></div>
+        <div class="field"><label>Sort</label>
+          <input id="psfSort" inputmode="numeric" value="999"></div>
+      </div>
+      <p class="setup-help" style="margin-top:-8px;">Leave the price blank if it is not
+        settled. An add-on with no price cannot be sold or put on an account, and says so.</p>
+
+      <div class="field setup-field"><label>What it does</label>
+        <input id="psfBlurb" placeholder="One line, in the merchant's words."></div>
+
+      ${isAddon ? `
+        <div class="field setup-field"><label>Feature it switches on</label>
+          <p class="setup-help">The capability id from the software, where there is one.
+            Leave blank and it is sold by its key instead.</p>
+          <input id="psfCapability" placeholder="table-ordering"></div>
+        <div class="field setup-field"><label>Needs another add-on first</label>
+          <select id="psfRequires">
+            <option value="">Nothing</option>
+            ${POS_ADDONS.map(a => `<option value="${escAttr(a.key)}">${escAttr(a.label)}</option>`).join('')}
+          </select></div>` : `
+        <div class="field setup-field"><label>Edition</label>
+          <select id="psfEdition">
+            ${Object.keys(POS_EDITIONS).map(k =>
+              `<option value="${k}">${escAttr(POS_EDITIONS[k].label)}</option>`).join('')}
+          </select></div>`}
+
+      <p id="psfProblem" class="error-text" style="display:none;"></p>
+    </div>
+    <div class="drawer-footer">
+      <button class="btn" style="flex:1;" onclick="closePosSubForm()">Cancel</button>
+      <button class="btn btn-accent" style="flex:1;" onclick="savePosSubForm()">Add it</button>
+    </div>`;
+  document.getElementById('posSubFormOverlay').classList.add('open');
+}
+
+function closePosSubForm(){
+  document.getElementById('posSubFormOverlay').classList.remove('open');
+}
+
+async function savePosSubForm(){
+  const val = (id) => ((document.getElementById(id) || {}).value || '').trim();
+  const say = (t) => { const el=document.getElementById('psfProblem');
+    el.textContent=t; el.style.display=t?'block':'none'; };
+  const isAddon = posSubFormTable === 'pos_addons';
+
+  const label = val('psfLabel');
+  const key = val('psfKey').toLowerCase().replace(/[^a-z0-9_]/g,'_');
+  if(!label){ say('What is it called?'); return; }
+  if(!key){ say('It needs a key. Lower case, no spaces.'); return; }
+
+  const existing = (isAddon ? POS_ADDONS : POS_PLANS).some(x => x.key === key);
+  if(existing){ say('There is already one with that key.'); return; }
+
+  const priceText = val('psfPrice');
+  let price = null;
+  if(priceText !== ''){
+    const n = Number(priceText);
+    if(!isFinite(n) || n < 0){ say('The price has to be a number, or blank.'); return; }
+    // Cents, never a float. A price kept as dollars is a rounding error
+    // waiting to be billed.
+    price = Math.round(n * 100);
+  }
+  say('');
+
+  const row = isAddon
+    ? { key, label, price_cents: price, blurb: val('psfBlurb') || null,
+        capability: val('psfCapability') || null, requires: val('psfRequires') || null,
+        sort: Number(val('psfSort')) || 999, active: true, sellable: true }
+    : { key, label, price_cents: price, edition: val('psfEdition') || null,
+        note: val('psfBlurb') || null, sort: Number(val('psfSort')) || 999 };
+
+  const { error } = await supa.from(posSubFormTable).insert(row);
+  if(error){ say('Could not add it: ' + error.message); return; }
+  await logPosChange(posSubFormTable, key, null, 'added', null,
+    label + (price === null ? ' (no price)' : ' at ' + posMoney(price)));
+  closePosSubForm();
+  await loadPosBilling(true);
+  renderPosSubscriptions();
+  showToast(label + ' added.', 'success');
 }
 
 async function renderPosSubscriptions(){
