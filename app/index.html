@@ -3228,8 +3228,8 @@
       <section id="view-posconfig" class="view" style="display:none;">
         <div class="topbar">
           <div>
-            <h1>Register settings</h1>
-            <p class="subtext">Receipt wording, tip buttons, the reasons a till asks for, and which connectors are live. Changed here, not in a release.</p>
+            <h1>Register defaults</h1>
+            <p class="subtext">What every account starts on and follows until it asks for something else. One merchant's own wording is set on their account, under Register settings &mdash; changing it here does not override anybody who has already been given their own.</p>
           </div>
         </div>
         <div class="panel"><div class="pos-page" id="posConfigBox" style="padding:18px 20px;"></div></div>
@@ -14010,6 +14010,8 @@ async function openPosMerchant(id, tab){
   await loadPosBilling();
   await loadPosAgreements(id);
   await loadPosChanges(id);
+  await loadPosConfig();
+  await loadPosMerchantConfig(id);
   const { data } = await supa.from('pos_merchant_notes')
     .select('*').eq('merchant_id', id).order('created_at', { ascending:false });
   POS_NOTES = data || [];
@@ -14024,7 +14026,7 @@ function renderPosDetail(){
   if(!m) return;
   const tabs = [
     ['overview','Overview'], ['setup','Setup'], ['plan','Locations and plan'],
-    ['devices','Stations'], ['log','Relationship'],
+    ['devices','Stations'], ['settings','Register settings'], ['log','Relationship'],
   ];
   document.getElementById('posMerchantDrawer').innerHTML = `
     <div class="drawer-head">
@@ -14044,6 +14046,7 @@ function renderPosDetail(){
       ${posDetailTab === 'overview' ? posDetailOverview(m)
         : posDetailTab === 'setup' ? posDetailSetup(m)
         : posDetailTab === 'plan' ? posDetailPlan(m)
+        : posDetailTab === 'settings' ? posDetailSettings(m)
         : posDetailTab === 'devices' ? posDetailDevices(m)
         : posDetailLog(m)}
     </div>
@@ -14753,6 +14756,143 @@ function posSetupField(q, answers){
     ${q.help ? `<p class="setup-help">${escAttr(q.help)}</p>` : ''}${control}</div>`;
 }
 
+/* ---------------------------------------------------------------------------
+   REGISTER SETTINGS, FOR ONE ACCOUNT
+
+   A receipt footer, the tip buttons and the reasons a till offers are things
+   one merchant asks to change and the rest never hear about. A steakhouse
+   wanting 20/22/25 does not change what a coffee shop sees.
+
+   So every setting shows what this account actually uses, and says whether
+   that is their own answer or the platform default. Changing one writes an
+   override against this merchant; clearing it puts them back on the default
+   rather than freezing today's default as theirs - which is the difference
+   between "they never asked" and "they asked for exactly this", and only
+   the first should follow when the default moves.
+   --------------------------------------------------------------------------- */
+
+let POS_MERCHANT_CONFIG = [];
+
+async function loadPosMerchantConfig(merchantId){
+  const { data, error } = await supa.rpc('pos_config_for', { p_merchant: merchantId });
+  POS_MERCHANT_CONFIG = error ? [] : (data || []);
+  return POS_MERCHANT_CONFIG;
+}
+
+function posDetailSettings(m){
+  if(POS_MERCHANT_CONFIG.length === 0){
+    return `<div class="stub-panel"><h3>No settings yet</h3>
+      <p style="max-width:420px;margin:0 auto;font-size:13px;line-height:1.6;">
+        Run migrations 106 and 107 and this account's receipt wording, tip buttons and till
+        reasons appear here &mdash; starting from the platform defaults until somebody changes
+        one for this merchant.</p></div>`;
+  }
+  const overrides = POS_MERCHANT_CONFIG.filter(r => r.is_override).length;
+  return `
+    <p style="font-size:12px;color:var(--slate-500);margin:0 0 4px;">
+      What this account's registers use. Anything not changed here follows the platform default,
+      so a change to the standard reaches them.</p>
+    <p style="font-size:11.5px;margin:0 0 14px;color:${overrides?'var(--navy-700)':'var(--slate-500)'};">
+      ${overrides ? overrides + (overrides===1?' setting is':' settings are') + ' set for this merchant only.'
+                  : 'Everything is on the platform default.'}</p>
+    ${POS_CONFIG_GROUPS.map(g => {
+      const rows = POS_MERCHANT_CONFIG.filter(r => r.scope === g.scope);
+      if(!rows.length) return '';
+      return `<div style="margin-bottom:20px;">
+        <h3 style="font-size:13.5px;margin:0 0 3px;">${escAttr(g.title)}</h3>
+        <p style="font-size:11px;color:var(--slate-500);margin:0 0 10px;">${escAttr(g.blurb)}</p>
+        ${rows.map(r => posMerchantConfigField(m, r)).join('')}
+      </div>`;
+    }).join('')}`;
+}
+
+function posMerchantConfigField(m, r){
+  const kind = POS_CONFIG_KIND(r);
+  const id = 'mcfg_' + r.scope + '_' + r.key;
+  const badge = r.is_override
+    ? `<span class="pill pill-inhouse" style="margin-left:6px;">theirs</span>`
+    : `<span class="sub" style="margin-left:6px;">default</span>`;
+  const revert = r.is_override
+    ? `<button class="btn btn-xs" onclick="clearPosMerchantConfig('${m.id}','${r.scope}','${r.key}')">
+         Back to default</button>` : '';
+  let control;
+  if(kind === 'flag'){
+    control = `<div class="row">` + [true,false].map(v =>
+      `<button type="button" class="chip" aria-pressed="${r.value===v}"
+         onclick="savePosMerchantConfig('${m.id}','${r.scope}','${r.key}', ${v})">${v?'Yes':'No'}</button>`
+      ).join('') + (revert ? revert : '') + `</div>`;
+  } else if(kind === 'list'){
+    control = `
+      <textarea id="${id}" rows="${Math.max(2, r.value.length + 1)}"
+        style="width:100%;font-size:13px;">${escAttr(r.value.join('\n'))}</textarea>
+      <div class="row" style="margin-top:7px;">
+        <button class="btn btn-xs" onclick="savePosMerchantConfigList('${m.id}','${r.scope}','${r.key}')">Save for this merchant</button>
+        ${revert}<span class="sub">One per line.</span>
+      </div>`;
+  } else {
+    control = `
+      <input id="${id}" value="${escAttr(String(r.value))}">
+      <div class="row" style="margin-top:7px;">
+        <button class="btn btn-xs" onclick="savePosMerchantConfigText('${m.id}','${r.scope}','${r.key}')">Save for this merchant</button>
+        ${revert}
+      </div>`;
+  }
+  return `<div class="field setup-field" style="margin-bottom:16px;">
+    <label>${escAttr(r.label || r.key)}${badge}</label>${control}</div>`;
+}
+
+async function savePosMerchantConfigList(merchantId, scope, key){
+  const el = document.getElementById('mcfg_' + scope + '_' + key);
+  if(!el) return;
+  const lines = el.value.split('\n').map(x => x.trim()).filter(Boolean);
+  await savePosMerchantConfig(merchantId, scope, key, posConfigListValue(scope, key, lines));
+}
+
+async function savePosMerchantConfigText(merchantId, scope, key){
+  const el = document.getElementById('mcfg_' + scope + '_' + key);
+  if(!el) return;
+  await savePosMerchantConfig(merchantId, scope, key, el.value.trim());
+}
+
+/* An override is an upsert: this merchant may already have one, and a second
+   change should move it rather than adding a second row the read would have
+   to choose between. */
+async function savePosMerchantConfig(merchantId, scope, key, value){
+  const before = POS_MERCHANT_CONFIG.find(r => r.scope === scope && r.key === key) || {};
+  const base = POS_CONFIG.find(r => r.scope === scope && r.key === key) || {};
+  const { data, error } = await supa.from('pos_config')
+    .upsert({ merchant_id: merchantId, scope, key, value,
+              label: base.label || before.label || key, sort: base.sort || 0, active: true,
+              updated_at: new Date().toISOString(),
+              updated_by: (currentUser && currentUser.name) || 'Unknown' },
+            { onConflict: 'scope,key,merchant_id' })
+    .select();
+  if(error){ showToast('Could not save: ' + error.message, 'error'); return; }
+  if(!data || !data.length){
+    showToast('Nothing was saved — this needs admin portal access.', 'error');
+    return;
+  }
+  await logPosChange('pos_config', scope + '.' + key, merchantId, key,
+    JSON.stringify(before.value), JSON.stringify(value),
+    before.is_override ? null : 'Changed from the platform default.');
+  await loadPosMerchantConfig(merchantId);
+  renderPosDetail();
+  showToast('Saved for this merchant. Their registers pick it up on the next sync.', 'success');
+}
+
+/* Deleting the override rather than copying today's default into it. A
+   merchant who never asked for anything should follow the standard when it
+   moves; one who asked for exactly this should not. */
+async function clearPosMerchantConfig(merchantId, scope, key){
+  const { error } = await supa.from('pos_config').delete()
+    .eq('merchant_id', merchantId).eq('scope', scope).eq('key', key);
+  if(error){ showToast('Could not clear it: ' + error.message, 'error'); return; }
+  await logPosChange('pos_config', scope + '.' + key, merchantId, key, 'their own', 'platform default');
+  await loadPosMerchantConfig(merchantId);
+  renderPosDetail();
+  showToast('Back on the platform default.', 'success');
+}
+
 function posDetailSetup(m){
   const answers = m.setup_answers || {};
   const r = posReadiness(answers);
@@ -15415,7 +15555,11 @@ const POS_CONFIG_KIND = (row) => Array.isArray(row.value) ? 'list'
 
 async function loadPosConfig(force){
   if(POS_CONFIG.length && !force) return POS_CONFIG;
-  const { data, error } = await supa.from('pos_config').select('*').order('scope').order('sort');
+  /* Defaults only. Overrides live in the same table against a merchant, and
+     mixing them in here would show one shop's receipt footer as if it were
+     the standard. */
+  const { data, error } = await supa.from('pos_config').select('*')
+    .is('merchant_id', null).order('scope').order('sort');
   if(error){
     POS_CONFIG = [];
     if(!/pos_config/.test(error.message || '')) showToast('Could not load settings: ' + error.message, 'error');
@@ -15433,7 +15577,8 @@ async function renderPosConfig(){
   if(POS_CONFIG.length === 0){
     box.innerHTML = `<div class="stub-panel"><h3>Nothing to change yet</h3>
       <p style="max-width:460px;margin:0 auto;font-size:13px;line-height:1.6;">
-        Run migration 106 and these appear. Until then the registers use what they ship with.</p></div>`;
+        Run migrations 106 and 107 and these appear. Until then the registers use what they
+        ship with.</p></div>`;
     return;
   }
 
@@ -15509,7 +15654,7 @@ async function savePosConfig(scope, key, value){
   const { data, error } = await supa.from('pos_config')
     .update({ value, updated_at: new Date().toISOString(),
               updated_by: (currentUser && currentUser.name) || 'Unknown' })
-    .eq('scope', scope).eq('key', key).select();
+    .eq('scope', scope).eq('key', key).is('merchant_id', null).select();
   /* pos_config is keyed by (scope,key) rather than id, so updateRow does not
      fit — but the same rule does: no rows back means RLS refused it, and
      "Saved" over a refused write is the bug updateRow exists to stop. */
@@ -15520,7 +15665,7 @@ async function savePosConfig(scope, key, value){
   }
   await logPosChange('pos_config', scope + '.' + key, null, key,
     before ? JSON.stringify(before.value) : null, JSON.stringify(value));
-  showToast('Saved. Registers pick this up on their next sync.', 'success');
+  showToast('Saved. Every account on the default picks this up on their next sync.', 'success');
   await renderPosConfig();
 }
 
