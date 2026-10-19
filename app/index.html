@@ -5031,6 +5031,7 @@ async function loadLeadsFromSupabase(){
     pending_cadence_days, pending_next_reminder,
     equipment_pricing_confirmed, equipment_pricing_confirmed_at,
     application_link_choice, application_link_custom, application_email_sent, application_email_sent_at,
+    application_waived_at, application_waived_by,
     app_id, in_person_install, tracking_number, tracking_email_sent, tracking_email_sent_at, shipments,
     tid, installation_date, commission_type, commission_value,
     linked_partner_id, assigned_to, general_follow_up_date, general_follow_up_note,
@@ -15900,6 +15901,9 @@ function getStageRequirementError(lead, stageKey){
       if(!lead.equipment_pricing_confirmed) return "Confirm equipment & pricing with the client before moving on.";
       return null;
     case 'application':
+      // Somebody has stepped over this deliberately, and their name is on it
+      // (database/107). The rule stands for everyone who has not.
+      if(lead.application_waived_at) return null;
       // Sending the email only proves we asked. An application has to have
       // come back and be attached to this account before the lead moves past
       // this stage — otherwise a lead reaches App ID Entered with nothing to
@@ -15996,7 +16000,59 @@ function stageFixActionsHtml(lead, stageKey){
               ${unattached.length ? '' : 'disabled'}>
         Attach an application${unattached.length ? ' (' + unattached.length + ')' : ''}
       </button>
+      <button type="button" class="btn btn-xs" onclick="stageFixWaiveApplication('${lead.id}')">
+        Move on without one
+      </button>
     </div>`;
+}
+
+
+/* Moving past Application with nothing attached.
+
+   Not a quiet override: it asks first, writes who and when onto the lead
+   (database/107) and leaves a note on the record, so a lead that skipped
+   the paperwork says so afterwards rather than looking like one that never
+   needed it. The lead sheet shows it too.
+
+   Reversible from the same button - a waiver put on by mistake comes off
+   and the rule applies again. */
+async function stageFixWaiveApplication(leadId){
+  const lead = LEADS.find(l => l.id === leadId);
+  if(!lead) return;
+
+  if(lead.application_waived_at){
+    if(!confirm('Put the application requirement back on ' + (lead.business_name || 'this lead') + '?')) return;
+    const res = await updateRow('leads', leadId, { application_waived_at: null, application_waived_by: null });
+    if(res.error){ showToast('Could not change that: ' + res.error.message, 'error'); return; }
+    lead.application_waived_at = null;
+    lead.application_waived_by = null;
+    showToast('The application requirement is back on this lead.', 'success');
+    stageFixBackToChecklist();
+    return;
+  }
+
+  const ok = confirm(
+    'Move ' + (lead.business_name || 'this lead') + ' past Application without one attached?\n\n' +
+    'Your name and the time are recorded on the lead, and a note is added. ' +
+    'App ID Entered still needs an Application ID before the lead can go further.'
+  );
+  if(!ok) return;
+
+  const stamp = new Date().toISOString();
+  const res = await updateRow('leads', leadId, {
+    application_waived_at: stamp,
+    application_waived_by: actingUser().id
+  });
+  if(res.error){ showToast('Could not save that: ' + res.error.message, 'error'); return; }
+
+  lead.application_waived_at = stamp;
+  lead.application_waived_by = actingUser().id;
+  await noteOnCreate('lead', leadId,
+    'Moved past the Application stage without an application attached, by ' +
+    (actingUser().name || actingUser().email || 'a user') + '.');
+
+  showToast('Application requirement waived. The move can go ahead.', 'success');
+  stageFixBackToChecklist();
 }
 
 async function stageFixSendApplication(leadId){
@@ -16185,7 +16241,18 @@ async function advanceLead(leadId){
   const idx = stageIndex(leadStage(lead));
   if(idx < stagesList.length - 1){
     const err = stageRequirementErrorFor(lead, leadStage(lead));
-    if(err){ showErrorToast(err); return; }
+    if(err){
+      /* The Application stage has a way past it for a lead whose paperwork
+         is not in hand (stageFixWaiveApplication). A toast cannot offer
+         that, so this opens the checklist for the next stage, where the
+         options are - send one, attach one, or move on without one. */
+      if(leadStage(lead) === 'application' && effectiveBrand(lead) !== 'atm'){
+        openStageMoveModal(leadId, stagesList[idx + 1].key);
+        return;
+      }
+      showErrorToast(err);
+      return;
+    }
     const patch = leadStagePatch(stagesList[idx + 1].key, effectiveBrand(lead));
     const draft = Object.assign({}, lead, patch);
     maybeConvertToAccount(draft);
@@ -17200,6 +17267,11 @@ function stagePanelHtml(l){
           A landing page you can send any way you like. What they submit arrives under Applications.
         </p>
         ${l.application_email_sent ? `<p style="font-size:11.5px;color:var(--green);margin-top:8px;">✓ Sent ${formatDate(l.application_email_sent_at)}</p>` : ''}
+        ${l.application_waived_at ? `
+          <p style="font-size:11.5px;color:var(--warn-text);margin-top:8px;">
+            Moved on without an application &middot; ${formatDateFull(l.application_waived_at.slice(0,10))}
+            ${l.application_waived_by ? ' &middot; ' + ((USERS.find(u => u.id === l.application_waived_by) || {}).name || 'someone no longer here') : ''}
+          </p>` : ''}
       </div>`;
     case 'app_id_entered': return `
       <div class="stage-panel">
