@@ -14137,6 +14137,7 @@ async function openPosMerchant(id, tab){
   await loadPosChanges(id);
   await loadPosConfig();
   await loadPosMerchantConfig(id);
+  await loadPosPortalUsers(id);
   const { data } = await supaV2.from('pos_merchant_notes')
     .select('*').eq('merchant_id', id).order('created_at', { ascending:false });
   POS_NOTES = data || [];
@@ -14151,7 +14152,8 @@ function renderPosDetail(){
   if(!m) return;
   const tabs = [
     ['overview','Overview'], ['setup','Setup'], ['plan','Locations and plan'],
-    ['devices','Stations'], ['settings','Register settings'], ['log','Relationship'],
+    ['devices','Stations'], ['users','Portal logins'],
+    ['settings','Register settings'], ['log','Relationship'],
   ];
   document.getElementById('posMerchantDrawer').innerHTML = `
     <div class="drawer-head">
@@ -14171,6 +14173,7 @@ function renderPosDetail(){
       ${posDetailTab === 'overview' ? posDetailOverview(m)
         : posDetailTab === 'setup' ? posDetailSetup(m)
         : posDetailTab === 'plan' ? posDetailPlan(m)
+        : posDetailTab === 'users' ? posDetailPortalUsers(m)
         : posDetailTab === 'settings' ? posDetailSettings(m)
         : posDetailTab === 'devices' ? posDetailDevices(m)
         : posDetailLog(m)}
@@ -14902,6 +14905,144 @@ async function loadPosMerchantConfig(merchantId){
   const { data, error } = await supaV2.rpc('pos_config_for', { p_merchant: merchantId });
   POS_MERCHANT_CONFIG = error ? [] : (data || []);
   return POS_MERCHANT_CONFIG;
+}
+
+/* ---------------------------------------------------------------------------
+   WHO CAN SIGN INTO THIS MERCHANT'S PORTAL
+
+   A business has several: the owner, a manager doing the rota, a bookkeeper
+   who sees the deposits and must not change the menu. Inviting one is the
+   step that turns a boarded account into something the merchant can actually
+   open, and it had no home until now.
+
+   Creating a login needs the service role, which cannot be in a browser, so
+   this calls an edge function in V2 rather than writing the row itself. The
+   function checks the caller against pos_staff before it does anything -
+   reading the database as that person, which is the one thing a caller
+   cannot talk us out of.
+   --------------------------------------------------------------------------- */
+
+let POS_PORTAL_USERS = [];
+
+async function loadPosPortalUsers(merchantId){
+  const { data, error } = await supaV2.from('pos_portal_users')
+    .select('*').eq('merchant_id', merchantId).order('created_at');
+  POS_PORTAL_USERS = error ? [] : (data || []);
+  return POS_PORTAL_USERS;
+}
+
+const POS_PORTAL_ROLES = {
+  owner: 'Owner — everything, including banking',
+  manager: 'Manager — the floor, the rota, the menu',
+  bookkeeper: 'Bookkeeper — sales and deposits, read only',
+  staff: 'Staff — their own hours and nothing else',
+};
+
+function posDetailPortalUsers(m){
+  const rows = POS_PORTAL_USERS;
+  return `
+    <p style="font-size:12px;color:var(--slate-500);margin:0 0 14px;">
+      Who can sign into ${escAttr(m.dba)}'s own back office at
+      <strong>epayportal.epaypos.net</strong>. Not EPAY staff &mdash; this is the merchant's
+      own people.</p>
+
+    ${rows.length === 0 ? `<div class="stub-panel" style="padding:30px 16px;">
+        <h3>No logins yet</h3>
+        <p style="max-width:380px;margin:0 auto;font-size:13px;line-height:1.6;">
+          The account exists and nobody can open it. Invite the owner below.</p></div>` : `
+      <div class="table-wrap" style="margin-bottom:18px;"><table><thead><tr>
+        <th>Who</th><th>Role</th><th>Added</th><th></th></tr></thead><tbody>
+        ${rows.map(u => `<tr>
+          <td class="name-cell">${escAttr(u.name || u.email || 'Unnamed')}
+            <div class="sub">${escAttr(u.email || '')}</div></td>
+          <td class="sub">${escAttr((POS_PORTAL_ROLES[u.role] || u.role).split(' — ')[0])}</td>
+          <td class="sub">${u.invited_at
+              ? 'Invited ' + new Date(u.invited_at).toLocaleDateString()
+              : 'Signed up ' + new Date(u.created_at).toLocaleDateString()}
+            ${u.accepted_at ? '<div class="sub">Signed in</div>'
+                            : '<div class="sub" style="color:var(--warn-text);">Not signed in yet</div>'}</td>
+          <td style="text-align:right;">${u.active
+            ? `<button class="btn btn-xs" style="color:var(--red);"
+                 onclick="setPosPortalUserActive('${u.id}', false)">Suspend</button>`
+            : `<button class="btn btn-xs"
+                 onclick="setPosPortalUserActive('${u.id}', true)">Restore</button>`}</td>
+        </tr>`).join('')}
+      </tbody></table></div>`}
+
+    <h3 style="font-size:13.5px;margin:0 0 4px;">Invite somebody</h3>
+    <p style="font-size:11px;color:var(--slate-500);margin:0 0 10px;">
+      They get a temporary password to change on first sign-in. It is shown to you here rather
+      than emailed &mdash; EPAY should not know a merchant's password, and one sent by email
+      sits in an inbox for years.</p>
+    <div class="field setup-field"><label>Their email</label>
+      <input id="piEmail" type="email" placeholder="owner@thebusiness.com"></div>
+    <div class="field setup-field"><label>Their name</label>
+      <input id="piName" placeholder="As they would write it"></div>
+    <div class="field setup-field"><label>What they can do</label>
+      <select id="piRole">
+        ${Object.keys(POS_PORTAL_ROLES).map(k =>
+          `<option value="${k}">${escAttr(POS_PORTAL_ROLES[k])}</option>`).join('')}
+      </select></div>
+    <p id="piProblem" class="error-text" style="display:none;"></p>
+    <div id="piResult"></div>
+    <div class="row">
+      <button class="btn btn-accent btn-sm" onclick="invitePosPortalUser('${m.id}')">
+        Create their login</button>
+    </div>`;
+}
+
+async function invitePosPortalUser(merchantId){
+  const val = (id) => ((document.getElementById(id) || {}).value || '').trim();
+  const say = (t) => { const el = document.getElementById('piProblem');
+    el.textContent = t; el.style.display = t ? 'block' : 'none'; };
+  const email = val('piEmail');
+  if(!email || !email.includes('@')){ say('A real email, please.'); return; }
+  say('');
+
+  const { data: { session } } = await supaV2.auth.getSession();
+  if(!session){ say('Sign in to the POS platform first.'); return; }
+
+  const res = await fetch(V2_URL + '/functions/v1/portal-invite', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + session.access_token,
+      'apikey': V2_ANON_KEY,
+    },
+    body: JSON.stringify({ merchantId, email, name: val('piName'), role: val('piRole') }),
+  });
+  const out = await res.json().catch(() => ({ error: 'The server said nothing useful.' }));
+  if(!res.ok || out.error){ say(out.error || ('Failed: ' + res.status)); return; }
+
+  /*
+   * Shown on the screen, once. Not stored and not logged: the only copy
+   * should be the one the rep reads out, and it stops working the moment
+   * the merchant changes it.
+   */
+  document.getElementById('piResult').innerHTML = out.password
+    ? `<div class="stat-card" style="margin:10px 0;">
+         <div class="label">Temporary password for ${escAttr(out.email)}</div>
+         <div class="value" style="font-family:ui-monospace,monospace;font-size:20px;">
+           ${escAttr(out.password)}</div>
+         <div class="delta" style="color:var(--slate-500);">
+           Read it to them. It is not saved anywhere and will not be shown again.</div>
+       </div>`
+    : `<p style="font-size:12.5px;color:var(--slate-500);margin:10px 0;">
+         ${escAttr(out.email)} already had a login, so their existing password still works.
+         They have been added to ${escAttr(out.merchant)}.</p>`;
+
+  await loadPosPortalUsers(merchantId);
+  renderPosDetail();
+}
+
+async function setPosPortalUserActive(id, active){
+  const { error } = await supaV2.from('pos_portal_users')
+    .update({ active }).eq('id', id).select();
+  if(error){ showToast('Could not change that: ' + error.message, 'error'); return; }
+  const m = posDetailMerchant();
+  if(m) await loadPosPortalUsers(m.id);
+  renderPosDetail();
+  showToast(active ? 'Restored.' : 'Suspended — they cannot sign in.', 'success');
 }
 
 function posDetailSettings(m){
