@@ -4241,6 +4241,118 @@ const SUPABASE_URL = 'https://gfnodfqkidtqjoofvwzr.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdmbm9kZnFraWR0cWpvb2Z2d3pyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYyMTE2MTgsImV4cCI6MjEwMTc4NzYxOH0.sc0ghmhGt71clexXMQj2Mhj2MFXrgEVmymuGbERePsk';
 const supa = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+/* ---------------------------------------------------------------------------
+   EPAY V2 — THE POS PLATFORM'S OWN PROJECT
+
+   Merchants sign into V2. That is the whole reason it is a separate project:
+   every policy in here was written when "authenticated" meant "somebody who
+   works at EPAY", and several of them say `using (true)`. If merchants
+   authenticated into this database, each of those would become a question
+   about whether a merchant can read a lead. Over there the question cannot
+   arise, because the leads are not in that database.
+
+   The cost is that EPAY staff exist in two projects and sign into both. The
+   session below is kept under its own storage key so the two cannot tread on
+   each other, and Supabase refreshes it, so it is one sign-in per device
+   rather than one per visit.
+
+   The anon key is public by design. It grants nothing on its own: every table
+   in V2 is behind RLS, and every policy asks pos_is_staff() or
+   pos_my_merchant_id(). Without a session this client reads nothing, which is
+   exactly what it should do.
+   --------------------------------------------------------------------------- */
+/* Where each POS page draws itself, so the sign-in gate can take the same
+   space rather than being bolted above the page it is replacing. */
+function posViewBox(view){
+  const id = {
+    backend: 'backendStats', posmerchants: 'posMerchantsBody', possetup: 'posSetupBoard',
+    posbilling: 'posBillingBox', possubs: 'posSubsBox', posreferral: 'posReferralBox',
+    posconfig: 'posConfigBox', postasks: 'posTasksBox',
+  }[view];
+  if(!id) return null;
+  const el = document.getElementById(id);
+  // The merchants page draws into a tbody; the gate belongs in the panel.
+  return (el && el.tagName === 'TBODY') ? el.closest('.panel') : el;
+}
+
+const V2_URL = 'https://vbdgaeyerqntipzcfqag.supabase.co';
+const V2_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZiZGdhZXllcnFudGlwemNmcWFnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIzNDY5MzYsImV4cCI6MjEwNzkyMjkzNn0.LfmjDjFTinfZRCz4xbyFjy7enz2Ajd3PxVjj0ediEls';
+
+const supaV2 = supabase.createClient(V2_URL, V2_ANON_KEY, {
+  auth: {
+    // Its own key, or signing into one project signs you out of the other.
+    storageKey: 'epay.v2.auth',
+    persistSession: true,
+    autoRefreshToken: true,
+  },
+});
+
+let v2Session = null;
+
+/* Whether this browser has a V2 session. Asked before any POS read, because
+   without one every query comes back empty rather than failing - and an
+   empty merchant list reads as "we have no merchants". */
+async function v2Ready(){
+  if(v2Session) return true;
+  const { data } = await supaV2.auth.getSession();
+  v2Session = (data && data.session) || null;
+  return !!v2Session;
+}
+
+async function v2SignIn(email, password){
+  const { data, error } = await supaV2.auth.signInWithPassword({ email, password });
+  if(error) return { error };
+  v2Session = data.session;
+  return { data };
+}
+
+async function v2SignOut(){
+  await supaV2.auth.signOut();
+  v2Session = null;
+}
+
+/* The panel shown in place of a POS page when nobody has signed into V2.
+   Said plainly rather than shown as an error: two projects means two
+   sign-ins, and somebody meeting that for the first time should be told
+   why rather than left wondering what broke. */
+function v2GatePanel(){
+  return `
+    <div class="stub-panel" style="max-width:520px;margin:0 auto;text-align:left;">
+      <h3 style="text-align:center;">Sign in to the POS platform</h3>
+      <p style="font-size:13px;line-height:1.6;">
+        The merchant portal and the registers live in their own database, separate from the
+        Control Center, so that merchants signing in there can never reach anything in here.
+        That means a second sign-in. Supabase keeps it, so this is once on this computer.</p>
+      <div class="field"><label>Email</label>
+        <input id="v2Email" type="email" value="${escAttr((currentUser && currentUser.email) || '')}"
+               autocomplete="username"></div>
+      <div class="field"><label>Password</label>
+        <input id="v2Password" type="password" autocomplete="current-password"
+               onkeydown="if(event.key==='Enter')doV2SignIn()"></div>
+      <p id="v2Problem" class="error-text" style="display:none;"></p>
+      <button class="btn btn-accent" style="width:100%;" onclick="doV2SignIn()">Sign in</button>
+      <p style="font-size:11.5px;color:var(--slate-500);margin:12px 0 0;">
+        Not the same account as the Control Center unless you made it so. If you have no login
+        there yet, an admin adds you under Authentication in the EPAY V2 project.</p>
+    </div>`;
+}
+
+async function doV2SignIn(){
+  const email = (document.getElementById('v2Email').value || '').trim();
+  const password = document.getElementById('v2Password').value || '';
+  const say = (t) => { const el = document.getElementById('v2Problem');
+    el.textContent = t; el.style.display = t ? 'block' : 'none'; };
+  if(!email || !password){ say('Both, please.'); return; }
+  say('');
+  const { error } = await v2SignIn(email, password);
+  if(error){ say(error.message); return; }
+  showToast('Signed in to the POS platform.', 'success');
+  // Nothing was loadable before this, so everything is stale by definition.
+  posMerchantsLoaded = false;
+  posBillingLoaded = false;
+  refreshActiveView();
+}
+
 /* =========================================================================
    GLOBAL CLICK GUARD — most buttons in this app trigger an async Supabase
    call with no built-in loading state, so a click that doesn't visibly do
@@ -9731,17 +9843,30 @@ function showView(view, fromHistory){
     view = 'posmerchants';
     loadPosMerchants().then(() => { renderPosMerchants(); openPosMerchantForm(null); });
   } else if(posViews.includes(view)){
-    // Loaded on the way in rather than at startup: nobody who never opens
-    // this tab should pay for the query.
-    loadPosMerchants().then(() => {
-      if(view === 'backend') renderBackendOverview();
-      else if(view === 'possetup') renderPosSetupBoard();
-      else if(view === 'posreferral') renderPosReferral();
-      else if(view === 'posbilling') renderPosBilling();
-      else if(view === 'possubs') renderPosSubscriptions();
-      else if(view === 'postasks') renderPosTasks();
-      else if(view === 'posconfig') renderPosConfig();
-      else renderPosMerchants();
+    /*
+     * Nothing in V2 is readable without a session there, and the queries do
+     * not fail - they come back empty. An empty merchant list reads as "we
+     * have no merchants", which is the wrong thing to let somebody believe,
+     * so the page says what is actually missing instead.
+     */
+    v2Ready().then((ok) => {
+      if(!ok){
+        const box = posViewBox(view);
+        if(box) box.innerHTML = v2GatePanel();
+        return;
+      }
+      // Loaded on the way in rather than at startup: nobody who never opens
+      // this tab should pay for the query.
+      return loadPosMerchants().then(() => {
+        if(view === 'backend') renderBackendOverview();
+        else if(view === 'possetup') renderPosSetupBoard();
+        else if(view === 'posreferral') renderPosReferral();
+        else if(view === 'posbilling') renderPosBilling();
+        else if(view === 'possubs') renderPosSubscriptions();
+        else if(view === 'postasks') renderPosTasks();
+        else if(view === 'posconfig') renderPosConfig();
+        else renderPosMerchants();
+      });
     });
   }
   if(view === 'internalsales' && !canSeeInternalSales()) view = 'dashboard';
@@ -13947,14 +14072,14 @@ async function savePosMerchant(id){
     showToast('Saved.', 'success');
   } else {
     merchant.created_by = currentUser && currentUser.id ? currentUser.id : null;
-    const { data, error } = await supa.from('pos_merchants').insert(merchant).select().single();
+    const { data, error } = await supaV2.from('pos_merchants').insert(merchant).select().single();
     if(error){ posProblem('Could not board this merchant: ' + error.message); return; }
     /*
      * The location is a second write, so it can fail on its own. Said
      * plainly rather than swallowed: a merchant with no location is an
      * account nobody can put a till on, and somebody has to know.
      */
-    const { error: le } = await supa.from('pos_locations').insert({ ...location, merchant_id: data.id });
+    const { error: le } = await supaV2.from('pos_locations').insert({ ...location, merchant_id: data.id });
     if(le){
       showToast('Boarded, but the location did not save: ' + le.message, 'error');
     } else {
@@ -14012,7 +14137,7 @@ async function openPosMerchant(id, tab){
   await loadPosChanges(id);
   await loadPosConfig();
   await loadPosMerchantConfig(id);
-  const { data } = await supa.from('pos_merchant_notes')
+  const { data } = await supaV2.from('pos_merchant_notes')
     .select('*').eq('merchant_id', id).order('created_at', { ascending:false });
   POS_NOTES = data || [];
   renderPosDetail();
@@ -14152,7 +14277,7 @@ async function addPosNote(id){
   const body = (document.getElementById('pmNote').value || '').trim();
   if(!body) return;
   const kind = document.getElementById('pmNoteKind').value;
-  const { error } = await supa.from('pos_merchant_notes').insert({
+  const { error } = await supaV2.from('pos_merchant_notes').insert({
     merchant_id: id, kind, body, by_name: (currentUser && currentUser.name) || 'Unknown',
   });
   if(error){ showToast('Could not add the note: ' + error.message, 'error'); return; }
@@ -14167,7 +14292,7 @@ async function addPosDevice(locationId){
     if(kind !== null) showToast('That is not a device type.', 'error');
     return;
   }
-  const { error } = await supa.from('pos_devices')
+  const { error } = await supaV2.from('pos_devices')
     .insert({ location_id: locationId, label: label.trim(), kind: kind.trim() });
   if(error){ showToast('Could not add it: ' + error.message, 'error'); return; }
   await loadPosMerchants(true);
@@ -14367,7 +14492,7 @@ function posPricingModeChanged(){
 async function logPosChange(entity, entityId, merchantId, field, oldValue, newValue, note){
   if(String(oldValue === null || oldValue === undefined ? '' : oldValue)
      === String(newValue === null || newValue === undefined ? '' : newValue)) return;
-  const { error } = await supa.from('pos_change_log').insert({
+  const { error } = await supaV2.from('pos_change_log').insert({
     entity, entity_id: entityId ? String(entityId) : null,
     merchant_id: merchantId || null,
     field,
@@ -14444,7 +14569,7 @@ async function addPosLocation(merchantId){
    * on 0% card price is a rate nobody set and nobody notices.
    */
   const first = posPrimaryLocation(m) || {};
-  const { error } = await supa.from('pos_locations').insert({
+  const { error } = await supaV2.from('pos_locations').insert({
     merchant_id: merchantId,
     name: name.trim(),
     street: m.street, city: m.city, state: m.state, zip: m.zip,
@@ -14774,7 +14899,7 @@ function posSetupField(q, answers){
 let POS_MERCHANT_CONFIG = [];
 
 async function loadPosMerchantConfig(merchantId){
-  const { data, error } = await supa.rpc('pos_config_for', { p_merchant: merchantId });
+  const { data, error } = await supaV2.rpc('pos_config_for', { p_merchant: merchantId });
   POS_MERCHANT_CONFIG = error ? [] : (data || []);
   return POS_MERCHANT_CONFIG;
 }
@@ -14860,7 +14985,7 @@ async function savePosMerchantConfigText(merchantId, scope, key){
 async function savePosMerchantConfig(merchantId, scope, key, value){
   const before = POS_MERCHANT_CONFIG.find(r => r.scope === scope && r.key === key) || {};
   const base = POS_CONFIG.find(r => r.scope === scope && r.key === key) || {};
-  const { data, error } = await supa.from('pos_config')
+  const { data, error } = await supaV2.from('pos_config')
     .upsert({ merchant_id: merchantId, scope, key, value,
               label: base.label || before.label || key, sort: base.sort || 0, active: true,
               updated_at: new Date().toISOString(),
@@ -14884,7 +15009,7 @@ async function savePosMerchantConfig(merchantId, scope, key, value){
    merchant who never asked for anything should follow the standard when it
    moves; one who asked for exactly this should not. */
 async function clearPosMerchantConfig(merchantId, scope, key){
-  const { error } = await supa.from('pos_config').delete()
+  const { error } = await supaV2.from('pos_config').delete()
     .eq('merchant_id', merchantId).eq('scope', scope).eq('key', key);
   if(error){ showToast('Could not clear it: ' + error.message, 'error'); return; }
   await logPosChange('pos_config', scope + '.' + key, merchantId, key, 'their own', 'platform default');
@@ -15120,10 +15245,10 @@ async function boardLeadInPos(leadId, auto){
   }
 
   const merchant = posMerchantFromLead(l, applicationForLead(leadId));
-  const { data, error } = await supa.from('pos_merchants').insert(merchant).select().single();
+  const { data, error } = await supaV2.from('pos_merchants').insert(merchant).select().single();
   if(error){ showToast('Could not set it up: ' + error.message, 'error'); return; }
 
-  const { error: le } = await supa.from('pos_locations').insert({
+  const { error: le } = await supaV2.from('pos_locations').insert({
     merchant_id: data.id, name: merchant.dba,
     street: merchant.street, city: merchant.city, state: merchant.state, zip: merchant.zip,
     // What the lead already says they are buying, where it says. The rate is
@@ -15253,7 +15378,7 @@ async function visitMerchantPortal(merchantId){
 
   const token = posSupportToken();
   const expires = new Date(Date.now() + POS_SUPPORT_MINUTES * 60000).toISOString();
-  const { error } = await supa.from('pos_support_sessions').insert({
+  const { error } = await supaV2.from('pos_support_sessions').insert({
     merchant_id: merchantId, token, expires_at: expires,
     issued_to: (currentUser && currentUser.id) || null,
     issued_name: (currentUser && currentUser.name) || 'Unknown',
@@ -15269,7 +15394,7 @@ async function visitMerchantPortal(merchantId){
    * visit — refusing support because a note would not save helps nobody —
    * but it is said out loud rather than swallowed.
    */
-  const { error: ne } = await supa.from('pos_merchant_notes').insert({
+  const { error: ne } = await supaV2.from('pos_merchant_notes').insert({
     merchant_id: merchantId, kind: 'support',
     body: ((currentUser && currentUser.name) || 'EPAY staff') + ' opened this portal from the admin portal.',
     by_name: (currentUser && currentUser.name) || 'EPAY staff',
@@ -15353,7 +15478,7 @@ const POS_REWARD_KINDS = { cash:'Cash', credit:'Statement credit', waiver:'Fee w
 
 async function renderPosReferral(){
   if(!POS_OFFER){
-    const { data, error } = await supa.from('pos_referral_offer').select('*').eq('id', true).single();
+    const { data, error } = await supaV2.from('pos_referral_offer').select('*').eq('id', true).single();
     if(error){
       document.getElementById('posReferralBox').innerHTML =
         `<p class="error-text">Could not load the offer: ${escAttr(error.message)}</p>`;
@@ -15481,8 +15606,8 @@ function priceLabel(cents){
 async function loadPosBilling(force){
   if(posBillingLoaded && !force) return;
   const [plans, addons] = await Promise.all([
-    supa.from('pos_plans').select('*').order('sort'),
-    supa.from('pos_addons').select('*').order('sort'),
+    supaV2.from('pos_plans').select('*').order('sort'),
+    supaV2.from('pos_addons').select('*').order('sort'),
   ]);
   if(plans.error || addons.error){
     showToast('Could not load billing: ' + ((plans.error||addons.error).message), 'error');
@@ -15569,7 +15694,7 @@ async function loadPosConfig(force){
   /* Defaults only. Overrides live in the same table against a merchant, and
      mixing them in here would show one shop's receipt footer as if it were
      the standard. */
-  const { data, error } = await supa.from('pos_config').select('*')
+  const { data, error } = await supaV2.from('pos_config').select('*')
     .is('merchant_id', null).order('scope').order('sort');
   if(error){
     POS_CONFIG = [];
@@ -15662,7 +15787,7 @@ async function savePosConfigText(scope, key){
 
 async function savePosConfig(scope, key, value){
   const before = POS_CONFIG.find(r => r.scope === scope && r.key === key);
-  const { data, error } = await supa.from('pos_config')
+  const { data, error } = await supaV2.from('pos_config')
     .update({ value, updated_at: new Date().toISOString(),
               updated_by: (currentUser && currentUser.name) || 'Unknown' })
     .eq('scope', scope).eq('key', key).is('merchant_id', null).select();
@@ -16110,7 +16235,7 @@ async function pausePosMerchant(id){
   });
   if(error){ showToast('Could not pause it: ' + error.message, 'error'); return; }
   // On their own log too, so the reason survives whoever typed it.
-  await supa.from('pos_merchant_notes').insert({
+  await supaV2.from('pos_merchant_notes').insert({
     merchant_id: id, kind: 'system', body: 'Account paused — ' + reason,
     by_name: (currentUser && currentUser.name) || 'Unknown',
   });
@@ -16122,7 +16247,7 @@ async function unpausePosMerchant(id){
     status: 'live', pause_reason: null, paused_at: null, paused_by: null,
   });
   if(error){ showToast('Could not do that: ' + error.message, 'error'); return; }
-  await supa.from('pos_merchant_notes').insert({
+  await supaV2.from('pos_merchant_notes').insert({
     merchant_id: id, kind: 'system', body: 'Account put back live.',
     by_name: (currentUser && currentUser.name) || 'Unknown',
   });
@@ -16232,7 +16357,7 @@ let POS_CHANGES = [];
    so the Log tab can show it beside the notes: a note is what somebody said
    happened and this is what did. */
 async function loadPosChanges(merchantId){
-  const { data, error } = await supa.from('pos_change_log')
+  const { data, error } = await supaV2.from('pos_change_log')
     .select('*').eq('merchant_id', merchantId)
     .order('changed_at', { ascending:false }).limit(50);
   POS_CHANGES = error ? [] : (data || []);
@@ -16282,7 +16407,7 @@ function posChangesHtml(){
    glance at what is being agreed to, not an audit — the audit is per merchant,
    where somebody actually needs it. */
 async function loadRecentAgreements(limit){
-  const { data, error } = await supa.from('pos_addon_agreements')
+  const { data, error } = await supaV2.from('pos_addon_agreements')
     .select('*').order('accepted_at', { ascending:false }).limit(limit || 40);
   if(error){ POS_AGREEMENTS_ALL = []; return; }
   POS_AGREEMENTS_ALL = data || [];
@@ -16298,7 +16423,7 @@ function agreementsTableMissing(error){
 }
 
 async function loadPosAgreements(merchantId){
-  const { data, error } = await supa.from('pos_addon_agreements')
+  const { data, error } = await supaV2.from('pos_addon_agreements')
     .select('*').eq('merchant_id', merchantId).order('accepted_at', { ascending:false });
   if(error){
     POS_AGREEMENTS = [];
