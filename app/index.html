@@ -5017,7 +5017,7 @@ function saveLeads(list){ localStorage.setItem(LS_LEADS_KEY, JSON.stringify(list
 // fields get fetched for real via the reveal_lead_*()/reveal_partner_banking()
 // RPCs once that reveal/set wiring is built — same gap flagged for partners.
 async function loadLeadsFromSupabase(){
-  const { data, error } = await supa.from('leads').select(`
+  const BASE = `
     id, brand, business_name, contact_name, phone, email, est_volume, stage,
     created_at, stage_entered_at, converted_to_account, converted_at,
     owner_first_name, owner_last_name, dob, drivers_license_state,
@@ -5031,14 +5031,33 @@ async function loadLeadsFromSupabase(){
     pending_cadence_days, pending_next_reminder,
     equipment_pricing_confirmed, equipment_pricing_confirmed_at,
     application_link_choice, application_link_custom, application_email_sent, application_email_sent_at,
-    application_waived_at, application_waived_by,
     app_id, in_person_install, tracking_number, tracking_email_sent, tracking_email_sent_at, shipments,
     tid, installation_date, commission_type, commission_value,
     linked_partner_id, assigned_to, general_follow_up_date, general_follow_up_note,
     welcome_email_sent, welcome_email_sent_at
-  `).order('created_at', { ascending: false });
-  if(error){ reportLoadFailure('leads from Supabase', error); return []; }
-  return data;
+  `;
+
+  /* Columns a migration adds, asked for separately.
+
+     PostgREST rejects the WHOLE query if one named column does not exist, so
+     listing a column from a migration that has not been run yet does not
+     cost you that column - it costs you every lead on the page. That is
+     exactly what happened when 107 shipped ahead of being run.
+
+     So the optional ones are tried as an extra, and a 42703 (undefined
+     column) falls back to the columns that have always been there. The app
+     then behaves as it did before the migration: the waiver reads as unset,
+     and running the migration turns it on with no further deploy. */
+  const OPTIONAL = 'application_waived_at, application_waived_by';
+
+  let res = await supa.from('leads').select(BASE + ',\n    ' + OPTIONAL)
+    .order('created_at', { ascending: false });
+  if(res.error && (res.error.code === '42703' || /does not exist/i.test(res.error.message || ''))){
+    res = await supa.from('leads').select(BASE).order('created_at', { ascending: false });
+    if(!res.error) console.warn('leads: loaded without ' + OPTIONAL + ' - run database/107_application_waiver.sql');
+  }
+  if(res.error){ reportLoadFailure('leads from Supabase', res.error); return []; }
+  return res.data;
 }
 
 function saveLeadNotes(list){ localStorage.setItem(LS_LEAD_NOTES_KEY, JSON.stringify(list)); }
