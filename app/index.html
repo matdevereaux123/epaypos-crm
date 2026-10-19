@@ -4278,6 +4278,41 @@ function posViewBox(view){
 const V2_URL = 'https://vbdgaeyerqntipzcfqag.supabase.co';
 const V2_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZiZGdhZXllcnFudGlwemNmcWFnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIzNDY5MzYsImV4cCI6MjEwNzkyMjkzNn0.LfmjDjFTinfZRCz4xbyFjy7enz2Ajd3PxVjj0ediEls';
 
+/*
+ * The edge functions gateway wants a different key from the rest of the
+ * project.
+ *
+ * Supabase is moving from the legacy JWT keys (anon / service_role, the long
+ * `eyJ...` strings) to a newer format (`sb_publishable_...` /
+ * `sb_secret_...`). The database and auth endpoints on this project still
+ * take the old one; the functions gateway refuses it outright, with an error
+ * that names neither the caller nor the function and is not obvious from a
+ * browser console.
+ *
+ * So the functions key is its own constant. When the whole project finishes
+ * moving, this and V2_ANON_KEY become the same string and one of them goes.
+ *
+ * Project Settings > API Keys, the one marked publishable. Never the secret
+ * one: that is the service_role equivalent and bypasses every policy.
+ */
+const V2_FUNCTIONS_KEY = 'sb_publishable_0usUSJD488AsVOVG89cmAw_BxAJw2UV';
+
+/* Everything that reaches an edge function goes through here, so the key and
+   the session are assembled in one place rather than at each call site. */
+async function v2FunctionHeaders(){
+  const { data: { session } } = await supaV2.auth.getSession();
+  if(!session) return { error: 'Sign in to the POS platform first.' };
+  if(!V2_FUNCTIONS_KEY){
+    return { error: 'The POS platform functions key is not set yet. ' +
+      'Project Settings > API Keys in the EPAY V2 project, the publishable one.' };
+  }
+  return { headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer ' + session.access_token,
+    'apikey': V2_FUNCTIONS_KEY,
+  } };
+}
+
 const supaV2 = supabase.createClient(V2_URL, V2_ANON_KEY, {
   auth: {
     // Its own key, or signing into one project signs you out of the other.
@@ -14999,16 +15034,14 @@ async function invitePosPortalUser(merchantId){
   if(!email || !email.includes('@')){ say('A real email, please.'); return; }
   say('');
 
-  const { data: { session } } = await supaV2.auth.getSession();
-  if(!session){ say('Sign in to the POS platform first.'); return; }
+  const built = await v2FunctionHeaders();
+  if(built.error){ say(built.error); return; }
 
-  const res = await fetch(V2_URL + '/functions/v1/portal-invite', {
+  /* Capitalised, because that is what is deployed. The path is
+     case-sensitive and the lowercase one 404s. */
+  const res = await fetch(V2_URL + '/functions/v1/Portal-Invite', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + session.access_token,
-      'apikey': V2_ANON_KEY,
-    },
+    headers: built.headers,
     body: JSON.stringify({ merchantId, email, name: val('piName'), role: val('piRole') }),
   });
   const out = await res.json().catch(() => ({ error: 'The server said nothing useful.' }));
