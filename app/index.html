@@ -3154,6 +3154,7 @@
         -->
         <div class="cards-row" id="backendStats"></div>
         <div class="panel" id="backendTasksCard" style="padding:14px 18px;margin-top:18px;"></div>
+        <div class="panel" id="backendGatewayCard" style="padding:14px 18px;margin-top:14px;"></div>
         <div class="panel" id="backendHealthCard" style="padding:14px 18px;margin-top:14px;"></div>
         <div class="panel">
           <div class="panel-head"><h2>Recently boarded</h2></div>
@@ -9892,7 +9893,9 @@ function showView(view, fromHistory){
       }
       // Loaded on the way in rather than at startup: nobody who never opens
       // this tab should pay for the query.
-      return loadPosMerchants().then(() => {
+      /* Station types and prices too: the overview prices what a merchant
+         added, and without them every station reads as free. */
+      return Promise.all([loadPosMerchants(), loadPosStationTypes(), loadPosBilling()]).then(() => {
         if(view === 'backend') renderBackendOverview();
         else if(view === 'possetup') renderPosSetupBoard();
         else if(view === 'posreferral') renderPosReferral();
@@ -13836,6 +13839,38 @@ function renderBackendOverview(){
     stat('Waiting on a MID', noMid, noMid ? 'cannot process yet' : 'all boarded', noMid > 0);
 
     /*
+   * Stations with no gateway, across every account. Same reasoning as the
+   * quiet tills below: a station that cannot take a card is a shop that
+   * cannot trade on it, and the only person who can fix it is here.
+   */
+  const needGateway = POS_MERCHANTS.filter(m => m.status !== 'closed')
+    .flatMap(m => posStationsAwaitingGateway(m).map(x => ({ ...x, m })));
+  const gatewayCard = document.getElementById('backendGatewayCard');
+  if(gatewayCard){
+    gatewayCard.innerHTML = needGateway.length === 0
+      ? `<div class="row" style="justify-content:space-between;">
+           <div><h2 style="font-size:15.5px;margin:0 0 2px;">Gateways</h2>
+             <p style="font-size:12px;color:var(--slate-500);margin:0;">
+               Every station has one.</p></div>
+         </div>`
+      : `<div class="row" style="justify-content:space-between;margin-bottom:8px;">
+           <div><h2 style="font-size:15.5px;margin:0 0 2px;">${needGateway.length}
+             ${needGateway.length===1?'station needs':'stations need'} a gateway</h2>
+             <p style="font-size:12px;color:var(--slate-500);margin:0;">
+               Added by the merchant, billed, and unable to take a card until we assign one.</p></div>
+         </div>
+         ${needGateway.slice(0,6).map(x => `
+           <div class="row" style="justify-content:space-between;gap:10px;padding:6px 0;border-top:1px solid var(--line);">
+             <div style="min-width:0;">
+               <strong style="font-size:12.5px;">${escAttr(x.m.dba)}</strong>
+               <span class="sub"> &middot; ${escAttr(x.d.nickname || x.d.label)} at ${escAttr(x.l.name)}</span>
+             </div>
+             <button class="btn btn-xs" onclick="openPosMerchant('${x.m.id}','devices')">Open</button>
+           </div>`).join('')}
+         ${needGateway.length > 6 ? `<p class="sub" style="margin:8px 0 0;">and ${needGateway.length-6} more</p>` : ''}`;
+  }
+
+  /*
    * Tills that have gone quiet, across every account. On the overview
    * because it is the kind of thing nobody goes looking for.
    */
@@ -14173,6 +14208,7 @@ async function openPosMerchant(id, tab){
   await loadPosConfig();
   await loadPosMerchantConfig(id);
   await loadPosPortalUsers(id);
+  await loadPosStationTypes();
   const { data } = await supaV2.from('pos_merchant_notes')
     .select('*').eq('merchant_id', id).order('created_at', { ascending:false });
   POS_NOTES = data || [];
@@ -14257,12 +14293,75 @@ function posDetailPlan(m){
     ${posAgreementsHtml(m)}`;
 }
 
+/* ---------------------------------------------------------------------------
+   STATIONS, REFLECTED RATHER THAN MANAGED
+
+   A merchant adds a station in their own portal and this shows what they
+   added. EPAY's job on this screen is the one thing a merchant cannot do
+   for themselves: give it a gateway. TPNs come from the processor to the
+   ISO, so a station arrives needing one and waits here until somebody
+   assigns it.
+
+   Which is why "needs a gateway" is a queue rather than a column. A station
+   that cannot take a card is a shop that cannot trade on it, and nobody
+   goes looking for that - it has to come and find them.
+   --------------------------------------------------------------------------- */
+
+let POS_STATION_TYPES = [];
+
+async function loadPosStationTypes(force){
+  if(POS_STATION_TYPES.length && !force) return POS_STATION_TYPES;
+  const { data, error } = await supaV2.from('pos_station_types')
+    .select('*').eq('active', true).order('sort');
+  POS_STATION_TYPES = error ? [] : (data || []);
+  return POS_STATION_TYPES;
+}
+
+function posStationType(key){
+  return POS_STATION_TYPES.find(t => t.key === key) || null;
+}
+
+/* What a station is, as a person reads it. Falls back to the old device
+   kind for anything added before stations had types - those are real
+   stations and should not read as blank. */
+function posStationLabel(d){
+  const t = posStationType(d.station_type);
+  if(t) return t.label;
+  return POS_DEVICE_KINDS[d.kind] || d.kind || 'Station';
+}
+
+/** Every station on this account with no gateway on it yet. */
+function posStationsAwaitingGateway(m){
+  return ((m && m.pos_locations) || [])
+    .flatMap(l => (l.pos_devices || []).map(d => ({ d, l })))
+    .filter(x => !x.d.gateway_ref);
+}
+
+function posGatewayCell(d){
+  if(d.gateway_ref){
+    return `<div><strong style="font-family:ui-monospace,monospace;font-size:12px;">
+        ${escAttr(d.gateway_ref)}</strong>
+      <div class="sub">${d.gateway_assigned_by ? escAttr(d.gateway_assigned_by) + ' · ' : ''}${
+        d.gateway_assigned_at ? new Date(d.gateway_assigned_at).toLocaleDateString() : ''}</div></div>`;
+  }
+  return `<button class="btn btn-xs" style="color:var(--warn-text);border-color:var(--warn-border);"
+      onclick="assignGateway('${d.id}')">Assign a gateway</button>`;
+}
+
 function posDetailDevices(m){
   const locs = m.pos_locations || [];
+  const waiting = posStationsAwaitingGateway(m);
   return `
     <p style="font-size:12px;color:var(--slate-500);margin:0 0 12px;">
-      Every till, screen and card terminal in the shop. A station's number prints on its checks,
-      so adding one here is what a device pairs against.</p>
+      What this merchant has put in their shop. They add stations from their own portal;
+      the one thing they cannot do is give one a gateway, which is why that is here.</p>
+    ${waiting.length ? `<div style="border:1px solid var(--warn-border);background:var(--warn-bg);
+        border-radius:10px;padding:11px 13px;margin-bottom:14px;">
+        <strong style="font-size:12.5px;color:var(--warn-text);">
+          ${waiting.length} ${waiting.length===1?'station is':'stations are'} waiting on a gateway</strong>
+        <div style="font-size:11.5px;color:var(--slate-500);margin-top:3px;">
+          They exist, they are billed, and they cannot take a card until one is assigned.</div>
+      </div>` : ''}
     ${locs.map(l => `
       <div style="margin-bottom:16px;">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;">
@@ -14272,10 +14371,14 @@ function posDetailDevices(m){
         ${(l.pos_devices||[]).length === 0
           ? `<p style="font-size:12px;color:var(--slate-500);margin:0;">Nothing here yet.</p>`
           : `<div class="table-wrap"><table><thead><tr>
-               <th>Device</th><th>Type</th><th>Pairing</th><th>Last seen</th><th></th></tr></thead><tbody>` +
+               <th>Station</th><th>Subscription</th><th>Gateway</th><th>Pairing</th><th>Last seen</th><th></th></tr></thead><tbody>` +
             (l.pos_devices||[]).map(d => `<tr>
-              <td class="name-cell">${escAttr(d.label)}</td>
-              <td>${escAttr(POS_DEVICE_KINDS[d.kind] || d.kind)}</td>
+              <td class="name-cell">${escAttr(d.nickname || d.label)}
+                <div class="sub">${d.added_by === 'merchant' ? 'Added by the merchant' : 'Added by EPAY'}</div></td>
+              <td>${escAttr(posStationLabel(d))}
+                ${posStationType(d.station_type) && posStationType(d.station_type).price_cents !== null
+                  ? `<div class="sub">${posMoney(posStationType(d.station_type).price_cents)}/mo</div>` : ''}</td>
+              <td>${posGatewayCell(d)}</td>
               <td>${posPairLabel(d)}</td>
               <td class="sub">${d.last_seen_at ? new Date(d.last_seen_at).toLocaleString() : 'Never checked in'}</td>
               <td style="text-align:right;white-space:nowrap;">
@@ -14309,6 +14412,52 @@ function posDetailLog(m){
           <div style="font-size:11px;color:var(--slate-500);margin-top:2px;">${escAttr(n.by_name)}</div>
         </div>`).join('')}
     ${posChangesHtml()}`;
+}
+
+/*
+ * Giving a station its gateway.
+ *
+ * The reference only - a TPN, a device id, whatever TransIT turns out to
+ * use. Never a key or a secret: this row is readable by anything holding a
+ * session, and a credential that authorises a charge does not belong
+ * anywhere a browser can reach.
+ */
+async function assignGateway(deviceId){
+  const current = ((posDetailMerchant() || {}).pos_locations || [])
+    .flatMap(l => l.pos_devices || []).find(d => d.id === deviceId) || {};
+  const ref = prompt(
+    'Gateway reference for this station.\n\n' +
+    'The identifier you quote to the processor - a TPN or device id. ' +
+    'Never a transaction key or anything that authorises a charge.',
+    current.gateway_ref || '');
+  if(ref === null) return;
+  const trimmed = ref.trim();
+
+  const { error } = await updateRowV2('pos_devices', deviceId, {
+    gateway_ref: trimmed === '' ? null : trimmed,
+    gateway_assigned_at: trimmed === '' ? null : new Date().toISOString(),
+    gateway_assigned_by: trimmed === '' ? null : ((currentUser && currentUser.name) || 'Unknown'),
+  });
+  if(error){ showToast('Could not save that: ' + error.message, 'error'); return; }
+
+  const m = posDetailMerchant();
+  await logPosChange('pos_devices', deviceId, m ? m.id : null, 'gateway_ref',
+    current.gateway_ref, trimmed === '' ? null : trimmed);
+  await loadPosMerchants(true);
+  renderPosDetail();
+  showToast(trimmed === '' ? 'Gateway cleared.' : 'Gateway assigned.', 'success');
+}
+
+/* The same rule as updateRow, against V2: no rows back means the write was
+   refused, and "Saved" over a refused write is the bug updateRow exists to
+   stop. */
+async function updateRowV2(table, id, fields){
+  const res = await supaV2.from(table).update(fields).eq('id', id).select();
+  if(res.error) return { error: res.error };
+  if(!res.data || !res.data.length){
+    return { error: { message: 'Nothing was saved — this needs EPAY admin access in the POS platform.' } };
+  }
+  return { data: res.data[0] };
 }
 
 async function addPosNote(id){
@@ -15847,10 +15996,33 @@ function posAddon(key){ return POS_ADDONS.find(a => a.key === key) || null; }
 function posPlan(key){ return POS_PLANS.find(p => p.key === key) || null; }
 
 /* What one location costs a month: its plan, plus every add-on it is on. */
+/*
+ * What a location costs a month: the plan, its stations, and its add-ons.
+ *
+ * Three parts, in that order, because that is the order they are decided.
+ * The plan is what the location is on and is what a paywall hangs off; the
+ * stations are what the merchant put in the shop; the add-ons are what they
+ * switched on afterwards.
+ *
+ * `unpriced` counts the things that cannot be billed because nobody set a
+ * price. They are deliberately not treated as free: a figure that quietly
+ * omits them is a figure somebody reconciles against an invoice and cannot
+ * explain.
+ */
 function posLocationMonthly(l){
   let cents = 0; let unpriced = 0;
   const plan = posPlan(l.plan_key);
   if(plan){ if(plan.price_cents === null) unpriced++; else cents += plan.price_cents; }
+
+  (l.pos_devices || []).forEach(d => {
+    const t = posStationType(d.station_type);
+    // A station with no type is one added before stations were billable.
+    // Not charged for, and not counted as a missing price either - it is a
+    // thing from before the model, not an unanswered question.
+    if(!t) return;
+    if(t.price_cents === null) unpriced++; else cents += t.price_cents;
+  });
+
   (l.add_ons || []).forEach(k => {
     const a = posAddon(k);
     if(!a) return;
