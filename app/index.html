@@ -4276,7 +4276,7 @@ const DEFAULT_ROLES = {
   admin: {
     label:'Admin', portal_scope:'internal',
     description:'Full control — every tab, every record, both brands, banking info, user management, and settings.',
-    perms:{ manageUsers:true, manageSettings:true, viewAllPartners:true, editPartners:true, viewBanking:true, editBanking:true, manageAutomation:true, fullDashboard:true, viewAllLeads:true },
+    perms:{ manageUsers:true, manageSettings:true, viewAllPartners:true, editPartners:true, viewBanking:true, editBanking:true, manageAutomation:true, fullDashboard:true, viewAllLeads:true, viewAllCalendars:true },
   },
   in_house_sales: {
     label:'In House Sales', portal_scope:'internal',
@@ -4352,6 +4352,8 @@ const GRANTABLE_PERMS = [
     note:'What an employee needs to do the job. Separate from seeing everyone\u2019s records.' },
   { key:'manageUsers',     label:'Manage users',
     note:'Includes granting access like this to anyone else. Hand out sparingly.' },
+  { key:'viewAllCalendars', label:'See everyone\u2019s calendar',
+    note:'Other people\u2019s meetings and connected calendars. Managing users does not include this \u2014 it has to be given on purpose.' },
 ];
 
 async function loadCustomRolesFromSupabase(){
@@ -10067,7 +10069,11 @@ function scopedIsoLeads(){
 // calendar_events_select, database/52_calendar_per_user.sql. Note this one
 // is manageUsers, not fullDashboard — somebody's diary is not pipeline data.
 function scopedCalendarEvents(){
-  if(roleOf(currentUser).perms.manageUsers) return CALENDAR_EVENTS.slice();
+  // Mirrors calendar_events_select in database/108. It used to be
+  // manageUsers, which every sub-admin role has, so creating one handed its
+  // holder the owner's diary. Seeing everyone's calendar is its own
+  // permission now and nobody has it unless it was given.
+  if(roleOf(currentUser).perms.viewAllCalendars) return CALENDAR_EVENTS.slice();
   return CALENDAR_EVENTS.filter(e => e.owner_id === currentUser.id);
 }
 
