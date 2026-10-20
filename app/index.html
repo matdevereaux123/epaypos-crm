@@ -15004,15 +15004,32 @@ function posDetailPortalUsers(m){
         </tr>`).join('')}
       </tbody></table></div>`}
 
-    <h3 style="font-size:13.5px;margin:0 0 4px;">Invite somebody</h3>
+    ${m.owner_email && !rows.some(u => (u.email||'').toLowerCase() === m.owner_email.toLowerCase())
+      ? `<div style="border:1px solid var(--blue-400);border-radius:10px;padding:13px;margin-bottom:16px;">
+           <div class="row" style="justify-content:space-between;">
+             <div style="min-width:0;">
+               <strong style="font-size:13px;">Invite the owner</strong>
+               <div class="sub">${escAttr(m.owner_name || 'The owner')} &middot; ${escAttr(m.owner_email)}</div>
+             </div>
+             <button class="btn btn-accent btn-sm" onclick="inviteOwner('${m.id}')">
+               Create their login</button>
+           </div>
+           <p style="font-size:11px;color:var(--slate-500);margin:8px 0 0;">
+             Uses the name and email already on this account. Nothing to type.</p>
+         </div>`
+      : ''}
+
+    <h3 style="font-size:13.5px;margin:0 0 4px;">Invite somebody else</h3>
     <p style="font-size:11px;color:var(--slate-500);margin:0 0 10px;">
       They get a temporary password to change on first sign-in. It is shown to you here rather
       than emailed &mdash; EPAY should not know a merchant's password, and one sent by email
       sits in an inbox for years.</p>
     <div class="field setup-field"><label>Their email</label>
-      <input id="piEmail" type="email" placeholder="owner@thebusiness.com"></div>
+      <input id="piEmail" type="email" value="${escAttr(m.owner_email || '')}"
+             placeholder="owner@thebusiness.com"></div>
     <div class="field setup-field"><label>Their name</label>
-      <input id="piName" placeholder="As they would write it"></div>
+      <input id="piName" value="${escAttr(m.owner_name || '')}"
+             placeholder="As they would write it"></div>
     <div class="field setup-field"><label>What they can do</label>
       <select id="piRole">
         ${Object.keys(POS_PORTAL_ROLES).map(k =>
@@ -15026,11 +15043,32 @@ function posDetailPortalUsers(m){
     </div>`;
 }
 
-async function invitePosPortalUser(merchantId){
+/*
+ * The owner, in one press.
+ *
+ * Their name and email are already on the account - somebody typed them
+ * when the business was boarded - and asking for them again is a step whose
+ * only purpose is that the code was easier that way. It is also the step
+ * most likely to introduce a typo into the one address the login depends on.
+ */
+async function inviteOwner(merchantId){
+  const m = POS_MERCHANTS.find(x => x.id === merchantId);
+  if(!m || !m.owner_email){ showToast('No owner email on this account.', 'error'); return; }
+  await invitePosPortalUser(merchantId, {
+    email: m.owner_email, name: m.owner_name || '', role: 'owner',
+  });
+}
+
+async function invitePosPortalUser(merchantId, given){
+  /* Either from the form, or handed in by the owner shortcut. */
   const val = (id) => ((document.getElementById(id) || {}).value || '').trim();
   const say = (t) => { const el = document.getElementById('piProblem');
-    el.textContent = t; el.style.display = t ? 'block' : 'none'; };
-  const email = val('piEmail');
+    if(el){ el.textContent = t; el.style.display = t ? 'block' : 'none'; }
+    else if(t) showToast(t, 'error');
+  };
+  const email = (given && given.email) || val('piEmail');
+  const name = (given && given.name !== undefined) ? given.name : val('piName');
+  const role = (given && given.role) || val('piRole');
   if(!email || !email.includes('@')){ say('A real email, please.'); return; }
   say('');
 
@@ -15042,7 +15080,7 @@ async function invitePosPortalUser(merchantId){
   const res = await fetch(V2_URL + '/functions/v1/Portal-Invite', {
     method: 'POST',
     headers: built.headers,
-    body: JSON.stringify({ merchantId, email, name: val('piName'), role: val('piRole') }),
+    body: JSON.stringify({ merchantId, email, name, role }),
   });
   const out = await res.json().catch(() => ({ error: 'The server said nothing useful.' }));
   if(!res.ok || out.error){ say(out.error || ('Failed: ' + res.status)); return; }
@@ -15052,7 +15090,20 @@ async function invitePosPortalUser(merchantId){
    * should be the one the rep reads out, and it stops working the moment
    * the merchant changes it.
    */
-  document.getElementById('piResult').innerHTML = out.password
+  /* The shortcut has no form on screen to write into, so the password goes
+     where it will be seen either way. */
+  const result = document.getElementById('piResult');
+  if(result === null){
+    if(out.password){
+      showToast('Login created for ' + out.email + '. Temporary password: ' + out.password, 'success');
+    } else {
+      showToast(out.email + ' already had a login and has been added.', 'success');
+    }
+    await loadPosPortalUsers(merchantId);
+    renderPosDetail();
+    return;
+  }
+  result.innerHTML = out.password
     ? `<div class="stat-card" style="margin:10px 0;">
          <div class="label">Temporary password for ${escAttr(out.email)}</div>
          <div class="value" style="font-family:ui-monospace,monospace;font-size:20px;">
