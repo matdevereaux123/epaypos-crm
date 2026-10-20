@@ -6298,7 +6298,7 @@ async function fetchCurrentAppUser(authUser){
    query that would mostly have been made anyway.
    ========================================================================= */
 const DATASETS = {
-  users:               { load: loadUsersFromSupabase,              apply: d => USERS = d },
+  users:               { load: loadUsersFromSupabase,              apply: d => { USERS = d; clearDownlineCache(); } },
   partners:            { load: loadPartnersFromSupabase,           apply: d => PARTNERS = d },
   leads:               { load: loadLeadsFromSupabase,              apply: d => LEADS = d },
   allNotes:            { load: loadAllNotesFromSupabase,           apply: d => ALL_NOTES = d },
@@ -9999,6 +9999,40 @@ function reportLoadFailure(what, error){
   }, 800);
 }
 
+/* Everyone below you on "Reports to", recursively.
+
+   Mirrors current_app_downline_user_ids() in database/109. The server is
+   what enforces this - these ids only keep "Preview as" honest, where the
+   browser holds an admin's data while pretending to be somebody else.
+
+   Cycle-safe: the UI lets two people be set as each other's manager, and
+   without the seen set that walk never ends. Memoised per user because
+   scopedLeads() runs on every render of every board. */
+let _downlineCache = { forUser: null, ids: [] };
+function downlineUserIds(user){
+  const me = (user || currentUser || {}).id;
+  if(!me) return [];
+  if(_downlineCache.forUser === me) return _downlineCache.ids;
+
+  const seen = new Set([me]);
+  const out = [];
+  let frontier = [me];
+  while(frontier.length){
+    const next = [];
+    USERS.forEach(u => {
+      if(!u.manager_id || seen.has(u.id)) return;
+      if(frontier.includes(u.manager_id)){ seen.add(u.id); out.push(u.id); next.push(u.id); }
+    });
+    frontier = next;
+  }
+  _downlineCache = { forUser: me, ids: out };
+  return out;
+}
+/* USERS changes - somebody's manager is edited, a user is added - invalidate
+   it; a stale downline is a lead that stays hidden or one that should not
+   show. */
+function clearDownlineCache(){ _downlineCache = { forUser: null, ids: [] }; }
+
 function scopedLeads(){
   const perms = roleOf(currentUser).perms;
   // A lead sent back to cold is out of the pipeline everywhere — the board,
@@ -10012,10 +10046,19 @@ function scopedLeads(){
   // admin's data while pretending to be someone who may not see it all.
   if(perms.viewAllLeads) return inPlay;
   const pid = currentUser.linked_partner_id;
+  // The team's work, by the reporting line (database/109). A manager sees
+  // what their reports are assigned and what their reports entered, however
+  // far down the line they sit.
+  const team = downlineUserIds(currentUser);
+  const onTeam = id => !!id && team.indexOf(id) !== -1;
   return inPlay.filter(l =>
     (pid && l.linked_partner_id === pid)
     || l.assigned_to === currentUser.id
     || l.created_by === currentUser.id
+    || (l.assigned_to_ids || []).includes(currentUser.id)
+    || onTeam(l.assigned_to)
+    || onTeam(l.created_by)
+    || (l.assigned_to_ids || []).some(onTeam)
     // internal staff also see leads with no user behind them — the forms.
     // staffTools, not fullDashboard: an In House Sales rep is scoped to
     // their own records but still works the unclaimed inbound pool.
@@ -11776,6 +11819,7 @@ async function ensurePartnerPortalUser(partner){
   }).select().single();
   if(userErr){ showToast('Could not create their portal login: ' + userErr.message, 'error'); return; }
   USERS.push(newUser);
+  clearDownlineCache();
   if(document.getElementById('view-settings').style.display !== 'none') renderUsersTable();
   // Deliberately does NOT offer to invite here. Onboarding requires the
   // signed admit packet on file first, and this prompt was a second route
@@ -13185,6 +13229,7 @@ async function relinkUser(userId, managerId, officeId){
   const { error } = await updateRow('users', userId, fields);
   if(error){ showToast('Could not change that: ' + error.message, 'error'); return; }
   Object.assign(u, fields);
+  clearDownlineCache();   // the reporting line just moved
   const manager = managerId ? USERS.find(x => x.id === managerId) : null;
   showToast(manager
     ? `${u.name} now reports to ${manager.name}.`
@@ -15626,6 +15671,7 @@ async function saveUserEdit(id){
   if(error){ alert('Could not save changes: ' + error.message); return; }
   const idx = USERS.findIndex(x => x.id === id);
   if(idx !== -1) USERS[idx] = data;
+  clearDownlineCache();
   closeUserDrawer();
   renderUsersTable();
 }
@@ -15685,6 +15731,7 @@ async function deleteUser(id){
   if(out.error){ showToast(out.error, 'error'); return; }
 
   USERS = USERS.filter(x => x.id !== id);
+  clearDownlineCache();
   renderUsersTable();
   showToast(out.authDeleted
     ? `“${u.name}” deleted. Their login has been removed.`
