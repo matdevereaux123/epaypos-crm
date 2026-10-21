@@ -5036,7 +5036,23 @@ async function loadLeadsFromSupabase(){
     app_id, in_person_install, tracking_number, tracking_email_sent, tracking_email_sent_at, shipments,
     tid, installation_date, commission_type, commission_value,
     linked_partner_id, assigned_to, general_follow_up_date, general_follow_up_note,
-    welcome_email_sent, welcome_email_sent_at
+    welcome_email_sent, welcome_email_sent_at,
+
+    /* Columns a migration added and this list never caught up with. Each
+       one saved correctly, was held in memory for the rest of the session,
+       and was gone on the next refresh - because the row that came back did
+       not contain it. That is the whole of the "my second subscription
+       disappears", "assignments go away" and "it forgot the MID" class of
+       bug, and it is a read-side omission every time: nothing was ever lost
+       from the database.
+
+       A select list is a promise to keep in step with the schema. When a
+       migration adds a column the app reads, it belongs here the same day. */
+    mid, created_by, assigned_to_ids,
+    atm_stage, atm_stage_entered_at,
+    extra_subscriptions,
+    in_collections, collections_marked_at, collections_marked_by, collections_note,
+    terms_accepted, terms_url
   `;
 
   /* Columns a migration adds, asked for separately.
@@ -5050,7 +5066,7 @@ async function loadLeadsFromSupabase(){
      column) falls back to the columns that have always been there. The app
      then behaves as it did before the migration: the waiver reads as unset,
      and running the migration turns it on with no further deploy. */
-  const OPTIONAL = 'application_waived_at, application_waived_by';
+  const OPTIONAL = 'application_waived_at, application_waived_by, pos_merchant_id';
 
   let res = await supa.from('leads').select(BASE + ',\n    ' + OPTIONAL)
     .order('created_at', { ascending: false });
