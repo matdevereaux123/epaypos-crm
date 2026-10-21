@@ -1880,6 +1880,44 @@
   .pos-tier-row{ gap:14px; padding:14px; align-items:end; }
   .pos-tier-row .field{ min-width:0; }
 
+  /* .pos-page is the container on every back end page, and it had no rule at
+     all - so its content sat flush against the panel's border: headings
+     touching the line above them, the last row touching the line below. It
+     is the single reason the module read as cramped everywhere at once. */
+  .pos-page{ padding:18px 20px; display:flex; flex-direction:column; gap:14px; }
+  .pos-page > *{ margin-top:0; margin-bottom:0; }
+  .pos-page > h3{ margin-top:4px; }
+  .pos-page > p{ max-width:68ch; line-height:1.55; }
+  /* A table inside a page already has a border of its own; it does not need
+     the page's padding doubling up on the left and right. */
+  .pos-page > .table-wrap{ margin:0; }
+  /* A panel head sits directly above a .pos-page, so the page does not need
+     its own top padding as well as the head's bottom one. */
+  .panel-head + .pos-page{ padding-top:16px; }
+
+  /* A table squeezed narrower than its content does not shrink gracefully -
+     it stacks the headers into columns of single words ("CARD / PRICE /
+     ADDS") and breaks names across lines. Below this width the panel
+     scrolls sideways instead, which keeps every row readable. */
+  #view-backend table, #view-posmerchants table, #view-possetup table,
+  #view-posbilling table, #view-posreferral table, #view-possubs table,
+  #view-posconfig table{ min-width:720px; }
+  #view-backend .panel, #view-posmerchants .panel, #view-possetup .panel,
+  #view-posbilling .panel, #view-posreferral .panel, #view-possubs .panel,
+  #view-posconfig .panel{ overflow-x:auto; }
+  /* A header never breaks mid-phrase. */
+  #view-posmerchants th, #view-possetup th, #view-posbilling th,
+  #view-posreferral th, #view-possubs th, #view-posconfig th{ white-space:nowrap; }
+  /* Nor does a business name. */
+  .pos-page .name-cell, #view-posmerchants .name-cell{ min-width:160px; }
+
+  /* Buttons in a table row were touching each other. */
+  .pos-page td .btn + .btn, .pos-page td .btn-xs + .btn-xs{ margin-left:8px; }
+  .pos-page td .btn{ vertical-align:middle; }
+  /* And the cells that hold them get room to breathe at the right edge. */
+  .pos-page td:last-child{ padding-right:18px; }
+  .pos-page th:last-child{ padding-right:18px; }
+
   /* An inline price cell: the input is the control, not a prompt. */
   .pos-price-input{
     width:116px; min-height:38px; padding:0 10px 0 22px; border-radius:8px;
@@ -1892,6 +1930,21 @@
     font-size:13px; color:var(--slate-500); pointer-events:none;
   }
   .pos-price-wrap.is-unset::before{ opacity:.45; }
+
+  /* The merchant drawer's own furniture. Seven section chips wrapping over
+     three lines with 8px between them read as one block of text rather than
+     as a row of controls; the rows under them were tighter than the rules
+     separating them, so the text sat on the lines. */
+  #posMerchantDrawer .drawer-body > .row{ gap:8px; row-gap:8px; margin-bottom:16px; }
+  #posMerchantDrawer .chip{ min-height:34px; padding:0 13px; font-size:12.5px; }
+  /* The two actions under the chips are separate decisions, not a pair. */
+  #posMerchantDrawer .drawer-body .btn{ margin-bottom:2px; }
+  /* A label and its value, with room above and below the rule between them. */
+  #posMerchantDrawer .drawer-body table td,
+  #posMerchantDrawer .drawer-body tr td{ padding:11px 0; }
+  #posMerchantDrawer .drawer-body h3,
+  #posMerchantDrawer .drawer-body h4{ margin:22px 0 8px; }
+  #posMerchantDrawer .drawer-body > p{ line-height:1.55; margin:0 0 14px; }
 
   /* The right-hand drawer: its footer buttons used to scroll away under the
      content and, on a short drawer, sit on top of the last field. Sticky
