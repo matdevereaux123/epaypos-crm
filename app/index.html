@@ -5019,6 +5019,15 @@ function saveLeads(list){ localStorage.setItem(LS_LEADS_KEY, JSON.stringify(list
 // fields get fetched for real via the reveal_lead_*()/reveal_partner_banking()
 // RPCs once that reveal/set wiring is built — same gap flagged for partners.
 async function loadLeadsFromSupabase(){
+  /* The columns the app reads. The second group was added after the list had
+     drifted eighteen columns behind the schema - that drift is the whole of
+     the "my second subscription disappears" and "assignments go away on
+     refresh" class of bug, every one of them a read-side omission.
+
+     This comment sits OUTSIDE the template literal on purpose. Inside it, it
+     is not a comment at all: it is text in the select list, PostgREST
+     refuses the query, and every lead, account and subscription vanishes at
+     once. Which is exactly what happened. */
   const BASE = `
     id, brand, business_name, contact_name, phone, email, est_volume, stage,
     created_at, stage_entered_at, converted_to_account, converted_at,
@@ -5037,17 +5046,6 @@ async function loadLeadsFromSupabase(){
     tid, installation_date, commission_type, commission_value,
     linked_partner_id, assigned_to, general_follow_up_date, general_follow_up_note,
     welcome_email_sent, welcome_email_sent_at,
-
-    /* Columns a migration added and this list never caught up with. Each
-       one saved correctly, was held in memory for the rest of the session,
-       and was gone on the next refresh - because the row that came back did
-       not contain it. That is the whole of the "my second subscription
-       disappears", "assignments go away" and "it forgot the MID" class of
-       bug, and it is a read-side omission every time: nothing was ever lost
-       from the database.
-
-       A select list is a promise to keep in step with the schema. When a
-       migration adds a column the app reads, it belongs here the same day. */
     mid, created_by, assigned_to_ids,
     atm_stage, atm_stage_entered_at,
     extra_subscriptions,
@@ -5088,10 +5086,14 @@ async function loadLeadsFromSupabase(){
      cannot be wrong about a column, so it is what the app falls back to
      rather than showing an empty CRM. The warning names the error so the
      list can be put back in step. */
-  if(undefinedColumn(res.error)){
+  /* Any remaining failure of the named list, not only an unknown column:
+     a malformed list fails with a parse error rather than 42703, and the
+     cost of being wrong here is an empty CRM. select('*') cannot be wrong
+     about a column. */
+  if(res.error){
     const why = res.error.message;
     res = await supa.from('leads').select('*').order('created_at', { ascending: false });
-    if(!res.error) console.warn('leads: fell back to select(*) - the column list is ahead of this database: ' + why);
+    if(!res.error) console.warn('leads: fell back to select(*) - the named column list failed: ' + why);
   }
 
   if(res.error){ reportLoadFailure('leads from Supabase', res.error); return []; }
