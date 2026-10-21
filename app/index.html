@@ -16248,16 +16248,31 @@ async function visitMerchantPortal(merchantId){
   window.open(url, '_blank', 'noopener');
 }
 
-/* Everything support can do to a merchant that is not editing a field. */
+/* Everything support can do to a merchant that is not editing a field.
+
+   The two buttons sit side by side: they are the two things you do to an
+   account from here, and stacking them put a line of explanation between
+   them that read as if it belonged to the one above. A paused account is
+   the exception - its pause is a card explaining who paused it and why, and
+   a card is not something a button sits beside. */
 function posSupportActionsHtml(m){
+  const portalBtn = `<button class="btn btn-accent btn-sm" onclick="visitMerchantPortal('${m.id}')">
+        Visit their portal</button>`;
+  const note = `<p style="font-size:11px;color:var(--slate-500);margin:0 0 14px;line-height:1.5;">
+        Opens their own back office as support, for ${POS_SUPPORT_MINUTES} minutes. They see that it happened.</p>`;
+
+  if(m.status === 'paused'){
+    return `
+      ${posPauseHtml(m)}
+      <div class="row" style="gap:10px;margin-bottom:6px;flex-wrap:wrap;">${portalBtn}</div>
+      ${note}`;
+  }
   return `
-    ${posPauseHtml(m)}
-    <div class="row" style="gap:8px;margin-bottom:14px;flex-wrap:wrap;">
-      <button class="btn btn-accent btn-sm" onclick="visitMerchantPortal('${m.id}')">
-        Visit their portal</button>
-      <span style="font-size:11px;color:var(--slate-500);align-self:center;">
-        Opens their own back office as support, for ${POS_SUPPORT_MINUTES} minutes. They see that it happened.</span>
-    </div>`;
+    <div class="row" style="gap:10px;margin-bottom:6px;flex-wrap:wrap;">
+      ${posPauseHtml(m)}
+      ${portalBtn}
+    </div>
+    ${note}`;
 }
 
 /* ---------------------------------------------------------------------------
