@@ -5306,10 +5306,19 @@ const POS_SYSTEM_PLANS_FALLBACK = [
 let PLAN_CATALOGUE = null;
 
 async function loadPlanCatalogue(){
-  const { data, error } = await supa.from('pos_plans')
-    .select('key,label,price_cents,edition,note,sort').order('sort');
-  if(error) return null;          // the fallback covers it
-  return data;
+  /* sellable arrives with database/116. Asking for a column that is not
+     there yet costs the whole query, not the column - so the second attempt
+     drops it, and every plan then counts as sold, which is what it was
+     before the flag existed. The same shape as the leads loader, for the
+     same reason. */
+  let res = await supa.from('pos_plans')
+    .select('key,label,price_cents,edition,note,sort,sellable').order('sort');
+  if(res.error){
+    res = await supa.from('pos_plans')
+      .select('key,label,price_cents,edition,note,sort').order('sort');
+  }
+  if(res.error) return null;      // the constant covers it
+  return res.data;
 }
 
 /* What the rest of the app reads: rows from the database when they are
@@ -5317,7 +5326,12 @@ async function loadPlanCatalogue(){
 function systemPlans(){
   const rows = Array.isArray(PLAN_CATALOGUE) ? PLAN_CATALOGUE : null;
   if(!rows || !rows.length) return POS_SYSTEM_PLANS_FALLBACK;
-  return rows.map(r => ({
+  /* Only what is still sold. The platform's own six are the same software
+     under its internal names (database/116) - they stay in the table
+     because accounts bill from them, and out of the pickers where new
+     business is written. An unknown value counts as sold: a plan from
+     before the column existed is not retired by its absence. */
+  return rows.filter(r => r.sellable !== false).map(r => ({
     key: r.key,
     label: r.label,
     // Null is a price nobody set. For a plan quoted per deal that is the
