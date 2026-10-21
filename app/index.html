@@ -4631,7 +4631,10 @@ async function v2SignOut(){
    price nobody is reading on an overview. A strip saying something is
    missing, above a page where nothing is, reads as a fault. The pages that
    genuinely show prices keep the notice and the sign-in. */
-const V2_BACKED_VIEWS = ['posbilling','possubs','posreferral','posconfig'];
+/* possubs is off this list: its plans and add-ons come from the Control
+   Center now, so there is nothing on that page to sign in to the platform
+   for. */
+const V2_BACKED_VIEWS = ['posbilling','posreferral','posconfig'];
 
 /*
  * A line at the top of a page whose figures come from V2, when nobody has
@@ -16685,12 +16688,25 @@ function priceLabel(cents){
   return posMoney(cents) + '/mo';
 }
 
+/* The catalogue comes from the Control Center, not the platform.
+ *
+ * Merchants, locations, devices and register config belong to the POS
+ * platform and are read from it. Plans and add-on prices are different:
+ * they are what sales quotes, what an account is billed, and what the
+ * subscription picker on a lead offers. Reading them from the platform put
+ * the price list behind a second sign-in and in a second table, so a price
+ * corrected here never reached a quote, and the page looked broken to
+ * anyone who had not signed in to a system they do not otherwise use.
+ *
+ * One catalogue now, in the Control Center's own database (101, 114-116).
+ * The platform keeps its copy for what the registers bill from until that
+ * side reads this one - which is a change over there, not here.
+ */
 async function loadPosBilling(force){
   if(posBillingLoaded && !force) return;
-  if(!await v2Ready()) return;
   const [plans, addons] = await Promise.all([
-    supaV2.from('pos_plans').select('*').order('sort'),
-    supaV2.from('pos_addons').select('*').order('sort'),
+    supa.from('pos_plans').select('*').order('sort'),
+    supa.from('pos_addons').select('*').order('sort'),
   ]);
   if(plans.error || addons.error){
     showToast('Could not load billing: ' + ((plans.error||addons.error).message), 'error');
@@ -17047,14 +17063,10 @@ async function renderPosSubscriptions(){
      there. Rendering two empty tables made that look like a page that does
      not work, which is how it was reported. Say which it is. */
   if(!POS_PLANS.length && !POS_ADDONS.length){
-    box.innerHTML = `<div class="stub-panel"><h3>Not signed in to the POS platform</h3>
+    box.innerHTML = `<div class="stub-panel"><h3>No plans yet</h3>
       <p style="max-width:480px;margin:0 auto;font-size:13px;line-height:1.6;">
-        Plans and add-on prices live in that platform's own database, behind its own sign-in, so
-        that a merchant signing in there can never reach the Control Center. Use the sign-in at
-        the top of this page and they appear.
-        <span style="display:block;margin-top:8px;color:var(--slate-500);">
-          The EPAY plans an account is quoted come from the Control Center's own catalogue and
-          are not affected by this.</span></p></div>`;
+        The catalogue is empty in this database. Running database/101 seeds it, and 114 adds the
+        five EPAY plans sales quotes.</p></div>`;
     return;
   }
   const unpriced = POS_ADDONS.filter(a => a.price_cents === null && a.sellable !== false);
