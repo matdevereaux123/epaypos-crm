@@ -5284,13 +5284,51 @@ async function loadIsoLeadsFromSupabase(){
 }
 // Reference data pulled from epaypos.net — kept in one place so the
 // dropdowns in Initial Outreach / Equipment & Pricing Confirm stay accurate.
-const POS_SYSTEM_PLANS = [
-  { key:'epay_terminal', label:'EPAY Terminal', price:'$14.99/mo' },
+/* The plans, and where they come from.
+
+   This list used to BE the catalogue: a constant in the app, which meant
+   the plans being sold were the one thing nobody could edit, while the Back
+   End's price editor changed a table the CRM never read. Two catalogues,
+   one of them unreachable - which is why a price fixed in the back end
+   never showed up on an account.
+
+   pos_plans is the catalogue now (database/101, 114). This stays as the
+   fallback for the moment before it loads, and for anyone whose read is
+   refused. Same keys, so a lead already carrying pos_plan = 'epay_lite'
+   reads correctly either way. These prices are a last resort, not truth. */
+const POS_SYSTEM_PLANS_FALLBACK = [
+  { key:'epay_terminal', label:'EPAY Terminal', price:'$9.99/mo' },
   { key:'epay_lite', label:'EPAY Lite', price:'$39.99/mo' },
   { key:'epay_retail', label:'EPAY Retail', price:'$74.99/mo' },
   { key:'epay_table', label:'EPAY Table', price:'$69.99/mo' },
   { key:'epay_custom', label:'EPAY Custom', price:'Custom pricing' },
 ];
+let PLAN_CATALOGUE = null;
+
+async function loadPlanCatalogue(){
+  const { data, error } = await supa.from('pos_plans')
+    .select('key,label,price_cents,edition,note,sort').order('sort');
+  if(error) return null;          // the fallback covers it
+  return data;
+}
+
+/* What the rest of the app reads: rows from the database when they are
+   there, the constant when they are not, in one shape either way. */
+function systemPlans(){
+  const rows = Array.isArray(PLAN_CATALOGUE) ? PLAN_CATALOGUE : null;
+  if(!rows || !rows.length) return POS_SYSTEM_PLANS_FALLBACK;
+  return rows.map(r => ({
+    key: r.key,
+    label: r.label,
+    // Null is a price nobody set. For a plan quoted per deal that is the
+    // honest display, and it keeps the plan out of any total.
+    price: r.price_cents === null || r.price_cents === undefined
+      ? 'Custom pricing'
+      : '$' + (r.price_cents / 100).toFixed(2) + '/mo',
+    price_cents: r.price_cents,
+    edition: r.edition
+  }));
+}
 const PROCESSING_PRICING_PLANS = [
   { key:'interchange_flat', label:'Interchange Plus', price:'2.4% + 10¢' },
   { key:'free_processing', label:'Free Processing (0% Cash Discount)', price:'0% + 0¢' },
@@ -6830,6 +6868,7 @@ async function fetchCurrentAppUser(authUser){
    ========================================================================= */
 const DATASETS = {
   users:               { load: loadUsersFromSupabase,              apply: d => { USERS = d; clearDownlineCache(); } },
+  planCatalogue:       { load: loadPlanCatalogue,                  apply: d => PLAN_CATALOGUE = d },
   partners:            { load: loadPartnersFromSupabase,           apply: d => PARTNERS = d },
   leads:               { load: loadLeadsFromSupabase,              apply: d => LEADS = d },
   allNotes:            { load: loadAllNotesFromSupabase,           apply: d => ALL_NOTES = d },
@@ -6882,7 +6921,7 @@ const DATASETS = {
 
 // Loaded before the app is shown: the shell, the notification bell, and
 // everything the dashboard draws.
-const CORE_DATASETS = ['users','partners','leads','coldLeads','applications','tasks',
+const CORE_DATASETS = ['users','partners','leads','coldLeads','applications','tasks','planCatalogue',
                        'notifications','allNotes','calendarEvents','integrations'];
 
 // What each tab needs on top of the core.
@@ -19085,7 +19124,7 @@ function systemPricingFieldsHtml(l){
       <label>EPAY POS plan</label>
       <select id="spPosPlan">
         <option value="">Select a plan...</option>
-        ${POS_SYSTEM_PLANS.map(p=>`<option value="${p.key}" ${l.pos_plan===p.key?'selected':''}>${p.label} — ${p.price}</option>`).join('')}
+        ${systemPlans().map(p=>`<option value="${p.key}" ${l.pos_plan===p.key?'selected':''}>${p.label} — ${p.price}</option>`).join('')}
       </select>
       ${/* An account can run more than one plan — two locations, or a till on
             Retail and a floor on Table. The select above holds the primary,
@@ -19097,7 +19136,7 @@ function systemPricingFieldsHtml(l){
         <label style="font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--slate-500);">Additional plans on this account</label>
         <div class="multi-assign" id="spExtraPlans" style="margin-top:5px;">
           <div class="ma-list" style="max-height:150px;overflow-y:auto;">
-            ${POS_SYSTEM_PLANS.filter(pl => planMonthlyPrice(pl.key) != null).map(pl => {
+            ${systemPlans().filter(pl => planMonthlyPrice(pl.key) != null).map(pl => {
               const already = (l.extra_subscriptions || []).some(x => x.plan_key === pl.key);
               return `
               <label class="ma-row">
@@ -19282,7 +19321,7 @@ function readSystemPricingFields(l){
       .filter(key => key !== l.pos_plan)
       .map(key => {
         const was = (l.extra_subscriptions || []).find(x => x.plan_key === key);
-        const plan = POS_SYSTEM_PLANS.find(pl => pl.key === key) || {};
+        const plan = systemPlans().find(pl => pl.key === key) || {};
         return was || { plan_key: key, name: plan.label, price: planMonthlyPrice(key) || 0,
                         category: 'EPAY software', added_at: todayISO() };
       });
@@ -19796,7 +19835,7 @@ function generateFollowupIdea(id, n){
   const l = LEADS.find(x=>x.id===id); if(!l) return;
   const notes = notesFor('lead', id)
     .sort((a,b)=> new Date(b.created_at)-new Date(a.created_at));
-  const planLabel = l.pos_plan ? (POS_SYSTEM_PLANS.find(p=>p.key===l.pos_plan)||{}).label
+  const planLabel = l.pos_plan ? (systemPlans().find(p=>p.key===l.pos_plan)||{}).label
     : (l.clover_device || l.nrs_device || l.third_party_name || (l.system_choice==='ncr' ? 'NCR' : ''));
   let idea;
   if(notes.length){
@@ -28926,7 +28965,7 @@ function subscriptionCatalogue(){
   // The software itself. Only the plans with a number in them: "EPAY
   // Custom" has no listed price, so it is typed in below like any other
   // one-off arrangement rather than added at a price we made up.
-  POS_SYSTEM_PLANS.forEach(plan => {
+  systemPlans().forEach(plan => {
     const price = planMonthlyPrice(plan.key);
     if(price == null) return;
     out.push({ source:'pos_plan', group:'EPAY software', key:plan.key, name:plan.label, price });
@@ -28934,12 +28973,14 @@ function subscriptionCatalogue(){
   return out;
 }
 
-/* The POS plan's price lives in POS_SYSTEM_PLANS as a display string —
+/* The POS plan's price comes from the catalogue —
    "$39.99/mo" — so it has to be read back out to be counted. "Custom
    pricing" has no number in it on purpose, and comes back null. */
 function planMonthlyPrice(planKey){
-  const plan = POS_SYSTEM_PLANS.find(p => p.key === planKey);
+  const plan = systemPlans().find(p => p.key === planKey);
   if(!plan) return null;
+  // A database row carries cents; the fallback carries a display string.
+  if(plan.price_cents !== undefined) return plan.price_cents === null ? null : plan.price_cents / 100;
   const m = String(plan.price || '').match(/([0-9]+(?:\.[0-9]+)?)/);
   return m ? Number(m[1]) : null;
 }
@@ -28952,7 +28993,7 @@ function planMonthlyPrice(planKey){
 function posPlanLine(l){
   if(l.system_choice && l.system_choice !== 'epay') return null;
   if(!l.pos_plan) return null;
-  const plan = POS_SYSTEM_PLANS.find(p => p.key === l.pos_plan);
+  const plan = systemPlans().find(p => p.key === l.pos_plan);
   if(!plan) return null;
   const price = planMonthlyPrice(l.pos_plan);
   return {
