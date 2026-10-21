@@ -3466,8 +3466,16 @@
             <p class="subtext">What EPAY pays a merchant for sending another business. Every merchant portal reads this.</p>
           </div>
           <div class="topbar-actions">
+            <button class="btn btn-sm" onclick="newPosOfferDraft()">+ New offer</button>
             <button class="btn btn-accent btn-sm" onclick="addPosTier()">+ Add a tier</button>
           </div>
+        </div>
+        <div class="panel" id="posOfferLibraryPanel">
+          <div class="panel-head">
+            <h2>Offers</h2>
+            <span class="sub">Draft as many as you like. The published one is what every merchant portal reads.</span>
+          </div>
+          <div class="pos-page" id="posOfferLibrary"></div>
         </div>
         <div class="panel"><div class="pos-page" id="posReferralBox"></div></div>
       </section>
@@ -16256,29 +16264,188 @@ function renderPosSetupBoard(){
 let POS_OFFER = null;
 const POS_REWARD_KINDS = { cash:'Cash', credit:'Statement credit', waiver:'Fee waiver', other:'Something else' };
 
-async function renderPosReferral(){
-  if(!POS_OFFER){
-    const { data, error } = await supaV2.from('pos_referral_offer').select('*').eq('id', true).single();
-    if(error){
-      document.getElementById('posReferralBox').innerHTML =
-        `<p class="error-text">Could not load the offer: ${escAttr(error.message)}</p>`;
-      return;
-    }
-    POS_OFFER = data;
+/* =========================================================================
+   THE OFFER LIBRARY
+
+   pos_referral_offer is one row whose primary key can only be true, and the
+   merchant portal reads exactly that row. That is a good shape for "what is
+   running" and a bad one for everything else: drafting the next push while
+   the current one is live, keeping the last one to copy, putting one back
+   without retyping its tiers. All of those meant editing the live offer in
+   front of every merchant.
+
+   So the library (database/113) holds named offers, and publishing copies
+   one into the singleton. The portal's contract never changes - it reads the
+   same row it always did, which matters because the portal ships from a
+   bundle this repo does not build.
+
+   The editor below the list always edits the DRAFT you have selected. The
+   published offer is a copy, so editing a draft changes nothing a merchant
+   can see until you press Publish.
+   ========================================================================= */
+let POS_OFFERS = null;        // the library
+let POS_OFFER_EDITING = null; // which one the editor below is showing
+
+async function loadPosOffers(force){
+  if(POS_OFFERS && !force) return POS_OFFERS;
+  const { data, error } = await supa.from('pos_referral_offers')
+    .select('*').order('updated_at', { ascending: false });
+  if(error){ POS_OFFERS = []; return POS_OFFERS; }
+  POS_OFFERS = data || [];
+  return POS_OFFERS;
+}
+
+async function renderPosOfferLibrary(){
+  const box = document.getElementById('posOfferLibrary');
+  if(!box) return;
+  const offers = await loadPosOffers();
+
+  if(!offers.length){
+    box.innerHTML = `<p class="sub" style="margin:0;">
+      No saved offers yet. "New offer" starts one, and the offer running now is kept here
+      the first time this page loads after the migration.</p>`;
+    return;
   }
+
+  box.innerHTML = `<div class="table-wrap"><table><thead><tr>
+      <th>Offer</th><th>Tiers</th><th>Published</th><th>Updated</th><th></th>
+    </tr></thead><tbody>
+    ${offers.map(o => {
+      const tiers = Array.isArray(o.tiers) ? o.tiers.length : 0;
+      const editing = POS_OFFER_EDITING === o.id;
+      return `<tr${editing ? ' style="background:var(--blue-50);"' : ''}>
+        <td class="name-cell">${escAttr(o.name || 'Untitled')}
+          ${editing ? '<div class="sub">editing below</div>' : ''}</td>
+        <td class="sub">${tiers} tier${tiers === 1 ? '' : 's'}</td>
+        <td>${o.is_published
+          ? '<span class="pill pill-status-active">Live</span>'
+          : '<span class="sub">draft</span>'}</td>
+        <td class="sub">${o.updated_at ? formatDateFull(String(o.updated_at).slice(0,10)) : '-'}</td>
+        <td style="text-align:right;white-space:nowrap;">
+          <button class="btn btn-xs" onclick="editPosOffer('${o.id}')">Edit</button>
+          <button class="btn btn-xs" onclick="duplicatePosOffer('${o.id}')">Duplicate</button>
+          ${o.is_published ? '' : `<button class="btn btn-xs btn-accent" onclick="publishPosOffer('${o.id}')">Publish</button>`}
+          ${o.is_published ? '' : `<button class="btn btn-xs" style="color:var(--red);" onclick="deletePosOffer('${o.id}')">Delete</button>`}
+        </td></tr>`;
+    }).join('')}
+  </tbody></table></div>`;
+}
+
+async function newPosOfferDraft(){
+  const name = prompt('Name this offer. Something you will recognise in six months - "Spring 2027 push", not "new offer".');
+  if(name === null) return;
+  const { data, error } = await supa.from('pos_referral_offers')
+    .insert({ name: (name.trim() || 'Untitled offer'), created_by: actingUser().id }).select().single();
+  if(error){ showToast('Could not create it: ' + error.message, 'error'); return; }
+  POS_OFFERS = null;
+  POS_OFFER_EDITING = data.id;
+  POS_OFFER = Object.assign({}, data);   // the editor below edits the draft
+  await renderPosOfferLibrary();
+  renderPosReferral();
+  showToast('Draft created. Nothing a merchant sees has changed.', 'success');
+}
+
+async function editPosOffer(id){
+  const offers = await loadPosOffers();
+  const o = offers.find(x => x.id === id);
+  if(!o) return;
+  POS_OFFER_EDITING = id;
+  POS_OFFER = Object.assign({}, o);
+  await renderPosOfferLibrary();
+  renderPosReferral();
+}
+
+async function duplicatePosOffer(id){
+  const offers = await loadPosOffers();
+  const o = offers.find(x => x.id === id);
+  if(!o) return;
+  const { data, error } = await supa.from('pos_referral_offers').insert({
+    name: (o.name || 'Untitled') + ' (copy)',
+    pitch: o.pitch, tiers: o.tiers, created_by: actingUser().id
+  }).select().single();
+  if(error){ showToast('Could not copy it: ' + error.message, 'error'); return; }
+  POS_OFFERS = null;
+  POS_OFFER_EDITING = data.id;
+  POS_OFFER = Object.assign({}, data);
+  await renderPosOfferLibrary();
+  renderPosReferral();
+}
+
+async function deletePosOffer(id){
+  const offers = await loadPosOffers();
+  const o = offers.find(x => x.id === id);
+  if(!o || o.is_published) return;
+  if(!confirm('Delete "' + (o.name || 'this offer') + '"? It is a draft, so no merchant has seen it.')) return;
+  const { error } = await deleteRows('pos_referral_offers', 'id', id);
+  if(error){ showToast('Could not delete it: ' + error.message, 'error'); return; }
+  POS_OFFERS = null;
+  if(POS_OFFER_EDITING === id){ POS_OFFER_EDITING = null; POS_OFFER = null; }
+  await renderPosOfferLibrary();
+  renderPosReferral();
+}
+
+/* Publishing is a copy into the singleton, and the only step that changes
+   what a merchant sees. It says so before it does it. */
+async function publishPosOffer(id){
+  const offers = await loadPosOffers();
+  const o = offers.find(x => x.id === id);
+  if(!o) return;
+  const tiers = Array.isArray(o.tiers) ? o.tiers : [];
+  if(!tiers.length && !confirm('"' + (o.name||'This offer') + '" has no tiers. Publishing it shows merchants a pitch with nothing under it. Go ahead?')) return;
+  if(tiers.length && !confirm('Publish "' + (o.name||'this offer') + '"? Every merchant portal starts showing its ' +
+      tiers.length + ' tier' + (tiers.length===1?'':'s') + ' straight away.')) return;
+
+  const res = await updateRow('pos_referral_offer', true, {
+    pitch: o.pitch, tiers: o.tiers,
+    updated_by: (currentUser && currentUser.name) || null,
+    updated_at: new Date().toISOString()
+  });
+  if(res.error){ showToast('Could not publish: ' + res.error.message, 'error'); return; }
+
+  // Flags second: the singleton is the authority on what is live, so it goes
+  // first and these only record what happened.
+  await supa.from('pos_referral_offers').update({ is_published: false }).neq('id', id);
+  await supa.from('pos_referral_offers').update({ is_published: true, published_at: new Date().toISOString() }).eq('id', id);
+
+  POS_OFFERS = null;
+  await renderPosOfferLibrary();
+  showToast('Published. Every merchant portal is showing it now.', 'success');
+}
+
+async function renderPosReferral(){
+  await renderPosOfferLibrary();
+  const offers = await loadPosOffers();
+
+  /* Which offer the editor is on. Nothing chosen means the published one,
+     because that is what somebody opening this page is thinking about. */
+  if(!POS_OFFER_EDITING){
+    const live = offers.find(o => o.is_published) || offers[0];
+    if(live){ POS_OFFER_EDITING = live.id; POS_OFFER = Object.assign({}, live); }
+  }
+  if(!POS_OFFER_EDITING){
+    document.getElementById('posReferralBox').innerHTML =
+      `<p class="sub" style="margin:0;">Start one with "New offer" above.</p>`;
+    return;
+  }
+  const chosen = offers.find(o => o.id === POS_OFFER_EDITING);
+  if(chosen && (!POS_OFFER || POS_OFFER.id !== chosen.id)) POS_OFFER = Object.assign({}, chosen);
+  if(!POS_OFFER) return;
+
   const tiers = Array.isArray(POS_OFFER.tiers) ? POS_OFFER.tiers.slice() : [];
   tiers.sort((a,b) => (a.signups||0) - (b.signups||0));
 
   document.getElementById('posReferralBox').innerHTML = `
-    <div class="row" style="gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
-      <button type="button" class="chip" aria-pressed="${!!POS_OFFER.running}"
-        onclick="setPosOffer({running:${!POS_OFFER.running}})">
-        ${POS_OFFER.running ? 'Running' : 'Paused'}</button>
-      <span style="font-size:11.5px;color:var(--slate-500);">
-        ${POS_OFFER.running
-          ? 'Every merchant portal is showing these tiers.'
-          : 'Merchant portals say the offer is between rounds rather than showing tiers nobody will honour.'}</span>
+    <div class="row" style="gap:10px;align-items:baseline;margin-bottom:6px;">
+      <h3 style="margin:0;">${escAttr(POS_OFFER.name || 'Offer')}</h3>
+      ${POS_OFFER.is_published
+        ? '<span class="pill pill-status-active">Live</span>'
+        : '<span class="sub">draft &middot; no merchant can see it yet</span>'}
+      <button class="btn btn-xs" style="margin-left:auto;" onclick="renamePosOffer()">Rename</button>
     </div>
+    <p class="sub" style="margin:0 0 14px;">
+      ${POS_OFFER.is_published
+        ? 'Saved to this offer. Press Publish in the list above to put changes in front of merchants.'
+        : 'Saved to this draft. Nothing a merchant sees changes until it is published.'}</p>
 
     <div class="field"><label>The pitch</label>
       <input id="poPitch" value="${escAttr(POS_OFFER.pitch||'')}"
@@ -16288,8 +16455,8 @@ async function renderPosReferral(){
 
     <h3 style="font-size:14px;margin:20px 0 4px;">Tiers</h3>
     <p style="font-size:11.5px;color:var(--slate-500);margin:0 0 10px;">
-      What a merchant gets at each number of signups. Changing a tier changes what every merchant
-      sees immediately &mdash; it does not change what anybody has already been promised.</p>
+      What a merchant gets at each number of signups. Saved to this offer; merchants see it once the
+      offer is published &mdash; and publishing never changes what anybody was already promised.</p>
 
     ${tiers.length === 0 ? `<p style="font-size:12.5px;color:var(--slate-500);">No tiers yet.</p>` :
       tiers.map((t,i) => `
@@ -16313,15 +16480,27 @@ async function renderPosReferral(){
       Add the first tier from the button at the top of this page.</p>`}`;
 }
 
+/* Saves to the offer being edited - a row in the library, never the
+   singleton. The singleton changes on Publish and nowhere else, which is
+   what makes a draft safe to work on while something else is live. */
 async function setPosOffer(patch){
-  const next = Object.assign({}, POS_OFFER, patch, {
-    updated_by: (currentUser && currentUser.name) || null,
-    updated_at: new Date().toISOString(),
-  });
-  POS_OFFER = next;
+  if(!POS_OFFER || !POS_OFFER.id){ showToast('Pick an offer to edit first.', 'error'); return; }
+  const id = POS_OFFER.id;
+  POS_OFFER = Object.assign({}, POS_OFFER, patch);
+  const idx = (POS_OFFERS || []).findIndex(o => o.id === id);
+  if(idx > -1) POS_OFFERS[idx] = Object.assign({}, POS_OFFERS[idx], patch);
   renderPosReferral();
-  const { error } = await updateRow('pos_referral_offer', true, patch);
-  if(error) showToast('That did not save: ' + error.message, 'error');
+
+  const res = await updateRow('pos_referral_offers', id,
+    Object.assign({}, patch, { updated_at: new Date().toISOString() }));
+  if(res.error) showToast('That did not save: ' + res.error.message, 'error');
+}
+
+async function renamePosOffer(){
+  if(!POS_OFFER) return;
+  const name = prompt('Name for this offer', POS_OFFER.name || '');
+  if(name === null) return;
+  await setPosOffer({ name: name.trim() || 'Untitled offer' });
 }
 
 function posTiersSorted(){
