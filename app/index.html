@@ -14723,7 +14723,9 @@ function renderPosDetail(){
 
 function posDetailOverview(m){
   const loc = posPrimaryLocation(m);
-  const row = (k,v) => `<div style="display:flex;justify-content:space-between;gap:16px;padding:7px 0;border-bottom:1px solid var(--line);">
+  /* 7px of padding against a 1px rule put the text on the line. 11px gives
+     each row its own band, which is what makes a list of facts scannable. */
+  const row = (k,v) => `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:18px;padding:11px 0;border-bottom:1px solid var(--line);">
     <span style="font-size:12px;color:var(--slate-500);">${k}</span>
     <span style="font-size:13px;font-weight:600;text-align:right;word-break:break-word;">${v || '—'}</span></div>`;
   return `
