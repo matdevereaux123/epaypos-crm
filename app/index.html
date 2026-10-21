@@ -1901,13 +1901,11 @@
      scrolls sideways instead, which keeps every row readable. */
   #view-backend table, #view-posmerchants table, #view-possetup table,
   #view-posbilling table, #view-posreferral table, #view-possubs table,
-  #view-posconfig table{ min-width:720px; }
   #view-backend .panel, #view-posmerchants .panel, #view-possetup .panel,
   #view-posbilling .panel, #view-posreferral .panel, #view-possubs .panel,
-  #view-posconfig .panel{ overflow-x:auto; }
   /* A header never breaks mid-phrase. */
   #view-posmerchants th, #view-possetup th, #view-posbilling th,
-  #view-posreferral th, #view-possubs th, #view-posconfig th{ white-space:nowrap; }
+  #view-posreferral th, #view-possubs th{ white-space:nowrap; }
   /* Nor does a business name. */
   .pos-page .name-cell, #view-posmerchants .name-cell{ min-width:160px; }
 
@@ -2725,10 +2723,6 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
             Billing
           </button>
-          <button class="nav-item" data-view="posconfig">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.2.47.63.81 1.14.91H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-            Register settings
-          </button>
           <button class="nav-item" data-view="possubs">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
             Subscription editing
@@ -3478,15 +3472,6 @@
            The things a merchant asks for on a Friday. Records, not code:
            pos_addons and pos_referral_offer already worked this way, and
            anything that needs a deploy to change goes stale instead. -->
-      <section id="view-posconfig" class="view" style="display:none;">
-        <div class="topbar">
-          <div>
-            <h1>Register defaults</h1>
-            <p class="subtext">What every account starts on and follows until it asks for something else. One merchant's own wording is set on their account, under Register settings &mdash; changing it here does not override anybody who has already been given their own.</p>
-          </div>
-        </div>
-        <div class="panel"><div class="pos-page" id="posConfigBox" style="padding:18px 20px;"></div></div>
-      </section>
 
       <!-- EPAY BACK END: SUBSCRIPTION EDITING
            Split out of Billing. Billing is a thing you read - what each
@@ -4540,7 +4525,7 @@ function posViewBox(view){
   const id = {
     backend: 'backendStats', posmerchants: 'posMerchantsBody', possetup: 'posSetupBoard',
     posbilling: 'posBillingBox', possubs: 'posSubsBox', posreferral: 'posReferralBox',
-    posconfig: 'posConfigBox', postasks: 'posTasksBox',
+    postasks: 'posTasksBox',
   }[view];
   if(!id) return null;
   const el = document.getElementById(id);
@@ -4654,8 +4639,7 @@ function showV2Notice(view){
   if(!V2_BACKED_VIEWS.includes(view)) return;
   const box = posViewBox(view);
   if(!box || box.querySelector('.v2-notice')) return;
-  const what = view === 'posconfig' ? 'The settings on this page'
-             : view === 'posreferral' ? 'The referral tiers'
+  const what = view === 'posreferral' ? 'The referral tiers'
              : 'Plans, add-on prices and accepted agreements';
   const strip = document.createElement('div');
   strip.className = 'panel v2-notice';
@@ -10335,7 +10319,7 @@ function showView(view, fromHistory){
   }
   /* The same gate as the switch above it. Two different answers to "may
      they open this" is how somebody reaches a view with no way back to it. */
-  const posViews = ['backend','posmerchants','possetup','posnew','posreferral','posbilling','possubs','postasks','posconfig'];
+  const posViews = ['backend','posmerchants','possetup','posnew','posreferral','posbilling','possubs','postasks'];
   if(posViews.includes(view) && !(currentUser && currentUser.epay_admin)) view = 'dashboard';
   /*
    * "New merchant" is an action wearing a nav item's clothes. It opens the
@@ -10379,7 +10363,6 @@ function showView(view, fromHistory){
         else if(view === 'posbilling') renderPosBilling();
         else if(view === 'possubs') renderPosSubscriptions();
         else if(view === 'postasks') renderPosTasks();
-        else if(view === 'posconfig') renderPosConfig();
         else renderPosMerchants();
       }).then(() => { if(!ok) showV2Notice(view); });
     });
@@ -14731,8 +14714,6 @@ async function openPosMerchant(id, tab){
   await loadPosBilling();
   await loadPosAgreements(id);
   await loadPosChanges(id);
-  await loadPosConfig();
-  await loadPosMerchantConfig(id);
   await loadPosPortalUsers(id);
   await loadPosStationTypes();
   const { data } = await supaV2.from('pos_merchant_notes')
@@ -14750,7 +14731,7 @@ function renderPosDetail(){
   const tabs = [
     ['overview','Overview'], ['setup','Setup'], ['plan','Locations and plan'],
     ['devices','Stations'], ['users','Portal logins'],
-    ['settings','Register settings'], ['log','Relationship'],
+    ['log','Relationship'],
   ];
   document.getElementById('posMerchantDrawer').innerHTML = `
     <div class="drawer-head">
@@ -14771,7 +14752,6 @@ function renderPosDetail(){
         : posDetailTab === 'setup' ? posDetailSetup(m)
         : posDetailTab === 'plan' ? posDetailPlan(m)
         : posDetailTab === 'users' ? posDetailPortalUsers(m)
-        : posDetailTab === 'settings' ? posDetailSettings(m)
         : posDetailTab === 'devices' ? posDetailDevices(m)
         : posDetailLog(m)}
     </div>
@@ -15612,13 +15592,6 @@ function posSetupField(q, answers){
    the first should follow when the default moves.
    --------------------------------------------------------------------------- */
 
-let POS_MERCHANT_CONFIG = [];
-
-async function loadPosMerchantConfig(merchantId){
-  const { data, error } = await supa.rpc('pos_config_for', { p_merchant: merchantId });
-  POS_MERCHANT_CONFIG = error ? [] : (data || []);
-  return POS_MERCHANT_CONFIG;
-}
 
 /* ---------------------------------------------------------------------------
    WHO CAN SIGN INTO THIS MERCHANT'S PORTAL
@@ -15807,119 +15780,14 @@ async function setPosPortalUserActive(id, active){
   showToast(active ? 'Restored.' : 'Suspended — they cannot sign in.', 'success');
 }
 
-function posDetailSettings(m){
-  if(POS_MERCHANT_CONFIG.length === 0){
-    return `<div class="stub-panel"><h3>No settings yet</h3>
-      <p style="max-width:420px;margin:0 auto;font-size:13px;line-height:1.6;">
-        Run migrations 110 and 111 and this account's receipt wording, tip buttons and till
-        reasons appear here &mdash; starting from the platform defaults until somebody changes
-        one for this merchant.</p></div>`;
-  }
-  const overrides = POS_MERCHANT_CONFIG.filter(r => r.is_override).length;
-  return `
-    <p style="font-size:12px;color:var(--slate-500);margin:0 0 4px;">
-      What this account's registers use. Anything not changed here follows the platform default,
-      so a change to the standard reaches them.</p>
-    <p style="font-size:11.5px;margin:0 0 14px;color:${overrides?'var(--navy-700)':'var(--slate-500)'};">
-      ${overrides ? overrides + (overrides===1?' setting is':' settings are') + ' set for this merchant only.'
-                  : 'Everything is on the platform default.'}</p>
-    ${POS_CONFIG_GROUPS.map(g => {
-      const rows = POS_MERCHANT_CONFIG.filter(r => r.scope === g.scope);
-      if(!rows.length) return '';
-      return `<div style="margin-bottom:20px;">
-        <h3 style="font-size:13.5px;margin:0 0 3px;">${escAttr(g.title)}</h3>
-        <p style="font-size:11px;color:var(--slate-500);margin:0 0 10px;">${escAttr(g.blurb)}</p>
-        ${rows.map(r => posMerchantConfigField(m, r)).join('')}
-      </div>`;
-    }).join('')}`;
-}
-
-function posMerchantConfigField(m, r){
-  const kind = POS_CONFIG_KIND(r);
-  const id = 'mcfg_' + r.scope + '_' + r.key;
-  const badge = r.is_override
-    ? `<span class="pill pill-inhouse" style="margin-left:6px;">theirs</span>`
-    : `<span class="sub" style="margin-left:6px;">default</span>`;
-  const revert = r.is_override
-    ? `<button class="btn btn-xs" onclick="clearPosMerchantConfig('${m.id}','${r.scope}','${r.key}')">
-         Back to default</button>` : '';
-  let control;
-  if(kind === 'flag'){
-    control = `<div class="row">` + [true,false].map(v =>
-      `<button type="button" class="chip" aria-pressed="${r.value===v}"
-         onclick="savePosMerchantConfig('${m.id}','${r.scope}','${r.key}', ${v})">${v?'Yes':'No'}</button>`
-      ).join('') + (revert ? revert : '') + `</div>`;
-  } else if(kind === 'list'){
-    control = `
-      <textarea id="${id}" rows="${Math.max(2, r.value.length + 1)}"
-        style="width:100%;font-size:13px;">${escAttr(r.value.join('\n'))}</textarea>
-      <div class="row" style="margin-top:7px;">
-        <button class="btn btn-xs" onclick="savePosMerchantConfigList('${m.id}','${r.scope}','${r.key}')">Save for this merchant</button>
-        ${revert}<span class="sub">One per line.</span>
-      </div>`;
-  } else {
-    control = `
-      <input id="${id}" value="${escAttr(String(r.value))}">
-      <div class="row" style="margin-top:7px;">
-        <button class="btn btn-xs" onclick="savePosMerchantConfigText('${m.id}','${r.scope}','${r.key}')">Save for this merchant</button>
-        ${revert}
-      </div>`;
-  }
-  return `<div class="field setup-field" style="margin-bottom:16px;">
-    <label>${escAttr(r.label || r.key)}${badge}</label>${control}</div>`;
-}
-
-async function savePosMerchantConfigList(merchantId, scope, key){
-  const el = document.getElementById('mcfg_' + scope + '_' + key);
-  if(!el) return;
-  const lines = el.value.split('\n').map(x => x.trim()).filter(Boolean);
-  await savePosMerchantConfig(merchantId, scope, key, posConfigListValue(scope, key, lines));
-}
-
-async function savePosMerchantConfigText(merchantId, scope, key){
-  const el = document.getElementById('mcfg_' + scope + '_' + key);
-  if(!el) return;
-  await savePosMerchantConfig(merchantId, scope, key, el.value.trim());
-}
 
 /* An override is an upsert: this merchant may already have one, and a second
    change should move it rather than adding a second row the read would have
    to choose between. */
-async function savePosMerchantConfig(merchantId, scope, key, value){
-  const before = POS_MERCHANT_CONFIG.find(r => r.scope === scope && r.key === key) || {};
-  const base = POS_CONFIG.find(r => r.scope === scope && r.key === key) || {};
-  const { data, error } = await supa.from('pos_config')
-    .upsert({ merchant_id: merchantId, scope, key, value,
-              label: base.label || before.label || key, sort: base.sort || 0, active: true,
-              updated_at: new Date().toISOString(),
-              updated_by: (currentUser && currentUser.name) || 'Unknown' },
-            { onConflict: 'scope,key,merchant_id' })
-    .select();
-  if(error){ showToast('Could not save: ' + error.message, 'error'); return; }
-  if(!data || !data.length){
-    showToast('Nothing was saved — this needs admin portal access.', 'error');
-    return;
-  }
-  await logPosChange('pos_config', scope + '.' + key, merchantId, key,
-    JSON.stringify(before.value), JSON.stringify(value),
-    before.is_override ? null : 'Changed from the platform default.');
-  await loadPosMerchantConfig(merchantId);
-  renderPosDetail();
-  showToast('Saved for this merchant. Their registers pick it up on the next sync.', 'success');
-}
 
 /* Deleting the override rather than copying today's default into it. A
    merchant who never asked for anything should follow the standard when it
    moves; one who asked for exactly this should not. */
-async function clearPosMerchantConfig(merchantId, scope, key){
-  const { error } = await supa.from('pos_config').delete()
-    .eq('merchant_id', merchantId).eq('scope', scope).eq('key', key);
-  if(error){ showToast('Could not clear it: ' + error.message, 'error'); return; }
-  await logPosChange('pos_config', scope + '.' + key, merchantId, key, 'their own', 'platform default');
-  await loadPosMerchantConfig(merchantId);
-  renderPosDetail();
-  showToast('Back on the platform default.', 'success');
-}
 
 function posDetailSetup(m){
   const answers = m.setup_answers || {};
@@ -16797,170 +16665,6 @@ function posMerchantMonthly(m){
    stays a boolean, whatever gets typed into the box.
    --------------------------------------------------------------------------- */
 
-let POS_CONFIG = [];
-
-const POS_CONFIG_GROUPS = [
-  { scope:'receipt', title:'Receipts',
-    blurb:'What prints at the top and bottom of every receipt from these tills.' },
-  { scope:'tips', title:'Tips',
-    blurb:'The buttons a customer sees, and whether a tip is asked for on cash.' },
-  { scope:'reasons', title:'Reasons the till asks for',
-    blurb:'A reason somebody can pick is a reason that gets recorded. A free-text box is one that gets left blank.' },
-  { scope:'language', title:'Language',
-    blurb:'What the registers and the portal come up in. A till can still be set differently where it needs to be — a screen facing a customer, a kitchen display read by somebody else.' },
-  { scope:'connectors', title:'What merchants can switch on',
-    blurb:'Anything not on this list shows as coming soon rather than being sellable.' },
-];
-
-/* Lists are edited a line at a time: a comma is a thing people put inside a
-   receipt line, so it cannot also be the separator. */
-const POS_CONFIG_KIND = (row) => Array.isArray(row.value) ? 'list'
-  : (typeof row.value === 'boolean' ? 'flag' : 'text');
-
-let POS_CONFIG_ERROR = null;   // why the list is empty, when it is
-
-async function loadPosConfig(force){
-  if(POS_CONFIG.length && !force) return POS_CONFIG;
-  POS_CONFIG_ERROR = null;
-
-  /* The v2Ready() gate that used to be here is gone with the data: these
-     settings are read from the Control Center now, and waiting on a sign-in
-     to a platform this query never touches is why the page stayed empty
-     after the move. */
-
-  /* Defaults only. Overrides live in the same table against a merchant, and
-     mixing them in here would show one shop's receipt footer as if it were
-     the standard. merchant_id arrives with 111, so a database that has not
-     run it yet is asked without the filter rather than refused outright. */
-  let res = await supa.from('pos_config').select('*')
-    .is('merchant_id', null).order('scope').order('sort');
-  if(res.error && (res.error.code === '42703' || /merchant_id/.test(res.error.message || ''))){
-    res = await supa.from('pos_config').select('*').order('scope').order('sort');
-  }
-
-  if(res.error){
-    POS_CONFIG = [];
-    POS_CONFIG_ERROR = res.error;
-    return POS_CONFIG;
-  }
-  POS_CONFIG = res.data || [];
-  return POS_CONFIG;
-}
-
-async function renderPosConfig(){
-  await loadPosConfig(true);
-  const box = document.getElementById('posConfigBox');
-  if(!box) return;
-
-  if(POS_CONFIG.length === 0 && POS_CONFIG_ERROR){
-    box.innerHTML = `<div class="stub-panel"><h3>Could not read the settings</h3>
-      <p style="max-width:480px;margin:0 auto;font-size:13px;line-height:1.6;">
-        ${escAttr(POS_CONFIG_ERROR.message || 'Unknown error')}
-        <span style="display:block;margin-top:8px;color:var(--slate-500);">
-          A permission error here means your login is not an EPAY admin; a missing table means
-          110 has not been run in the Control Center's database.</span></p></div>`;
-    return;
-  }
-
-  if(POS_CONFIG.length === 0){
-    box.innerHTML = `<div class="stub-panel"><h3>Nothing to change yet</h3>
-      <p style="max-width:460px;margin:0 auto;font-size:13px;line-height:1.6;">
-        Run migrations 110 and 111 and these appear. Until then the registers use what they
-        ship with.
-        <span style="display:block;margin-top:8px;color:var(--slate-500);">
-          They go in the Control Center's database, beside the plan catalogue - the POS
-          platform has no users table, so the admin check these settings are protected by
-          cannot be written there.</span>
-        </p></div>`;
-    return;
-  }
-
-  box.innerHTML = POS_CONFIG_GROUPS.map(g => {
-    const rows = POS_CONFIG.filter(r => r.scope === g.scope);
-    if(!rows.length) return '';
-    return `
-      <div style="margin-bottom:26px;">
-        <h3 style="font-size:14px;margin:0 0 3px;">${escAttr(g.title)}</h3>
-        <p style="font-size:11.5px;color:var(--slate-500);margin:0 0 12px;">${escAttr(g.blurb)}</p>
-        ${rows.map(r => posConfigField(r)).join('')}
-      </div>`;
-  }).join('');
-}
-
-function posConfigField(r){
-  const kind = POS_CONFIG_KIND(r);
-  const id = 'cfg_' + r.scope + '_' + r.key;
-  const changed = r.updated_by
-    ? `<div class="sub">Last changed by ${escAttr(r.updated_by)} on ${new Date(r.updated_at).toLocaleDateString()}</div>`
-    : '';
-  let control;
-  if(kind === 'flag'){
-    control = `<div class="row">` + [true,false].map(v =>
-      `<button type="button" class="chip" aria-pressed="${r.value===v}"
-         onclick="savePosConfig('${r.scope}','${r.key}', ${v})">${v?'Yes':'No'}</button>`).join('') + `</div>`;
-  } else if(kind === 'list'){
-    control = `
-      <textarea id="${id}" rows="${Math.max(2, r.value.length + 1)}"
-        style="width:100%;font-size:13px;">${escAttr(r.value.join('\n'))}</textarea>
-      <div class="row" style="margin-top:7px;">
-        <button class="btn btn-xs" onclick="savePosConfigList('${r.scope}','${r.key}')">Save</button>
-        <span class="sub">One per line.</span>
-      </div>`;
-  } else {
-    control = `
-      <input id="${id}" value="${escAttr(String(r.value))}">
-      <div class="row" style="margin-top:7px;">
-        <button class="btn btn-xs" onclick="savePosConfigText('${r.scope}','${r.key}')">Save</button>
-      </div>`;
-  }
-  return `<div class="field setup-field" style="margin-bottom:18px;">
-    <label>${escAttr(r.label || r.key)}</label>${control}${changed}</div>`;
-}
-
-/*
- * Tip buttons are numbers and the reasons are not, so a list of numbers goes
- * back as numbers. A "20" that became the string "20" is a tip button the
- * register cannot do arithmetic with.
- */
-function posConfigListValue(scope, key, lines){
-  const numeric = scope === 'tips' && key === 'presets';
-  if(!numeric) return lines;
-  const out = lines.map(x => Number(x)).filter(n => isFinite(n) && n >= 0);
-  return out;
-}
-
-async function savePosConfigList(scope, key){
-  const el = document.getElementById('cfg_' + scope + '_' + key);
-  if(!el) return;
-  const lines = el.value.split('\n').map(x => x.trim()).filter(Boolean);
-  await savePosConfig(scope, key, posConfigListValue(scope, key, lines));
-}
-
-async function savePosConfigText(scope, key){
-  const el = document.getElementById('cfg_' + scope + '_' + key);
-  if(!el) return;
-  await savePosConfig(scope, key, el.value.trim());
-}
-
-async function savePosConfig(scope, key, value){
-  const before = POS_CONFIG.find(r => r.scope === scope && r.key === key);
-  const { data, error } = await supa.from('pos_config')
-    .update({ value, updated_at: new Date().toISOString(),
-              updated_by: (currentUser && currentUser.name) || 'Unknown' })
-    .eq('scope', scope).eq('key', key).is('merchant_id', null).select();
-  /* pos_config is keyed by (scope,key) rather than id, so updateRow does not
-     fit — but the same rule does: no rows back means RLS refused it, and
-     "Saved" over a refused write is the bug updateRow exists to stop. */
-  if(error){ showToast('Could not save: ' + error.message, 'error'); return; }
-  if(!data || !data.length){
-    showToast('Nothing was saved — this needs admin portal access.', 'error');
-    return;
-  }
-  await logPosChange('pos_config', scope + '.' + key, null, key,
-    before ? JSON.stringify(before.value) : null, JSON.stringify(value));
-  showToast('Saved. Every account on the default picks this up on their next sync.', 'success');
-  await renderPosConfig();
-}
 
 /* ---------------------------------------------------------------------------
    ADDING A SUBSCRIPTION
@@ -28163,7 +27867,6 @@ async function removePlaceholderCalendar(id){
   CONNECTED_CALENDARS = CONNECTED_CALENDARS.filter(c => c.id !== id);
   renderConnectedCalendarsList();
 }
-
 
 
 document.getElementById('addCalendarBtn').addEventListener('click', function(){
