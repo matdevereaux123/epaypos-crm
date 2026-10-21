@@ -1848,12 +1848,60 @@
     display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end;
     border:1px solid var(--line); border-radius:10px; padding:11px; margin-bottom:8px;
   }
-  /* The quick-add button floats over the bottom-right corner, so the last row
-     of any back-end page would otherwise sit underneath it. */
-  #view-posreferral .panel, #view-posmerchants .panel,
-  #view-possetup .panel, #view-posbilling .panel, #view-backend .panel{
-    padding-bottom:84px;
+  /* ---------- EPAY BACK END: SPACING ----------
+     The quick-add button floats over the bottom-right corner. Every panel in
+     the module used to carry 84px of padding to dodge it, which put dead
+     space inside each panel - a visible gap under every table - and still
+     let the button sit over the last row of the longest one. The space
+     belongs to the page, once, at the end. */
+  #view-backend, #view-posmerchants, #view-possetup,
+  #view-posbilling, #view-posreferral, #view-possubs{ padding-bottom:96px; }
+
+  /* One rhythm down the module: panels apart by the same amount, headings
+     the same distance from what they introduce. */
+  #view-backend .panel, #view-posmerchants .panel, #view-possetup .panel,
+  #view-posbilling .panel, #view-posreferral .panel, #view-possubs .panel{
+    margin-bottom:18px;
   }
+  #view-posbilling h3, #view-posreferral h3, #view-possubs h3{
+    font-size:15px; margin:24px 0 4px;
+  }
+  #view-posbilling h3:first-child, #view-posreferral h3:first-child,
+  #view-possubs h3:first-child{ margin-top:0; }
+
+  /* Fields in a row used fixed pixel widths, so a long label pushed its
+     input under the next one. A grid gives each field a column that cannot
+     collide with its neighbour, and they line up at the baseline. */
+  .pos-grid{
+    display:grid; grid-template-columns:repeat(auto-fit, minmax(190px, 1fr));
+    gap:14px; align-items:end;
+  }
+  .pos-grid .field{ margin:0; min-width:0; }
+  .pos-tier-row{ gap:14px; padding:14px; align-items:end; }
+  .pos-tier-row .field{ min-width:0; }
+
+  /* An inline price cell: the input is the control, not a prompt. */
+  .pos-price-input{
+    width:116px; min-height:38px; padding:0 10px 0 22px; border-radius:8px;
+    border:1px solid var(--line-strong); background:var(--card); font:inherit;
+    font-size:13.5px; font-variant-numeric:tabular-nums; text-align:right;
+  }
+  .pos-price-wrap{ position:relative; display:inline-block; }
+  .pos-price-wrap::before{
+    content:'$'; position:absolute; left:9px; top:50%; transform:translateY(-50%);
+    font-size:13px; color:var(--slate-500); pointer-events:none;
+  }
+  .pos-price-wrap.is-unset::before{ opacity:.45; }
+
+  /* The right-hand drawer: its footer buttons used to scroll away under the
+     content and, on a short drawer, sit on top of the last field. Sticky
+     keeps them where the hand expects them, on their own band. */
+  .drawer-footer{
+    position:sticky; bottom:0; z-index:2;
+    background:var(--card); border-top:1px solid var(--line);
+  }
+  .drawer-body .row{ row-gap:10px; }
+  .drawer-body > .field:last-child{ margin-bottom:18px; }
 
   #quickAddFab{ position:fixed; right:26px; bottom:26px; z-index:900; display:flex; flex-direction:column; align-items:flex-end; gap:10px; pointer-events:none; }
   #quickAddFabBtn{ pointer-events:auto; }
@@ -2371,6 +2419,9 @@
     padding:8px 14px 10px;font-size:10.5px;color:var(--slate-300);
     border-top:1px solid var(--line);text-align:center;letter-spacing:.02em;
   }
+
+  .pos-sell-toggle{ display:inline-flex; align-items:center; gap:7px; cursor:pointer; }
+  .pos-sell-toggle input{ accent-color:var(--blue-600); }
 
 </style>
 </head><body data-brand="epay">
@@ -16696,11 +16747,10 @@ async function renderPosSubscriptions(){
       ${POS_PLANS.map(p => `<tr>
         <td class="name-cell">${escAttr(p.label)}${p.note?`<div class="sub">${escAttr(p.note)}</div>`:''}</td>
         <td class="sub">${escAttr(p.edition||'')}</td>
-        <td>${p.price_cents===null
-          ? `<span class="pill pill-commission">Price not set</span>`
-          : `<strong>${posMoney(p.price_cents)}</strong><span class="sub">/mo</span>`}</td>
-        <td style="text-align:right;"><button class="btn btn-xs"
-          onclick="editPosPrice('pos_plans','${p.key}',${p.price_cents===null?'null':p.price_cents},'${escAttr(p.label)}')">Edit</button></td>
+        <td>${posPriceCellHtml('pos_plans', p.key, p.price_cents)}</td>
+        <td class="sub" style="text-align:right;white-space:nowrap;">${p.price_cents===null
+          ? 'cannot be sold'
+          : 'per location, per month'}</td>
       </tr>`).join('')}
     </tbody></table></div>
 
@@ -16715,15 +16765,15 @@ async function renderPosSubscriptions(){
         <td class="name-cell">${escAttr(a.label)}${a.blurb?`<div class="sub">${escAttr(a.blurb)}</div>`:''}</td>
         <td>${a.sellable === false
           ? `<span class="pill pill-agent-auth">Not sold</span>`
-          : a.price_cents===null
-          ? `<span class="pill pill-commission">Price not set</span>`
-          : a.price_cents===0 ? `<span class="pill pill-agent-auth">Included</span>`
-          : `<strong>${posMoney(a.price_cents)}</strong><span class="sub">/mo</span>`}</td>
+          : posPriceCellHtml('pos_addons', a.key, a.price_cents)}</td>
         <td class="sub">${a.requires ? escAttr((posAddon(a.requires)||{}).label || a.requires) : '—'}</td>
-        <td style="text-align:right;">${a.sellable === false
-          ? `<span class="sub">indicator only</span>`
-          : `<button class="btn btn-xs"
-          onclick="editPosPrice('pos_addons','${a.key}',${a.price_cents===null?'null':a.price_cents},'${escAttr(a.label)}')">Edit</button>`}</td>
+        <td style="text-align:right;white-space:nowrap;">
+          <label class="pos-sell-toggle">
+            <input type="checkbox" ${a.sellable === false ? '' : 'checked'}
+                   onchange="setPosAddonSellable('${a.key}', this.checked)">
+            <span class="sub">Sold</span>
+          </label>
+        </td>
       </tr>`).join('')}
     </tbody></table></div>`;
 }
@@ -16847,6 +16897,77 @@ async function renderPosBilling(){
         style="color:var(--brand-accent-2);font-weight:600;">Subscription editing</a>.</p>`;
 }
 
+/* A price you can type into, rather than a prompt you have to open.
+
+   Editing fifteen prices through window.prompt is fifteen dialogs, each one
+   losing the context of the table it came from, and none of them showing
+   what the neighbouring rows cost. The cell is the control now: type, tab
+   out, saved. Blank means no price set, which is a real state - an add-on
+   with no price has no paywall to show.
+
+   The row is not re-rendered on save, deliberately: re-rendering a table
+   while the person is tabbing through it moves the focus out from under
+   them. The number they typed is already on screen; the record is updated
+   underneath. */
+function posPriceCellHtml(table, key, cents){
+  const unset = cents === null || cents === undefined;
+  return `<span class="pos-price-wrap${unset ? ' is-unset' : ''}">
+    <input class="pos-price-input" inputmode="decimal"
+           value="${unset ? '' : (cents/100).toFixed(2)}"
+           placeholder="not set"
+           aria-label="Price per month"
+           onchange="savePosPrice('${table}','${key}', this)">
+  </span>`;
+}
+
+async function savePosPrice(table, key, input){
+  const typed = String(input.value || '').trim().replace(/^\$/, '');
+  let cents;
+  if(typed === ''){ cents = null; }
+  else {
+    const n = Number(typed);
+    if(!isFinite(n) || n < 0){
+      showToast('That is not a price.', 'error');
+      input.focus();
+      return;
+    }
+    // Integers for money, like every other amount in this system.
+    cents = Math.round(n * 100);
+  }
+
+  const { error } = await updateRowBy(table, 'key', key, { price_cents: cents });
+  if(error){ showToast('Could not save: ' + error.message, 'error'); return; }
+
+  input.value = cents === null ? '' : (cents/100).toFixed(2);
+  input.closest('.pos-price-wrap').classList.toggle('is-unset', cents === null);
+  const row = (table === 'pos_plans' ? POS_PLANS : POS_ADDONS).find(x => x.key === key);
+  if(row) row.price_cents = cents;
+  showToast(cents === null ? 'Price cleared.' : 'Saved.', 'success');
+}
+
+/* "Not sold" is a settled answer rather than a missing one - 103 added the
+   column for rows that exist as indicators instead of products. It was only
+   settable in SQL. */
+async function setPosAddonSellable(key, sellable){
+  const { error } = await updateRowBy('pos_addons', 'key', key, { sellable: !!sellable });
+  if(error){ showToast('Could not save: ' + error.message, 'error'); return; }
+  const row = POS_ADDONS.find(x => x.key === key);
+  if(row) row.sellable = !!sellable;
+  renderPosSubscriptions();
+}
+
+/* updateRow keyed on something other than id. Same reason it exists: an
+   update that RLS refuses returns no error and no rows, and silence has
+   been mistaken for success here more than once. */
+async function updateRowBy(table, column, value, fields){
+  const res = await supa.from(table).update(fields).eq(column, value).select(column);
+  if(res.error) return { error: res.error };
+  if(!res.data || !res.data.length){
+    return { error: { message: 'Nothing was saved - this is not yours to change.' } };
+  }
+  return { data: res.data[0] };
+}
+
 async function editPosPrice(table, key, current, label){
   const typed = prompt('Price per month for ' + label + ', in dollars.\nBlank means no price set — it cannot be sold.',
     current === null ? '' : (current/100).toFixed(2));
@@ -16864,7 +16985,10 @@ async function editPosPrice(table, key, current, label){
   const { error } = await supa.from(table).update({ price_cents: cents }).eq('key', key);
   if(error){ showToast('Could not save: ' + error.message, 'error'); return; }
   await loadPosBilling(true);
-  renderPosBilling();
+  // Whichever of the two screens is open - this used to always redraw
+  // Billing, so editing a price on Subscriptions appeared to do nothing.
+  if(document.getElementById('view-possubs').style.display !== 'none') renderPosSubscriptions();
+  else renderPosBilling();
 }
 
 /* ---------------------------------------------------------------------------
