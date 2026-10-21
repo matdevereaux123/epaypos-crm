@@ -4634,7 +4634,11 @@ async function v2SignOut(){
 /* possubs is off this list: its plans and add-ons come from the Control
    Center now, so there is nothing on that page to sign in to the platform
    for. */
-const V2_BACKED_VIEWS = ['posbilling','posreferral','posconfig'];
+/* posconfig came off this list with the register settings themselves: V2 has
+   no users table, so the admin test those policies are written against
+   cannot exist there, and the settings now live in the Control Center
+   beside the catalogue. */
+const V2_BACKED_VIEWS = ['posbilling','posreferral'];
 
 /*
  * A line at the top of a page whose figures come from V2, when nobody has
@@ -15611,7 +15615,7 @@ function posSetupField(q, answers){
 let POS_MERCHANT_CONFIG = [];
 
 async function loadPosMerchantConfig(merchantId){
-  const { data, error } = await supaV2.rpc('pos_config_for', { p_merchant: merchantId });
+  const { data, error } = await supa.rpc('pos_config_for', { p_merchant: merchantId });
   POS_MERCHANT_CONFIG = error ? [] : (data || []);
   return POS_MERCHANT_CONFIG;
 }
@@ -15807,7 +15811,7 @@ function posDetailSettings(m){
   if(POS_MERCHANT_CONFIG.length === 0){
     return `<div class="stub-panel"><h3>No settings yet</h3>
       <p style="max-width:420px;margin:0 auto;font-size:13px;line-height:1.6;">
-        Run migrations 110 and 111 on the POS platform's database and this account's receipt wording, tip buttons and till
+        Run migrations 110 and 111 and this account's receipt wording, tip buttons and till
         reasons appear here &mdash; starting from the platform defaults until somebody changes
         one for this merchant.</p></div>`;
   }
@@ -15884,7 +15888,7 @@ async function savePosMerchantConfigText(merchantId, scope, key){
 async function savePosMerchantConfig(merchantId, scope, key, value){
   const before = POS_MERCHANT_CONFIG.find(r => r.scope === scope && r.key === key) || {};
   const base = POS_CONFIG.find(r => r.scope === scope && r.key === key) || {};
-  const { data, error } = await supaV2.from('pos_config')
+  const { data, error } = await supa.from('pos_config')
     .upsert({ merchant_id: merchantId, scope, key, value,
               label: base.label || before.label || key, sort: base.sort || 0, active: true,
               updated_at: new Date().toISOString(),
@@ -15908,7 +15912,7 @@ async function savePosMerchantConfig(merchantId, scope, key, value){
    merchant who never asked for anything should follow the standard when it
    moves; one who asked for exactly this should not. */
 async function clearPosMerchantConfig(merchantId, scope, key){
-  const { error } = await supaV2.from('pos_config').delete()
+  const { error } = await supa.from('pos_config').delete()
     .eq('merchant_id', merchantId).eq('scope', scope).eq('key', key);
   if(error){ showToast('Could not clear it: ' + error.message, 'error'); return; }
   await logPosChange('pos_config', scope + '.' + key, merchantId, key, 'their own', 'platform default');
@@ -16819,7 +16823,7 @@ async function loadPosConfig(force){
   /* Defaults only. Overrides live in the same table against a merchant, and
      mixing them in here would show one shop's receipt footer as if it were
      the standard. */
-  const { data, error } = await supaV2.from('pos_config').select('*')
+  const { data, error } = await supa.from('pos_config').select('*')
     .is('merchant_id', null).order('scope').order('sort');
   if(error){
     POS_CONFIG = [];
@@ -16838,11 +16842,12 @@ async function renderPosConfig(){
   if(POS_CONFIG.length === 0){
     box.innerHTML = `<div class="stub-panel"><h3>Nothing to change yet</h3>
       <p style="max-width:460px;margin:0 auto;font-size:13px;line-height:1.6;">
-        Run migrations 110 and 111 on the POS platform's database and these appear. Until then
-        the registers use what they ship with.
+        Run migrations 110 and 111 and these appear. Until then the registers use what they
+        ship with.
         <span style="display:block;margin-top:8px;color:var(--slate-500);">
-          They were written as 106 and 107 and renumbered when the branch merged, which is why
-          this used to name two migrations that turned out to be something else entirely.</span>
+          They go in the Control Center's database, beside the plan catalogue - the POS
+          platform has no users table, so the admin check these settings are protected by
+          cannot be written there.</span>
         </p></div>`;
     return;
   }
@@ -16916,7 +16921,7 @@ async function savePosConfigText(scope, key){
 
 async function savePosConfig(scope, key, value){
   const before = POS_CONFIG.find(r => r.scope === scope && r.key === key);
-  const { data, error } = await supaV2.from('pos_config')
+  const { data, error } = await supa.from('pos_config')
     .update({ value, updated_at: new Date().toISOString(),
               updated_by: (currentUser && currentUser.name) || 'Unknown' })
     .eq('scope', scope).eq('key', key).is('merchant_id', null).select();
