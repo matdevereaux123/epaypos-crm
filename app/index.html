@@ -5068,12 +5068,32 @@ async function loadLeadsFromSupabase(){
      and running the migration turns it on with no further deploy. */
   const OPTIONAL = 'application_waived_at, application_waived_by, pos_merchant_id';
 
+  const undefinedColumn = e => !!e && (e.code === '42703' || /does not exist/i.test(e.message || ''));
+
   let res = await supa.from('leads').select(BASE + ',\n    ' + OPTIONAL)
     .order('created_at', { ascending: false });
-  if(res.error && (res.error.code === '42703' || /does not exist/i.test(res.error.message || ''))){
+
+  if(undefinedColumn(res.error)){
+    // One column this list names is not in this database - a migration that
+    // has not been run. Try without the newest group first.
     res = await supa.from('leads').select(BASE).order('created_at', { ascending: false });
-    if(!res.error) console.warn('leads: loaded without ' + OPTIONAL + ' - run database/107_application_waiver.sql');
   }
+
+  /* Still refused, so the missing column is one of the older ones. Ask for
+     everything instead.
+
+     A named list is better - it is smaller and it says what the app uses -
+     but it is only better while it is right, and being wrong about one
+     column costs every lead on the page rather than that column. select('*')
+     cannot be wrong about a column, so it is what the app falls back to
+     rather than showing an empty CRM. The warning names the error so the
+     list can be put back in step. */
+  if(undefinedColumn(res.error)){
+    const why = res.error.message;
+    res = await supa.from('leads').select('*').order('created_at', { ascending: false });
+    if(!res.error) console.warn('leads: fell back to select(*) - the column list is ahead of this database: ' + why);
+  }
+
   if(res.error){ reportLoadFailure('leads from Supabase', res.error); return []; }
   return res.data;
 }
