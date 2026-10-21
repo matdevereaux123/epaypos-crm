@@ -16817,20 +16817,33 @@ const POS_CONFIG_GROUPS = [
 const POS_CONFIG_KIND = (row) => Array.isArray(row.value) ? 'list'
   : (typeof row.value === 'boolean' ? 'flag' : 'text');
 
+let POS_CONFIG_ERROR = null;   // why the list is empty, when it is
+
 async function loadPosConfig(force){
   if(POS_CONFIG.length && !force) return POS_CONFIG;
-  if(!await v2Ready()) return POS_CONFIG;
+  POS_CONFIG_ERROR = null;
+
+  /* The v2Ready() gate that used to be here is gone with the data: these
+     settings are read from the Control Center now, and waiting on a sign-in
+     to a platform this query never touches is why the page stayed empty
+     after the move. */
+
   /* Defaults only. Overrides live in the same table against a merchant, and
      mixing them in here would show one shop's receipt footer as if it were
-     the standard. */
-  const { data, error } = await supa.from('pos_config').select('*')
+     the standard. merchant_id arrives with 111, so a database that has not
+     run it yet is asked without the filter rather than refused outright. */
+  let res = await supa.from('pos_config').select('*')
     .is('merchant_id', null).order('scope').order('sort');
-  if(error){
+  if(res.error && (res.error.code === '42703' || /merchant_id/.test(res.error.message || ''))){
+    res = await supa.from('pos_config').select('*').order('scope').order('sort');
+  }
+
+  if(res.error){
     POS_CONFIG = [];
-    if(!/pos_config/.test(error.message || '')) showToast('Could not load settings: ' + error.message, 'error');
+    POS_CONFIG_ERROR = res.error;
     return POS_CONFIG;
   }
-  POS_CONFIG = data || [];
+  POS_CONFIG = res.data || [];
   return POS_CONFIG;
 }
 
@@ -16838,6 +16851,16 @@ async function renderPosConfig(){
   await loadPosConfig(true);
   const box = document.getElementById('posConfigBox');
   if(!box) return;
+
+  if(POS_CONFIG.length === 0 && POS_CONFIG_ERROR){
+    box.innerHTML = `<div class="stub-panel"><h3>Could not read the settings</h3>
+      <p style="max-width:480px;margin:0 auto;font-size:13px;line-height:1.6;">
+        ${escAttr(POS_CONFIG_ERROR.message || 'Unknown error')}
+        <span style="display:block;margin-top:8px;color:var(--slate-500);">
+          A permission error here means your login is not an EPAY admin; a missing table means
+          110 has not been run in the Control Center's database.</span></p></div>`;
+    return;
+  }
 
   if(POS_CONFIG.length === 0){
     box.innerHTML = `<div class="stub-panel"><h3>Nothing to change yet</h3>
