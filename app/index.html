@@ -4511,6 +4511,49 @@ async function v2SignOut(){
    Said plainly rather than shown as an error: two projects means two
    sign-ins, and somebody meeting that for the first time should be told
    why rather than left wondering what broke. */
+/* Which pages actually read from V2. The rest of the EPAY back end runs on
+   the Control Center's own database and needs nothing from here. */
+const V2_BACKED_VIEWS = ['posbilling','possubs','posreferral','posconfig','backend'];
+
+/*
+ * A line at the top of a page whose figures come from V2, when nobody has
+ * signed in there.
+ *
+ * Deliberately a notice and not a gate. The page underneath is real and
+ * worth reading - the merchants, the locations, the devices are all from
+ * the Control Center - and what is missing is the price catalogue. Saying
+ * that in a strip above the page is honest; replacing the page with a login
+ * form says the whole thing is unavailable, which was not true.
+ */
+function showV2Notice(view){
+  if(!V2_BACKED_VIEWS.includes(view)) return;
+  const box = posViewBox(view);
+  if(!box || box.querySelector('.v2-notice')) return;
+  const what = view === 'posconfig' ? 'The settings on this page'
+             : view === 'posreferral' ? 'The referral tiers'
+             : view === 'backend' ? 'Prices on this overview'
+             : 'Plans, add-on prices and accepted agreements';
+  const strip = document.createElement('div');
+  strip.className = 'panel v2-notice';
+  strip.style.cssText = 'margin-bottom:16px;padding:12px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;';
+  strip.innerHTML = `
+    <div style="flex:1 1 320px;min-width:0;">
+      <strong style="font-size:13px;">${what} are not loaded.</strong>
+      <div style="font-size:12px;color:var(--slate-500);margin-top:2px;">
+        They live in the POS platform's own database, which keeps a separate sign-in so that a
+        merchant signing in there can never reach anything in the Control Center. Everything else
+        on this page is current.</div>
+    </div>
+    <button class="btn btn-sm btn-accent" style="flex:0 0 auto;" onclick="openV2SignIn('${view}')">Sign in to the POS platform</button>`;
+  box.insertBefore(strip, box.firstChild);
+}
+
+/* The sign-in, on request rather than in the way. */
+function openV2SignIn(view){
+  const box = posViewBox(view);
+  if(box) box.innerHTML = v2GatePanel();
+}
+
 function v2GatePanel(){
   return `
     <div class="stub-panel" style="max-width:520px;margin:0 auto;text-align:left;">
@@ -10135,16 +10178,24 @@ function showView(view, fromHistory){
      * so the page says what is actually missing instead.
      */
     v2Ready().then((ok) => {
-      if(!ok){
-        const box = posViewBox(view);
-        if(box) box.innerHTML = v2GatePanel();
-        return;
-      }
-      // Loaded on the way in rather than at startup: nobody who never opens
-      // this tab should pay for the query.
-      /* Station types and prices too: the overview prices what a merchant
-         added, and without them every station reads as free. */
-      return Promise.all([loadPosMerchants(), loadPosStationTypes(), loadPosBilling()]).then(() => {
+      /*
+       * Without a V2 session, load what does not need one and show the page.
+       *
+       * This used to replace the whole page with the sign-in panel, which
+       * threw away far more than it had to. Merchants, Setup, Tasks and the
+       * overview all read from the Control Center's own database through
+       * `supa` and never needed V2 at all - they went blank anyway. Only the
+       * price catalogue, the station types, the agreements and the config
+       * live in V2, and those are four sections, not nine pages.
+       *
+       * So: load everything that will load, draw the page as built, and let
+       * the sections that genuinely need V2 say so where they are. A missing
+       * price list is a note on a price list, not a locked door in front of
+       * the merchant records.
+       */
+      const loads = [loadPosMerchants()];
+      if(ok) loads.push(loadPosStationTypes(), loadPosBilling());
+      return Promise.all(loads).then(() => {
         if(view === 'backend') renderBackendOverview();
         else if(view === 'possetup') renderPosSetupBoard();
         else if(view === 'posreferral') renderPosReferral();
@@ -10153,7 +10204,7 @@ function showView(view, fromHistory){
         else if(view === 'postasks') renderPosTasks();
         else if(view === 'posconfig') renderPosConfig();
         else renderPosMerchants();
-      });
+      }).then(() => { if(!ok) showV2Notice(view); });
     });
   }
   if(view === 'internalsales' && !canSeeInternalSales()) view = 'dashboard';
@@ -14609,6 +14660,7 @@ let POS_STATION_TYPES = [];
 
 async function loadPosStationTypes(force){
   if(POS_STATION_TYPES.length && !force) return POS_STATION_TYPES;
+  if(!await v2Ready()) return POS_STATION_TYPES;
   const { data, error } = await supaV2.from('pos_station_types')
     .select('*').eq('active', true).order('sort');
   POS_STATION_TYPES = error ? [] : (data || []);
@@ -16277,6 +16329,7 @@ function priceLabel(cents){
 
 async function loadPosBilling(force){
   if(posBillingLoaded && !force) return;
+  if(!await v2Ready()) return;
   const [plans, addons] = await Promise.all([
     supaV2.from('pos_plans').select('*').order('sort'),
     supaV2.from('pos_addons').select('*').order('sort'),
@@ -16388,6 +16441,7 @@ const POS_CONFIG_KIND = (row) => Array.isArray(row.value) ? 'list'
 
 async function loadPosConfig(force){
   if(POS_CONFIG.length && !force) return POS_CONFIG;
+  if(!await v2Ready()) return POS_CONFIG;
   /* Defaults only. Overrides live in the same table against a merchant, and
      mixing them in here would show one shop's receipt footer as if it were
      the standard. */
@@ -17104,6 +17158,7 @@ function posChangesHtml(){
    glance at what is being agreed to, not an audit — the audit is per merchant,
    where somebody actually needs it. */
 async function loadRecentAgreements(limit){
+  if(!await v2Ready()){ POS_AGREEMENTS_ALL = []; return; }
   const { data, error } = await supaV2.from('pos_addon_agreements')
     .select('*').order('accepted_at', { ascending:false }).limit(limit || 40);
   if(error){ POS_AGREEMENTS_ALL = []; return; }
