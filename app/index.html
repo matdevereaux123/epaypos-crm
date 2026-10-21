@@ -559,7 +559,25 @@
   .notif-item-time{font-size:10.5px;color:var(--slate-400);margin-top:3px;}
   .notif-empty{padding:20px 8px;text-align:center;font-size:12.5px;color:var(--slate-500);}
 
-  .topbar{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;flex-wrap:wrap;gap:14px;}
+  /*
+   * The page heading, and the button that acts on the page.
+   *
+   * `space-between` alone was wrong in the one case that matters. While both
+   * fit on a line it puts the button hard right, correctly. The moment the
+   * heading block is wide enough to push the button onto a second line - and
+   * the subtext on EPAY subscription editing is wide enough below about
+   * 1180px of content, which is a 1366 laptop with the nav open - the button
+   * becomes the only item on that line, and `space-between` puts a lone item
+   * at the START. So it jumped from the right edge to the left with nothing
+   * beside it.
+   *
+   * `margin-left:auto` on the actions is the fix: it pushes them right on
+   * whichever line they end up on. The heading block takes a flex basis so
+   * it gives up width to the button before wrapping, rather than claiming
+   * its full natural width and forcing the wrap early.
+   */
+  .topbar{display:flex;align-items:flex-start;margin-bottom:24px;flex-wrap:wrap;gap:14px;}
+  .topbar > :first-child{flex:1 1 320px;min-width:0;}
   .topbar h1{font-size:23px;margin:0 0 4px;}
   .topbar .subtext{color:var(--slate-500);font-size:13.5px;margin:0;}
   .btn{padding:10px 16px;border-radius:8px;border:1px solid var(--line);background:var(--card);font-size:13.5px;font-weight:600;color:var(--navy-700);}
@@ -580,6 +598,91 @@
    * drawer puts a button under the edge of the screen.
    */
   .row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0;}
+
+  /* -------------------------------------------------------------------
+     EPAY BACK END PAGES
+
+     These are read at a desk on a wide screen, and the CRM's defaults were
+     built for narrower panels. Measured on the billing page at 1240px:
+     explanatory paragraphs ran the full 1189px — about 180 characters a
+     line, roughly twice what anybody reads comfortably — three stat cards
+     took 385px each to hold a two-digit number, and table rows stood 61px
+     tall, so two accounts filled half a screen.
+
+     The fix is density and a readable measure, not a redesign: the same
+     components, held to sensible widths.
+     ------------------------------------------------------------------- */
+
+  /* Prose stops at a readable line. Tables and cards still use the width. */
+  .pos-page p, .pos-page .pos-note{max-width:78ch;}
+
+  /* A number and a label do not need 385px. */
+  .pos-page .cards-row{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,240px));
+    gap:12px;justify-content:start;
+  }
+  /* "Add-ons without a price" is three words of uppercase with letter
+     spacing. At 220px it wrapped to three lines beside cards using one,
+     and the row of cards went ragged. */
+  .pos-page .stat-card .label{letter-spacing:.3px;line-height:1.35;}
+
+  /* Rows a third shorter, so a screen holds a dozen accounts rather than
+     four. Headings stay as they were — they are what somebody scans. */
+  .pos-page table td{padding:9px 14px;}
+  .pos-page table th{padding:9px 14px;}
+  .pos-page .name-cell{line-height:1.3;}
+
+  /* The action column, pinned narrow and right, so an Edit button is beside
+     what it edits rather than across a desert of whitespace. */
+  .pos-page table td:last-child, .pos-page table th:last-child{width:1%;white-space:nowrap;}
+
+  /* Sections get air between them, rows do not. */
+  .pos-page h3{margin-top:26px;}
+  .pos-page h3:first-child{margin-top:0;}
+
+  /*
+   * A row of short fields, inside the 440px merchant sheet.
+   *
+   * Fixed three-column grids put ~120px under a two-line uppercase label,
+   * and a label that wraps to two lines while its neighbours wrap to one
+   * pushes its input half a line lower than theirs. Three boxes at three
+   * heights is what reads as a broken form.
+   *
+   * auto-fit drops to two columns rather than squeezing, and aligning to
+   * the end of each cell puts every input on the same line however the
+   * labels above them wrap.
+   */
+  .grid-fields{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));
+    gap:10px;align-items:end;
+  }
+  .grid-fields .field{margin-bottom:0;display:flex;flex-direction:column;justify-content:flex-end;}
+  .grid-fields .field label{min-height:0;}
+
+  /*
+   * The setup questions.
+   *
+   * .field label is uppercase with letter-spacing, which is right for a
+   * one-word field name and wrong for "Who signs for the hardware when it
+   * lands?" — a sentence in caps is slower to read, and a question mark in
+   * caps stops looking like a question at all. These are questions somebody
+   * reads down a phone, so they are set as questions.
+   */
+  .field.setup-field label{
+    text-transform:none;letter-spacing:0;font-size:13px;font-weight:600;
+    color:var(--navy-700);margin-bottom:7px;line-height:1.4;
+  }
+  /* The one word that has to carry, so it is a badge rather than more
+     caps in a line that is already all caps. */
+  .setup-needed{
+    display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;
+    background:var(--warn-bg,#fef3c7);color:var(--warn-text);
+    font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+    vertical-align:1px;
+  }
+  /* Help belongs with the question, above the answer: it is how to answer,
+     not a footnote about what was answered. */
+  .setup-help{font-size:11px;color:var(--slate-500);margin:0 0 7px;line-height:1.45;}
   /* Buttons and chips in a row never squeeze their own text onto two
      lines — a two-line button is the thing that makes a row look broken. */
   .row > .btn, .row > .chip{flex:0 0 auto;white-space:nowrap;}
@@ -660,7 +763,7 @@
   .btn[disabled], .btn-accent[disabled]{ opacity:.55; transform:none !important; filter:none; }
   .btn-accent{background:linear-gradient(90deg,var(--brand-accent-2),var(--brand-accent));color:#fff;border:none;}
   .btn-accent:hover{filter:brightness(1.06);}
-  .topbar-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+  .topbar-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-left:auto;}
   .btn-sm{display:inline-flex;align-items:center;gap:6px;padding:8px 13px;font-size:12.5px;}
   .btn-xs{padding:5px 9px;font-size:11px;border-radius:6px;}
   .btn-sm svg{width:14px;height:14px;}
@@ -716,7 +819,12 @@
      a height estimate so the scrollbar doesn't jump around as rows resolve.
      Find-in-page still reaches this content in current browsers; printing
      does not, hence the override below. */
-  .panel tbody tr{content-visibility:auto;contain-intrinsic-size:auto 44px;}
+  /* Measured, not guessed: rows on these pages stand 52-64px, never 44.
+     The hint is what the browser reserves for a row it has not drawn yet,
+     so one that is too small makes the scrollbar lie and the page jump
+     under the pointer as rows come into view. 56px is the middle of the
+     real range. */
+  .panel tbody tr{content-visibility:auto;contain-intrinsic-size:auto 56px;}
   @media print{ .panel tbody tr{content-visibility:visible;} }
   /* The two kinds of person on the board. The left accent bar does the work
      at a glance across a full column; the pill confirms it up close. */
@@ -877,8 +985,44 @@
   tbody td{padding:13px 20px;border-bottom:1px solid var(--line);vertical-align:middle;}
   tbody tr:last-child td{border-bottom:none;}
   tbody tr:hover{background:var(--surface-3);cursor:pointer;}
+  /*
+   * The scroller around a wide table.
+   *
+   * Used in ten places and never defined, so it did nothing: a table wider
+   * than its panel was simply cut off at the panel edge with no way to
+   * reach the rest. On the billing tables that loses the right-hand
+   * columns - Monthly among them - and on Recently accepted it loses Terms
+   * and When. Nothing looked broken, which is worse; the columns were just
+   * absent.
+   */
+  .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  /* Below this the columns are unreadably narrow, so scroll instead of
+     crushing them. Above it the table fills the panel as before. */
+  .table-wrap > table{min-width:640px;}
+
   .name-cell{font-weight:600;color:var(--navy-700);}
   .name-cell .sub{font-weight:400;color:var(--slate-500);font-size:12px;}
+
+  /*
+   * Subtext, anywhere on these pages - not only under a name.
+   *
+   * `.sub` was defined once, as `.name-cell .sub`. Every other use rendered
+   * at full body size in full body colour, which is the opposite of what the
+   * class is for. On subscription editing that is why the price reads
+   * "$69.99/mo" in one weight with no space in it, and why "1 not priced"
+   * under a total looks like a second total rather than a note about it.
+   *
+   * Scoped to .pos-page rather than made global on purpose. The same bug is
+   * in roughly seventy more places across the rest of the CRM, and quietly
+   * restyling all of them is a bigger change than this one, to be done on
+   * its own and looked at.
+   */
+  .pos-page .sub{font-weight:400;color:var(--slate-500);font-size:12px;line-height:1.35;}
+  /* Inline after a figure: "$69.99 /mo" rather than "$69.99/mo". */
+  .pos-page span.sub{margin-left:3px;}
+  /* Under a figure: a note, with air above it so it is not a second line
+     of the number. */
+  .pos-page td > div.sub{margin-top:2px;}
   .pill{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.2px;}
   .pill-referral{background:var(--accent-soft);color:var(--info-text);}
   .pill-agent-auth{background:var(--ok-bg);color:var(--ok-text);}
@@ -2469,20 +2613,17 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
             Setup
           </button>
-          <!-- Not data-view: the Tasks page is the CRM's, so this leaves the
-               back end rather than pretending to be a page inside it. The
-               filter is what makes it useful from here. -->
-          <button class="nav-item" type="button" onclick="openBoardingTasks()">
+          <button class="nav-item" data-view="postasks">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/><line x1="7" y1="8" x2="7.01" y2="8"/></svg>
             Boarding tasks
-          </button>
-          <button class="nav-item" data-view="posnew">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            New merchant
           </button>
           <button class="nav-item" data-view="posbilling">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
             Billing
+          </button>
+          <button class="nav-item" data-view="posconfig">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.2.47.63.81 1.14.91H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            Register settings
           </button>
           <button class="nav-item" data-view="possubs">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
@@ -3161,6 +3302,8 @@
         -->
         <div class="cards-row" id="backendStats"></div>
         <div class="panel" id="backendTasksCard" style="padding:14px 18px;margin-top:18px;"></div>
+        <div class="panel" id="backendGatewayCard" style="padding:14px 18px;margin-top:14px;"></div>
+        <div class="panel" id="backendHealthCard" style="padding:14px 18px;margin-top:14px;"></div>
         <div class="panel">
           <div class="panel-head"><h2>Recently boarded</h2></div>
           <div id="backendRecent"></div>
@@ -3176,7 +3319,7 @@
             <p class="subtext">Which merchants are ready to open, and what is holding up the ones that are not.</p>
           </div>
         </div>
-        <div class="panel"><div id="posSetupBoard"></div></div>
+        <div class="panel"><div class="pos-page" id="posSetupBoard"></div></div>
       </section>
 
       <!-- EPAY BACK END: BILLING (not built) -->
@@ -3187,7 +3330,7 @@
             <p class="subtext">What EPAY charges a merchant for the software, and what they have paid.</p>
           </div>
         </div>
-        <div class="panel"><div id="posBillingBox"></div></div>
+        <div class="panel"><div class="pos-page" id="posBillingBox"></div></div>
         <div class="panel" style="display:none;">
           <div class="stub-panel">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
@@ -3208,6 +3351,39 @@
         </div>
       </section>
 
+      <!-- EPAY BACK END: BOARDING TASKS
+           The same tasks as the CRM's Tasks page, filtered to boarding and
+           shown without leaving the back end. It reuses that page's rows,
+           its drawer and its complete/delete actions rather than growing a
+           second set that would drift from the first. -->
+      <section id="view-postasks" class="view" style="display:none;">
+        <div class="topbar">
+          <div>
+            <h1>Boarding tasks</h1>
+            <p class="subtext">Getting merchants from signed to taking cards. The same tasks as the CRM's Tasks page, filed under Boarding.</p>
+          </div>
+          <div class="topbar-actions">
+            <button class="btn btn-accent btn-sm" onclick="newBoardingTask()">+ New boarding task</button>
+            <button class="btn btn-sm" onclick="openBoardingTasks()">Open in Tasks</button>
+          </div>
+        </div>
+        <div class="panel"><div class="pos-page" id="posTasksBox" style="padding:16px 20px;"></div></div>
+      </section>
+
+      <!-- EPAY BACK END: REGISTER SETTINGS
+           The things a merchant asks for on a Friday. Records, not code:
+           pos_addons and pos_referral_offer already worked this way, and
+           anything that needs a deploy to change goes stale instead. -->
+      <section id="view-posconfig" class="view" style="display:none;">
+        <div class="topbar">
+          <div>
+            <h1>Register defaults</h1>
+            <p class="subtext">What every account starts on and follows until it asks for something else. One merchant's own wording is set on their account, under Register settings &mdash; changing it here does not override anybody who has already been given their own.</p>
+          </div>
+        </div>
+        <div class="panel"><div class="pos-page" id="posConfigBox" style="padding:18px 20px;"></div></div>
+      </section>
+
       <!-- EPAY BACK END: SUBSCRIPTION EDITING
            Split out of Billing. Billing is a thing you read - what each
            account is on and what has been agreed. This is a thing you
@@ -3220,9 +3396,16 @@
             <h1>EPAY subscription editing</h1>
             <p class="subtext">What EPAY charges for a plan and for each add-on. Changing a price here changes what a new agreement quotes &mdash; it does not change what anybody is already on.</p>
           </div>
+          <div class="topbar-actions">
+            <button class="btn btn-accent btn-sm" onclick="openPosSubForm('pos_addons')">+ Add a subscription</button>
+          </div>
         </div>
-        <div class="panel"><div id="posSubsBox"></div></div>
+        <div class="panel"><div class="pos-page" id="posSubsBox"></div></div>
       </section>
+
+      <div class="overlay" id="posSubFormOverlay">
+        <div class="drawer" id="posSubFormDrawer"></div>
+      </div>
 
       <!-- EPAY BACK END: THE REFERRAL OFFER -->
       <section id="view-posreferral" class="view" style="display:none;">
@@ -3231,8 +3414,11 @@
             <h1>Referral offer</h1>
             <p class="subtext">What EPAY pays a merchant for sending another business. Every merchant portal reads this.</p>
           </div>
+          <div class="topbar-actions">
+            <button class="btn btn-accent btn-sm" onclick="addPosTier()">+ Add a tier</button>
+          </div>
         </div>
-        <div class="panel"><div id="posReferralBox"></div></div>
+        <div class="panel"><div class="pos-page" id="posReferralBox"></div></div>
       </section>
 
       <!-- EPAY BACK END: MERCHANTS -->
@@ -4215,6 +4401,153 @@ function appVersionLabel(){
 const SUPABASE_URL = 'https://gfnodfqkidtqjoofvwzr.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdmbm9kZnFraWR0cWpvb2Z2d3pyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYyMTE2MTgsImV4cCI6MjEwMTc4NzYxOH0.sc0ghmhGt71clexXMQj2Mhj2MFXrgEVmymuGbERePsk';
 const supa = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/* ---------------------------------------------------------------------------
+   EPAY V2 — THE POS PLATFORM'S OWN PROJECT
+
+   Merchants sign into V2. That is the whole reason it is a separate project:
+   every policy in here was written when "authenticated" meant "somebody who
+   works at EPAY", and several of them say `using (true)`. If merchants
+   authenticated into this database, each of those would become a question
+   about whether a merchant can read a lead. Over there the question cannot
+   arise, because the leads are not in that database.
+
+   The cost is that EPAY staff exist in two projects and sign into both. The
+   session below is kept under its own storage key so the two cannot tread on
+   each other, and Supabase refreshes it, so it is one sign-in per device
+   rather than one per visit.
+
+   The anon key is public by design. It grants nothing on its own: every table
+   in V2 is behind RLS, and every policy asks pos_is_staff() or
+   pos_my_merchant_id(). Without a session this client reads nothing, which is
+   exactly what it should do.
+   --------------------------------------------------------------------------- */
+/* Where each POS page draws itself, so the sign-in gate can take the same
+   space rather than being bolted above the page it is replacing. */
+function posViewBox(view){
+  const id = {
+    backend: 'backendStats', posmerchants: 'posMerchantsBody', possetup: 'posSetupBoard',
+    posbilling: 'posBillingBox', possubs: 'posSubsBox', posreferral: 'posReferralBox',
+    posconfig: 'posConfigBox', postasks: 'posTasksBox',
+  }[view];
+  if(!id) return null;
+  const el = document.getElementById(id);
+  // The merchants page draws into a tbody; the gate belongs in the panel.
+  return (el && el.tagName === 'TBODY') ? el.closest('.panel') : el;
+}
+
+const V2_URL = 'https://vbdgaeyerqntipzcfqag.supabase.co';
+const V2_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZiZGdhZXllcnFudGlwemNmcWFnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIzNDY5MzYsImV4cCI6MjEwNzkyMjkzNn0.LfmjDjFTinfZRCz4xbyFjy7enz2Ajd3PxVjj0ediEls';
+
+/*
+ * The edge functions gateway wants a different key from the rest of the
+ * project.
+ *
+ * Supabase is moving from the legacy JWT keys (anon / service_role, the long
+ * `eyJ...` strings) to a newer format (`sb_publishable_...` /
+ * `sb_secret_...`). The database and auth endpoints on this project still
+ * take the old one; the functions gateway refuses it outright, with an error
+ * that names neither the caller nor the function and is not obvious from a
+ * browser console.
+ *
+ * So the functions key is its own constant. When the whole project finishes
+ * moving, this and V2_ANON_KEY become the same string and one of them goes.
+ *
+ * Project Settings > API Keys, the one marked publishable. Never the secret
+ * one: that is the service_role equivalent and bypasses every policy.
+ */
+const V2_FUNCTIONS_KEY = 'sb_publishable_0usUSJD488AsVOVG89cmAw_BxAJw2UV';
+
+/* Everything that reaches an edge function goes through here, so the key and
+   the session are assembled in one place rather than at each call site. */
+async function v2FunctionHeaders(){
+  const { data: { session } } = await supaV2.auth.getSession();
+  if(!session) return { error: 'Sign in to the POS platform first.' };
+  if(!V2_FUNCTIONS_KEY){
+    return { error: 'The POS platform functions key is not set yet. ' +
+      'Project Settings > API Keys in the EPAY V2 project, the publishable one.' };
+  }
+  return { headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer ' + session.access_token,
+    'apikey': V2_FUNCTIONS_KEY,
+  } };
+}
+
+const supaV2 = supabase.createClient(V2_URL, V2_ANON_KEY, {
+  auth: {
+    // Its own key, or signing into one project signs you out of the other.
+    storageKey: 'epay.v2.auth',
+    persistSession: true,
+    autoRefreshToken: true,
+  },
+});
+
+let v2Session = null;
+
+/* Whether this browser has a V2 session. Asked before any POS read, because
+   without one every query comes back empty rather than failing - and an
+   empty merchant list reads as "we have no merchants". */
+async function v2Ready(){
+  if(v2Session) return true;
+  const { data } = await supaV2.auth.getSession();
+  v2Session = (data && data.session) || null;
+  return !!v2Session;
+}
+
+async function v2SignIn(email, password){
+  const { data, error } = await supaV2.auth.signInWithPassword({ email, password });
+  if(error) return { error };
+  v2Session = data.session;
+  return { data };
+}
+
+async function v2SignOut(){
+  await supaV2.auth.signOut();
+  v2Session = null;
+}
+
+/* The panel shown in place of a POS page when nobody has signed into V2.
+   Said plainly rather than shown as an error: two projects means two
+   sign-ins, and somebody meeting that for the first time should be told
+   why rather than left wondering what broke. */
+function v2GatePanel(){
+  return `
+    <div class="stub-panel" style="max-width:520px;margin:0 auto;text-align:left;">
+      <h3 style="text-align:center;">Sign in to the POS platform</h3>
+      <p style="font-size:13px;line-height:1.6;">
+        The merchant portal and the registers live in their own database, separate from the
+        Control Center, so that merchants signing in there can never reach anything in here.
+        That means a second sign-in. Supabase keeps it, so this is once on this computer.</p>
+      <div class="field"><label>Email</label>
+        <input id="v2Email" type="email" value="${escAttr((currentUser && currentUser.email) || '')}"
+               autocomplete="username"></div>
+      <div class="field"><label>Password</label>
+        <input id="v2Password" type="password" autocomplete="current-password"
+               onkeydown="if(event.key==='Enter')doV2SignIn()"></div>
+      <p id="v2Problem" class="error-text" style="display:none;"></p>
+      <button class="btn btn-accent" style="width:100%;" onclick="doV2SignIn()">Sign in</button>
+      <p style="font-size:11.5px;color:var(--slate-500);margin:12px 0 0;">
+        Not the same account as the Control Center unless you made it so. If you have no login
+        there yet, an admin adds you under Authentication in the EPAY V2 project.</p>
+    </div>`;
+}
+
+async function doV2SignIn(){
+  const email = (document.getElementById('v2Email').value || '').trim();
+  const password = document.getElementById('v2Password').value || '';
+  const say = (t) => { const el = document.getElementById('v2Problem');
+    el.textContent = t; el.style.display = t ? 'block' : 'none'; };
+  if(!email || !password){ say('Both, please.'); return; }
+  say('');
+  const { error } = await v2SignIn(email, password);
+  if(error){ say(error.message); return; }
+  showToast('Signed in to the POS platform.', 'success');
+  // Nothing was loadable before this, so everything is stale by definition.
+  posMerchantsLoaded = false;
+  posBillingLoaded = false;
+  refreshActiveView();
+}
 
 /* =========================================================================
    GLOBAL CLICK GUARD — most buttons in this app trigger an async Supabase
@@ -9782,26 +10115,45 @@ function showView(view, fromHistory){
   }
   /* The same gate as the switch above it. Two different answers to "may
      they open this" is how somebody reaches a view with no way back to it. */
-  const posViews = ['backend','posmerchants','possetup','posnew','posreferral','posbilling','possubs'];
+  const posViews = ['backend','posmerchants','possetup','posnew','posreferral','posbilling','possubs','postasks','posconfig'];
   if(posViews.includes(view) && !(currentUser && currentUser.epay_admin)) view = 'dashboard';
   /*
    * "New merchant" is an action wearing a nav item's clothes. It opens the
    * boarding drawer over the Merchants list rather than being a page of its
    * own — a page you can only leave by finishing or cancelling is a page.
    */
+  /* No nav item any more — boarding is started from the Merchants page. The
+     route is kept because an old link or bookmark to it should still work. */
   if(view === 'posnew'){
     view = 'posmerchants';
     loadPosMerchants().then(() => { renderPosMerchants(); openPosMerchantForm(null); });
   } else if(posViews.includes(view)){
-    // Loaded on the way in rather than at startup: nobody who never opens
-    // this tab should pay for the query.
-    loadPosMerchants().then(() => {
-      if(view === 'backend') renderBackendOverview();
-      else if(view === 'possetup') renderPosSetupBoard();
-      else if(view === 'posreferral') renderPosReferral();
-      else if(view === 'posbilling') renderPosBilling();
-      else if(view === 'possubs') renderPosSubscriptions();
-      else renderPosMerchants();
+    /*
+     * Nothing in V2 is readable without a session there, and the queries do
+     * not fail - they come back empty. An empty merchant list reads as "we
+     * have no merchants", which is the wrong thing to let somebody believe,
+     * so the page says what is actually missing instead.
+     */
+    v2Ready().then((ok) => {
+      if(!ok){
+        const box = posViewBox(view);
+        if(box) box.innerHTML = v2GatePanel();
+        return;
+      }
+      // Loaded on the way in rather than at startup: nobody who never opens
+      // this tab should pay for the query.
+      /* Station types and prices too: the overview prices what a merchant
+         added, and without them every station reads as free. */
+      return Promise.all([loadPosMerchants(), loadPosStationTypes(), loadPosBilling()]).then(() => {
+        if(view === 'backend') renderBackendOverview();
+        else if(view === 'possetup') renderPosSetupBoard();
+        else if(view === 'posreferral') renderPosReferral();
+        else if(view === 'posbilling') renderPosBilling();
+        else if(view === 'possubs') renderPosSubscriptions();
+        else if(view === 'postasks') renderPosTasks();
+        else if(view === 'posconfig') renderPosConfig();
+        else renderPosMerchants();
+      });
     });
   }
   if(view === 'internalsales' && !canSeeInternalSales()) view = 'dashboard';
@@ -13655,12 +14007,16 @@ function posDeviceCount(m){
 function posPrimaryLocation(m){ return (m.pos_locations || [])[0] || null; }
 
 /*
- * The boarding jobs, from either side.
+ * The way out to the full Tasks page, carrying the filter.
  *
- * The Tasks page belongs to the CRM, so this leaves the back end rather than
- * building a second tasks page that would drift from the first. What it
- * carries across is the filter: somebody who got here from the back end
- * wants the boarding list, not every follow-up in the business.
+ * Only reached from the button that says so. Boarding tasks are read inside
+ * the back end now; this is for when somebody wants the rest of the Tasks
+ * page around them - grouping, search, the other categories.
+ *
+ * It does set a filter on a shared page, which is how somebody ends up
+ * looking at a list that appears empty. The empty state names every filter
+ * that is narrowing it and offers one button to clear them, because "No
+ * tasks here" under a filter nobody knew was set reads as lost work.
  */
 function openBoardingTasks(){
   taskCategoryFilter = 'boarding';
@@ -13688,6 +14044,77 @@ function boardingTaskCounts(){
   return { ready, open: all.length, overdue: all.filter(t => t.due_date && t.due_date < today).length };
 }
 
+/* ---------------------------------------------------------------------------
+   BOARDING TASKS, INSIDE THE BACK END
+
+   The same records as the CRM's Tasks page and the same rows, drawer and
+   actions - taskRowHtml, openTaskDrawer, toggleTaskComplete, deleteTask all
+   come from there. Nothing about a task is defined twice; what is different
+   here is only which ones are shown and that you do not leave the back end
+   to see them.
+   --------------------------------------------------------------------------- */
+
+function renderPosTasks(){
+  const box = document.getElementById('posTasksBox');
+  if(!box) return;
+
+  if(typeof dataReady === 'function' && !dataReady(['tasks'])){
+    box.innerHTML = `<p style="font-size:13px;color:var(--slate-500);">Loading tasks&hellip;</p>`;
+    ensureData(['tasks']).then(() => {
+      if(document.getElementById('view-postasks').style.display !== 'none') renderPosTasks();
+    }).catch(() => {
+      box.innerHTML = `<p style="font-size:13px;color:var(--red);">Could not load tasks.</p>`;
+    });
+    return;
+  }
+
+  // Everyone's, not just mine: boarding is a relay between sales, the
+  // processor and whoever ships the hardware, and a list filtered to one
+  // person shows a job as finished when it has only been handed on.
+  const mine = myTasks().filter(isBoardingTask);
+  const openRows = mine.filter(t => !t.completed);
+  const done = mine.filter(t => t.completed);
+  const today = todayISO();
+  const overdue = openRows.filter(t => t.due_date && t.due_date < today);
+
+  box.innerHTML = `
+    <div class="cards-row" style="margin-bottom:16px;">
+      <div class="stat-card"><div class="label">Open</div><div class="value">${openRows.length}</div></div>
+      <div class="stat-card${overdue.length ? ' attention' : ''}"><div class="label">Overdue</div>
+        <div class="value">${overdue.length}</div>
+        ${overdue.length ? `<div class="delta" style="color:var(--slate-500);">somebody is waiting</div>` : ''}</div>
+      <div class="stat-card"><div class="label">Done</div><div class="value">${done.length}</div></div>
+    </div>
+
+    ${mine.length === 0 ? `<div class="stub-panel"><h3>No boarding tasks</h3>
+        <p style="max-width:460px;margin:0 auto;font-size:13px;line-height:1.6;">
+          Anything filed under the Boarding category shows here, wherever in the CRM it was
+          created. Nothing has been yet &mdash; this list being empty does not mean tasks are
+          missing from the Tasks page.</p></div>` :
+      TASK_BUCKETS.map(b => {
+        const items = openRows.filter(t => taskDueBucket(t) === b.key);
+        if(!items.length) return '';
+        return `<div class="task-group">
+          <div class="task-group-head"><span class="bar" style="background:${b.color};"></span>${b.label}<span class="count">${items.length}</span></div>
+          ${items.map(taskRowHtml).join('')}
+        </div>`;
+      }).join('') +
+      (done.length ? `<div class="task-group">
+        <div class="task-group-head"><span class="bar" style="background:var(--slate-300);"></span>Done<span class="count">${done.length}</span></div>
+        ${done.map(taskRowHtml).join('')}
+      </div>` : '')}`;
+}
+
+/* Opens the ordinary task drawer. The category is typed in there as
+   Boarding, which is what puts it on this list and on the filter. */
+function newBoardingTask(){
+  openTaskDrawer(null, null, null);
+  setTimeout(() => {
+    const cat = document.getElementById('taskCategory');
+    if(cat && !cat.value) cat.value = BOARDING_CATEGORY;
+  }, 0);
+}
+
 function renderBackendOverview(){
   const live = POS_MERCHANTS.filter(m => m.status === 'live').length;
   const onboarding = POS_MERCHANTS.filter(m => m.status === 'onboarding').length;
@@ -13709,7 +14136,73 @@ function renderBackendOverview(){
        waiting on the processor cannot take a payment. */
     stat('Waiting on a MID', noMid, noMid ? 'cannot process yet' : 'all boarded', noMid > 0);
 
-  /* A number that is a list of jobs, so it opens the list. */
+    /*
+   * Stations with no gateway, across every account. Same reasoning as the
+   * quiet tills below: a station that cannot take a card is a shop that
+   * cannot trade on it, and the only person who can fix it is here.
+   */
+  const needGateway = POS_MERCHANTS.filter(m => m.status !== 'closed')
+    .flatMap(m => posStationsAwaitingGateway(m).map(x => ({ ...x, m })));
+  const gatewayCard = document.getElementById('backendGatewayCard');
+  if(gatewayCard){
+    gatewayCard.innerHTML = needGateway.length === 0
+      ? `<div class="row" style="justify-content:space-between;">
+           <div><h2 style="font-size:15.5px;margin:0 0 2px;">Gateways</h2>
+             <p style="font-size:12px;color:var(--slate-500);margin:0;">
+               Every station has one.</p></div>
+         </div>`
+      : `<div class="row" style="justify-content:space-between;margin-bottom:8px;">
+           <div><h2 style="font-size:15.5px;margin:0 0 2px;">${needGateway.length}
+             ${needGateway.length===1?'station needs':'stations need'} a gateway</h2>
+             <p style="font-size:12px;color:var(--slate-500);margin:0;">
+               Added by the merchant, billed, and unable to take a card until we assign one.</p></div>
+         </div>
+         ${needGateway.slice(0,6).map(x => `
+           <div class="row" style="justify-content:space-between;gap:10px;padding:6px 0;border-top:1px solid var(--line);">
+             <div style="min-width:0;">
+               <strong style="font-size:12.5px;">${escAttr(x.m.dba)}</strong>
+               <span class="sub"> &middot; ${escAttr(x.d.nickname || x.d.label)} at ${escAttr(x.l.name)}</span>
+             </div>
+             <button class="btn btn-xs" onclick="openPosMerchant('${x.m.id}','devices')">Open</button>
+           </div>`).join('')}
+         ${needGateway.length > 6 ? `<p class="sub" style="margin:8px 0 0;">and ${needGateway.length-6} more</p>` : ''}`;
+  }
+
+  /*
+   * Tills that have gone quiet, across every account. On the overview
+   * because it is the kind of thing nobody goes looking for.
+   */
+  const quiet = POS_MERCHANTS.filter(m => m.status !== 'closed')
+    .flatMap(m => posUnhealthyDevices(m).map(x => ({ ...x, m })));
+  const healthCard = document.getElementById('backendHealthCard');
+  if(healthCard){
+    healthCard.innerHTML = quiet.length === 0
+      ? `<div class="row" style="justify-content:space-between;">
+           <div><h2 style="font-size:15.5px;margin:0 0 2px;">Registers</h2>
+             <p style="font-size:12px;color:var(--slate-500);margin:0;">
+               Every paired till has checked in within the hour.</p></div>
+         </div>`
+      : `<div class="row" style="justify-content:space-between;margin-bottom:8px;">
+           <div><h2 style="font-size:15.5px;margin:0 0 2px;">${quiet.length}
+             ${quiet.length===1?'till has':'tills have'} gone quiet</h2>
+             <p style="font-size:12px;color:var(--slate-500);margin:0;">
+               Their figures are stale and anything sent from here has not arrived.</p></div>
+         </div>
+         ${quiet.slice(0,6).map(x => `
+           <div class="row" style="justify-content:space-between;gap:10px;padding:6px 0;border-top:1px solid var(--line);">
+             <div style="min-width:0;">
+               <strong style="font-size:12.5px;">${escAttr(x.m.dba)}</strong>
+               <span class="sub"> &middot; ${escAttr(x.d.label || x.d.kind || 'till')} at ${escAttr(x.l.name)}</span>
+             </div>
+             <div class="row" style="gap:8px;">
+               ${posHealthPill(x.h)}
+               <button class="btn btn-xs" onclick="openPosMerchant('${x.m.id}','devices')">Open</button>
+             </div>
+           </div>`).join('')}
+         ${quiet.length > 6 ? `<p class="sub" style="margin:8px 0 0;">and ${quiet.length-6} more</p>` : ''}`;
+  }
+
+/* A number that is a list of jobs, so it opens the list. */
   const tasks = boardingTaskCounts();
   const tasksCard = document.getElementById('backendTasksCard');
   if(tasksCard){
@@ -13725,7 +14218,7 @@ function renderBackendOverview(){
               : `${tasks.open} open${tasks.overdue ? `, <strong style="color:var(--red);">${tasks.overdue} overdue</strong>` : ''}.`}
           </p>
         </div>
-        <button class="btn btn-accent btn-sm" onclick="openBoardingTasks()">Open the list</button>
+        <button class="btn btn-accent btn-sm" onclick="showView('postasks')">Open the list</button>
       </div>`;
   }
 
@@ -13780,7 +14273,7 @@ function renderPosMerchants(){
           <td>${loc ? escAttr((POS_EDITIONS[loc.edition]||{}).label || loc.edition) : '—'}</td>
           <td>${(m.pos_locations||[]).length}</td>
           <td>${posDeviceCount(m)}</td>
-          <td>${loc ? ppmLabel(loc.dual_pricing_ppm, loc.dual_pricing_fixed_cents) : '—'}</td>
+          <td>${loc ? posRateShort(loc) : '—'}</td>
           <td class="sub">${escAttr(m.rep || '')}</td>
         </tr>`;
       }).join('');
@@ -13830,7 +14323,7 @@ function openPosMerchantForm(id){
         <input id="pmLegal" value="${v(m&&m.legal_name)}" placeholder="Maple Street Hospitality LLC"></div>
 
       <div class="field"><label>Street</label><input id="pmStreet" value="${v(m&&m.street)}"></div>
-      <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;">
+      <div class="grid-fields" style="grid-template-columns:2fr 1fr 1fr;">
         <div class="field"><label>City</label><input id="pmCity" value="${v(m&&m.city)}"></div>
         <div class="field"><label>State</label><input id="pmState" value="${v(m&&m.state)}" maxlength="2"></div>
         <div class="field"><label>ZIP</label><input id="pmZip" value="${v(m&&m.zip)}"></div>
@@ -13860,7 +14353,7 @@ function openPosMerchantForm(id){
       <input type="hidden" id="pmEdition" value="${v(loc ? loc.edition : 'restaurant')}">
       <div class="field"><label>Edition</label><div id="pmEditionCards"></div></div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+      <div class="grid-fields">
         <div class="field"><label>Card price adds (%)</label>
           <input id="pmPct" value="${loc ? ppmPercent(loc.dual_pricing_ppm) : '3.99'}" inputmode="decimal"></div>
         <div class="field"><label>Per transaction (&cent;)</label>
@@ -13947,14 +14440,14 @@ async function savePosMerchant(id){
     showToast('Saved.', 'success');
   } else {
     merchant.created_by = currentUser && currentUser.id ? currentUser.id : null;
-    const { data, error } = await supa.from('pos_merchants').insert(merchant).select().single();
+    const { data, error } = await supaV2.from('pos_merchants').insert(merchant).select().single();
     if(error){ posProblem('Could not board this merchant: ' + error.message); return; }
     /*
      * The location is a second write, so it can fail on its own. Said
      * plainly rather than swallowed: a merchant with no location is an
      * account nobody can put a till on, and somebody has to know.
      */
-    const { error: le } = await supa.from('pos_locations').insert({ ...location, merchant_id: data.id });
+    const { error: le } = await supaV2.from('pos_locations').insert({ ...location, merchant_id: data.id });
     if(le){
       showToast('Boarded, but the location did not save: ' + le.message, 'error');
     } else {
@@ -14009,7 +14502,12 @@ async function openPosMerchant(id, tab){
   // with no catalogue and shows nothing at all.
   await loadPosBilling();
   await loadPosAgreements(id);
-  const { data } = await supa.from('pos_merchant_notes')
+  await loadPosChanges(id);
+  await loadPosConfig();
+  await loadPosMerchantConfig(id);
+  await loadPosPortalUsers(id);
+  await loadPosStationTypes();
+  const { data } = await supaV2.from('pos_merchant_notes')
     .select('*').eq('merchant_id', id).order('created_at', { ascending:false });
   POS_NOTES = data || [];
   renderPosDetail();
@@ -14023,7 +14521,8 @@ function renderPosDetail(){
   if(!m) return;
   const tabs = [
     ['overview','Overview'], ['setup','Setup'], ['plan','Locations and plan'],
-    ['devices','Stations'], ['log','Relationship'],
+    ['devices','Stations'], ['users','Portal logins'],
+    ['settings','Register settings'], ['log','Relationship'],
   ];
   document.getElementById('posMerchantDrawer').innerHTML = `
     <div class="drawer-head">
@@ -14043,6 +14542,8 @@ function renderPosDetail(){
       ${posDetailTab === 'overview' ? posDetailOverview(m)
         : posDetailTab === 'setup' ? posDetailSetup(m)
         : posDetailTab === 'plan' ? posDetailPlan(m)
+        : posDetailTab === 'users' ? posDetailPortalUsers(m)
+        : posDetailTab === 'settings' ? posDetailSettings(m)
         : posDetailTab === 'devices' ? posDetailDevices(m)
         : posDetailLog(m)}
     </div>
@@ -14070,7 +14571,7 @@ function posDetailOverview(m){
     ${row('Business phone', escAttr(m.phone))}
     ${row('Address', [m.street, m.city, m.state, m.zip].filter(Boolean).map(escAttr).join(', '))}
     ${row('Edition', loc ? escAttr((POS_EDITIONS[loc.edition]||{}).label || loc.edition) : '')}
-    ${row('Card price adds', loc ? ppmLabel(loc.dual_pricing_ppm, loc.dual_pricing_fixed_cents) : '')}
+    ${row('Pricing', loc ? posRateShort(loc) : '')}
     ${row('Sales tax', loc ? ppmPercent(loc.tax_ppm) + '%' : '')}
     ${row('Boarded', new Date(m.created_at).toLocaleDateString())}`;
 }
@@ -14090,12 +14591,75 @@ function posDetailPlan(m){
     ${posAgreementsHtml(m)}`;
 }
 
+/* ---------------------------------------------------------------------------
+   STATIONS, REFLECTED RATHER THAN MANAGED
+
+   A merchant adds a station in their own portal and this shows what they
+   added. EPAY's job on this screen is the one thing a merchant cannot do
+   for themselves: give it a gateway. TPNs come from the processor to the
+   ISO, so a station arrives needing one and waits here until somebody
+   assigns it.
+
+   Which is why "needs a gateway" is a queue rather than a column. A station
+   that cannot take a card is a shop that cannot trade on it, and nobody
+   goes looking for that - it has to come and find them.
+   --------------------------------------------------------------------------- */
+
+let POS_STATION_TYPES = [];
+
+async function loadPosStationTypes(force){
+  if(POS_STATION_TYPES.length && !force) return POS_STATION_TYPES;
+  const { data, error } = await supaV2.from('pos_station_types')
+    .select('*').eq('active', true).order('sort');
+  POS_STATION_TYPES = error ? [] : (data || []);
+  return POS_STATION_TYPES;
+}
+
+function posStationType(key){
+  return POS_STATION_TYPES.find(t => t.key === key) || null;
+}
+
+/* What a station is, as a person reads it. Falls back to the old device
+   kind for anything added before stations had types - those are real
+   stations and should not read as blank. */
+function posStationLabel(d){
+  const t = posStationType(d.station_type);
+  if(t) return t.label;
+  return POS_DEVICE_KINDS[d.kind] || d.kind || 'Station';
+}
+
+/** Every station on this account with no gateway on it yet. */
+function posStationsAwaitingGateway(m){
+  return ((m && m.pos_locations) || [])
+    .flatMap(l => (l.pos_devices || []).map(d => ({ d, l })))
+    .filter(x => !x.d.gateway_ref);
+}
+
+function posGatewayCell(d){
+  if(d.gateway_ref){
+    return `<div><strong style="font-family:ui-monospace,monospace;font-size:12px;">
+        ${escAttr(d.gateway_ref)}</strong>
+      <div class="sub">${d.gateway_assigned_by ? escAttr(d.gateway_assigned_by) + ' · ' : ''}${
+        d.gateway_assigned_at ? new Date(d.gateway_assigned_at).toLocaleDateString() : ''}</div></div>`;
+  }
+  return `<button class="btn btn-xs" style="color:var(--warn-text);border-color:var(--warn-border);"
+      onclick="assignGateway('${d.id}')">Assign a gateway</button>`;
+}
+
 function posDetailDevices(m){
   const locs = m.pos_locations || [];
+  const waiting = posStationsAwaitingGateway(m);
   return `
     <p style="font-size:12px;color:var(--slate-500);margin:0 0 12px;">
-      Every till, screen and card terminal in the shop. A station's number prints on its checks,
-      so adding one here is what a device pairs against.</p>
+      What this merchant has put in their shop. They add stations from their own portal;
+      the one thing they cannot do is give one a gateway, which is why that is here.</p>
+    ${waiting.length ? `<div style="border:1px solid var(--warn-border);background:var(--warn-bg);
+        border-radius:10px;padding:11px 13px;margin-bottom:14px;">
+        <strong style="font-size:12.5px;color:var(--warn-text);">
+          ${waiting.length} ${waiting.length===1?'station is':'stations are'} waiting on a gateway</strong>
+        <div style="font-size:11.5px;color:var(--slate-500);margin-top:3px;">
+          They exist, they are billed, and they cannot take a card until one is assigned.</div>
+      </div>` : ''}
     ${locs.map(l => `
       <div style="margin-bottom:16px;">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;">
@@ -14105,13 +14669,18 @@ function posDetailDevices(m){
         ${(l.pos_devices||[]).length === 0
           ? `<p style="font-size:12px;color:var(--slate-500);margin:0;">Nothing here yet.</p>`
           : `<div class="table-wrap"><table><thead><tr>
-               <th>Device</th><th>Type</th><th>Pairing</th><th>Last seen</th><th></th></tr></thead><tbody>` +
+               <th>Station</th><th>Subscription</th><th>Gateway</th><th>Pairing</th><th>Last seen</th><th></th></tr></thead><tbody>` +
             (l.pos_devices||[]).map(d => `<tr>
-              <td class="name-cell">${escAttr(d.label)}</td>
-              <td>${escAttr(POS_DEVICE_KINDS[d.kind] || d.kind)}</td>
+              <td class="name-cell">${escAttr(d.nickname || d.label)}
+                <div class="sub">${d.added_by === 'merchant' ? 'Added by the merchant' : 'Added by EPAY'}</div></td>
+              <td>${escAttr(posStationLabel(d))}
+                ${posStationType(d.station_type) && posStationType(d.station_type).price_cents !== null
+                  ? `<div class="sub">${posMoney(posStationType(d.station_type).price_cents)}/mo</div>` : ''}</td>
+              <td>${posGatewayCell(d)}</td>
               <td>${posPairLabel(d)}</td>
               <td class="sub">${d.last_seen_at ? new Date(d.last_seen_at).toLocaleString() : 'Never checked in'}</td>
               <td style="text-align:right;white-space:nowrap;">
+                ${posHealthPill(posDeviceHealth(d))}
                 <button class="btn btn-xs" onclick="pairPosDevice('${d.id}')">${d.paired_at?'Re-pair':'Pair'}</button>
                 <button class="btn btn-xs" style="color:var(--red);"
                   onclick="removePosDevice('${d.id}')">Remove</button></td>
@@ -14139,14 +14708,61 @@ function posDetailLog(m){
             ${escAttr(n.kind)} &middot; ${new Date(n.created_at).toLocaleString()}</div>
           <div style="font-size:13px;line-height:1.5;margin-top:3px;">${escAttr(n.body)}</div>
           <div style="font-size:11px;color:var(--slate-500);margin-top:2px;">${escAttr(n.by_name)}</div>
-        </div>`).join('')}`;
+        </div>`).join('')}
+    ${posChangesHtml()}`;
+}
+
+/*
+ * Giving a station its gateway.
+ *
+ * The reference only - a TPN, a device id, whatever TransIT turns out to
+ * use. Never a key or a secret: this row is readable by anything holding a
+ * session, and a credential that authorises a charge does not belong
+ * anywhere a browser can reach.
+ */
+async function assignGateway(deviceId){
+  const current = ((posDetailMerchant() || {}).pos_locations || [])
+    .flatMap(l => l.pos_devices || []).find(d => d.id === deviceId) || {};
+  const ref = prompt(
+    'Gateway reference for this station.\n\n' +
+    'The identifier you quote to the processor - a TPN or device id. ' +
+    'Never a transaction key or anything that authorises a charge.',
+    current.gateway_ref || '');
+  if(ref === null) return;
+  const trimmed = ref.trim();
+
+  const { error } = await updateRowV2('pos_devices', deviceId, {
+    gateway_ref: trimmed === '' ? null : trimmed,
+    gateway_assigned_at: trimmed === '' ? null : new Date().toISOString(),
+    gateway_assigned_by: trimmed === '' ? null : ((currentUser && currentUser.name) || 'Unknown'),
+  });
+  if(error){ showToast('Could not save that: ' + error.message, 'error'); return; }
+
+  const m = posDetailMerchant();
+  await logPosChange('pos_devices', deviceId, m ? m.id : null, 'gateway_ref',
+    current.gateway_ref, trimmed === '' ? null : trimmed);
+  await loadPosMerchants(true);
+  renderPosDetail();
+  showToast(trimmed === '' ? 'Gateway cleared.' : 'Gateway assigned.', 'success');
+}
+
+/* The same rule as updateRow, against V2: no rows back means the write was
+   refused, and "Saved" over a refused write is the bug updateRow exists to
+   stop. */
+async function updateRowV2(table, id, fields){
+  const res = await supaV2.from(table).update(fields).eq('id', id).select();
+  if(res.error) return { error: res.error };
+  if(!res.data || !res.data.length){
+    return { error: { message: 'Nothing was saved — this needs EPAY admin access in the POS platform.' } };
+  }
+  return { data: res.data[0] };
 }
 
 async function addPosNote(id){
   const body = (document.getElementById('pmNote').value || '').trim();
   if(!body) return;
   const kind = document.getElementById('pmNoteKind').value;
-  const { error } = await supa.from('pos_merchant_notes').insert({
+  const { error } = await supaV2.from('pos_merchant_notes').insert({
     merchant_id: id, kind, body, by_name: (currentUser && currentUser.name) || 'Unknown',
   });
   if(error){ showToast('Could not add the note: ' + error.message, 'error'); return; }
@@ -14161,7 +14777,7 @@ async function addPosDevice(locationId){
     if(kind !== null) showToast('That is not a device type.', 'error');
     return;
   }
-  const { error } = await supa.from('pos_devices')
+  const { error } = await supaV2.from('pos_devices')
     .insert({ location_id: locationId, label: label.trim(), kind: kind.trim() });
   if(error){ showToast('Could not add it: ' + error.message, 'error'); return; }
   await loadPosMerchants(true);
@@ -14192,6 +14808,88 @@ async function removePosDevice(id){
 
 let posLocEditing = null;
 
+/* ---------------------------------------------------------------------------
+   THE TWO PRICING PROGRAMS
+
+   Not two settings of one thing. Interchange plus bills the merchant and
+   passes nothing to the cardholder - the cash price and the card price are
+   the same price. Consumer choice puts an adjustable percentage on the card
+   price, shown to the customer before they choose how to pay.
+
+   The difference matters to the setup gates. Zero used to mean both "on
+   interchange plus, correctly passing nothing on" and "nobody has set this
+   up yet", which are opposite situations: one is finished and the other is
+   every card sale that day run at a loss. The program is its own answer now,
+   and the percentage only means anything under one of them.
+   --------------------------------------------------------------------------- */
+
+const POS_PRICING_MODES = {
+  interchange_plus: {
+    label: 'Interchange plus',
+    blurb: 'EPAY bills the merchant. Nothing is added to the customer — the cash price and the card price are the same.',
+    passesOn: false,
+  },
+  consumer_choice: {
+    label: 'Consumer choice',
+    blurb: 'The card price carries a percentage the customer pays, shown to them before they choose how to pay.',
+    passesOn: true,
+  },
+};
+
+function posPricingMode(l){ return (l && l.pricing_mode) || null; }
+
+/**
+ * A location's pricing, short enough for a table cell.
+ *
+ * Interchange plus never carries a percentage or a cent figure. There is no
+ * number to show: nothing is added to the card price, so printing "0.00%"
+ * beside it invents a rate that does not exist and reads, to anybody
+ * scanning a column of them, as a merchant whose program was left switched
+ * off. The programme's name is the whole answer.
+ *
+ * Only consumer choice has a figure, because only consumer choice passes
+ * one on.
+ */
+function posRateShort(l){
+  const mode = posPricingMode(l);
+  if(!mode) return '<span style="color:var(--warn-text);font-weight:600;">Not set</span>';
+  if(mode === 'interchange_plus') return 'Interchange Plus';
+  return ppmLabel(l.dual_pricing_ppm, l.dual_pricing_fixed_cents);
+}
+
+/** What a location's pricing says, in one line. */
+function posPricingLine(l){
+  const mode = posPricingMode(l);
+  if(!mode) return 'No pricing program chosen';
+  const m = POS_PRICING_MODES[mode] || {};
+  if(!m.passesOn) return m.label + ' — nothing added to the customer';
+  return m.label + ' — ' + ppmLabel(l.dual_pricing_ppm, l.dual_pricing_fixed_cents) + ' on the card price';
+}
+
+/* The change log reads the same way: a move to interchange plus is a change
+   of programme, not a change to zero per cent. */
+function posChangeRate(field, raw, mode){
+  if(mode === 'interchange_plus' && field !== 'tax_ppm') return 'n/a — Interchange Plus';
+  return null;
+}
+
+/*
+ * Whether this location's pricing is finished.
+ *
+ * Interchange plus is finished the moment it is chosen: there is no rate to
+ * set, and asking for one would be asking for a number that must stay zero.
+ * Consumer choice needs an amount, because the whole programme is that an
+ * amount is passed on, and zero passes nothing.
+ */
+function posPricingSet(l){
+  const mode = posPricingMode(l);
+  if(mode === 'interchange_plus') return true;
+  if(mode === 'consumer_choice'){
+    return Number(l.dual_pricing_ppm || 0) > 0 || Number(l.dual_pricing_fixed_cents || 0) > 0;
+  }
+  return false;
+}
+
 function posLocationCard(l, m){
   const editing = posLocEditing === l.id;
   const e = POS_EDITIONS[l.edition] || {};
@@ -14203,9 +14901,9 @@ function posLocationCard(l, m){
           <span class="pill pill-inhouse">${escAttr(e.label || l.edition)}</span>
         </div>
         <p style="font-size:11.5px;color:var(--slate-500);margin:6px 0 0;">${escAttr(e.offers || '')}</p>
+        <p style="font-size:12px;margin:8px 0 0;${posPricingMode(l)?'':'color:var(--warn-text);font-weight:600;'}">
+          ${escAttr(posPricingLine(l))}</p>
         <div style="display:flex;gap:18px;margin-top:10px;font-size:12.5px;flex-wrap:wrap;">
-          <span><strong>${ppmLabel(l.dual_pricing_ppm, l.dual_pricing_fixed_cents)}</strong>
-            <span style="color:var(--slate-500);"> card price</span></span>
           <span><strong>${ppmPercent(l.tax_ppm)}%</strong>
             <span style="color:var(--slate-500);"> sales tax</span></span>
           <span><strong>${(l.pos_devices||[]).length}</strong>
@@ -14229,11 +14927,23 @@ function posLocationCard(l, m){
       <div class="field"><label>Edition</label>
         <select id="plEdition">${Object.keys(POS_EDITIONS).map(k =>
           `<option value="${k}" ${k===l.edition?'selected':''}>${POS_EDITIONS[k].label}</option>`).join('')}</select></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+      <div class="field"><label>Pricing program</label>
+        <select id="plMode" onchange="posPricingModeChanged()">
+          <option value="" ${!posPricingMode(l)?'selected':''}>Not chosen yet</option>
+          ${Object.keys(POS_PRICING_MODES).map(k =>
+            `<option value="${k}" ${posPricingMode(l)===k?'selected':''}>${POS_PRICING_MODES[k].label}</option>`).join('')}
+        </select>
+        <p id="plModeBlurb" class="setup-help" style="margin-top:6px;">
+          ${escAttr((POS_PRICING_MODES[posPricingMode(l)]||{}).blurb || 'Interchange plus bills the merchant. Consumer choice passes a percentage to the customer.')}</p>
+      </div>
+      <div class="grid-fields" id="plRateFields"
+           style="${posPricingMode(l)==='consumer_choice'?'':'display:none;'}">
         <div class="field"><label>Card price adds (%)</label>
           <input id="plPct" value="${ppmPercent(l.dual_pricing_ppm)}" inputmode="decimal"></div>
         <div class="field"><label>Per transaction (&cent;)</label>
           <input id="plFixed" value="${Number(l.dual_pricing_fixed_cents||0)}" inputmode="numeric"></div>
+      </div>
+      <div class="grid-fields">
         <div class="field"><label>Sales tax (%)</label>
           <input id="plTax" value="${ppmPercent(l.tax_ppm)}" inputmode="decimal"></div>
       </div>
@@ -14245,22 +14955,87 @@ function posLocationCard(l, m){
     </div>`;
 }
 
+/* Interchange plus has no rate to ask for, so the boxes go away rather than
+   sitting there inviting a number that has to stay zero. */
+function posPricingModeChanged(){
+  const mode = (document.getElementById('plMode') || {}).value || '';
+  const fields = document.getElementById('plRateFields');
+  const blurb = document.getElementById('plModeBlurb');
+  if(fields) fields.style.display = mode === 'consumer_choice' ? '' : 'none';
+  if(blurb) blurb.textContent = (POS_PRICING_MODES[mode] || {}).blurb
+    || 'Interchange plus bills the merchant. Consumer choice passes a percentage to the customer.';
+}
+
+/* ---------------------------------------------------------------------------
+   WHO CHANGED IT
+
+   Rate disputes are the expensive kind and a change left no trace at all.
+   Written after the change lands, never instead of it: a log entry for a
+   save that failed is worse than no entry, because it is a record of
+   something that did not happen.
+   --------------------------------------------------------------------------- */
+async function logPosChange(entity, entityId, merchantId, field, oldValue, newValue, note){
+  if(String(oldValue === null || oldValue === undefined ? '' : oldValue)
+     === String(newValue === null || newValue === undefined ? '' : newValue)) return;
+  const { error } = await supaV2.from('pos_change_log').insert({
+    entity, entity_id: entityId ? String(entityId) : null,
+    merchant_id: merchantId || null,
+    field,
+    old_value: oldValue === null || oldValue === undefined ? null : String(oldValue),
+    new_value: newValue === null || newValue === undefined ? null : String(newValue),
+    changed_by: (currentUser && currentUser.name) || 'Unknown',
+    note: note || null,
+  });
+  // Never blocks the change it describes, and never silent either: a trail
+  // with a hole in it is worth knowing about.
+  if(error) console.warn('Change not logged:', field, error.message);
+}
+
 async function savePosLocation(id){
-  const get = (k) => (document.getElementById(k).value || '').trim();
+  const get = (k) => ((document.getElementById(k) || {}).value || '').trim();
   const say = (t) => { const el=document.getElementById('plProblem'); el.textContent=t; el.style.display=t?'block':'none'; };
-  const pct = pctToPpm(get('plPct'));
+  const m = posDetailMerchant();
+  const before = ((m && m.pos_locations) || []).find(x => x.id === id) || {};
+  const mode = get('plMode') || null;
   const tax = pctToPpm(get('plTax'));
-  const fixed = Math.round(Number(get('plFixed') || 0));
+
+  /*
+   * Interchange plus is stored at zero because zero is what it passes on.
+   * Whatever was in the boxes before the programme was switched is not
+   * carried across — a leftover 3.99 sitting under an interchange plus
+   * account is the number somebody finds later and cannot explain.
+   */
+  const passesOn = mode === 'consumer_choice';
+  const pct = passesOn ? pctToPpm(get('plPct')) : 0;
+  const fixed = passesOn ? Math.round(Number(get('plFixed') || 0)) : 0;
+
   if(!get('plName')){ say('What is this location called?'); return; }
-  if(pct === null){ say('The card price has to be a number. Enter 0 to run without the program.'); return; }
+  if(!mode){ say('Which pricing program is this location on?'); return; }
+  if(pct === null){ say('The card price has to be a number.'); return; }
   if(tax === null){ say('Sales tax has to be a number.'); return; }
   if(!isFinite(fixed) || fixed < 0){ say('Per transaction has to be a whole number of cents.'); return; }
+  if(passesOn && pct === 0 && fixed === 0){
+    say('Consumer choice passes something to the customer. At 0% and 0¢ it passes nothing — choose interchange plus instead.');
+    return;
+  }
   say('');
   const { error } = await updateRow('pos_locations', id, {
-    name: get('plName'), edition: get('plEdition'),
+    name: get('plName'), edition: get('plEdition'), pricing_mode: mode,
     dual_pricing_ppm: pct, dual_pricing_fixed_cents: fixed, tax_ppm: tax,
   });
   if(error){ say('Could not save: ' + error.message); return; }
+
+  // After it landed, not before. Money fields only: this is the trail a rate
+  // dispute is argued from, and padding it with cosmetic edits makes the
+  // one entry that matters harder to find.
+  const mid = m ? m.id : null;
+  await logPosChange('pos_locations', id, mid, 'pricing_mode', before.pricing_mode, mode);
+  await logPosChange('pos_locations', id, mid, 'dual_pricing_ppm', before.dual_pricing_ppm, pct,
+    passesOn ? null : 'Zeroed by moving to interchange plus.');
+  await logPosChange('pos_locations', id, mid, 'dual_pricing_fixed_cents', before.dual_pricing_fixed_cents, fixed);
+  await logPosChange('pos_locations', id, mid, 'tax_ppm', before.tax_ppm, tax);
+  await logPosChange('pos_locations', id, mid, 'edition', before.edition, get('plEdition'));
+
   posLocEditing = null;
   await loadPosMerchants(true);
   renderPosDetail();
@@ -14279,7 +15054,7 @@ async function addPosLocation(merchantId){
    * on 0% card price is a rate nobody set and nobody notices.
    */
   const first = posPrimaryLocation(m) || {};
-  const { error } = await supa.from('pos_locations').insert({
+  const { error } = await supaV2.from('pos_locations').insert({
     merchant_id: merchantId,
     name: name.trim(),
     street: m.street, city: m.city, state: m.state, zip: m.zip,
@@ -14387,6 +15162,180 @@ function posReadiness(answers){
     percent: asked === 0 ? 100 : Math.round((got/asked)*100),
     canOpen: blocking.length === 0 };
 }
+/* ---------------------------------------------------------------------------
+   WHAT HAS TO BE TRUE BEFORE A SHOP OPENS
+
+   The questionnaire counts answers. Answers are not a working shop: an
+   account can be 14 of 14 and still have no MID, no till anybody has paired,
+   and a dual pricing rate of zero - which is the EPAY program switched off,
+   on the business whose whole deal is the EPAY program.
+
+   So "ready to open" is these, and each one is true or it is not. The
+   questionnaire goes back to being how the answers get collected.
+
+   Each gate carries `fix`: the words that go on a task when it is the thing
+   standing in the way. A gate that says "not ready" without saying what to
+   do about it is a gate somebody learns to ignore.
+   --------------------------------------------------------------------------- */
+
+function posGates(m){
+  const locs = (m && m.pos_locations) || [];
+  const answers = (m && m.setup_answers) || {};
+  const r = posReadiness(answers);
+  const devices = locs.reduce((n,l) => n.concat(l.pos_devices || []), []);
+  const noPlan = locs.filter(l => !l.plan_key);
+  const noMode = locs.filter(l => !posPricingMode(l));
+  const noRate = locs.filter(l => posPricingMode(l) && !posPricingSet(l));
+  const noTax  = locs.filter(l => !(l.tax_ppm > 0));
+
+  const gates = [
+    { key:'location', label:'A location to put a till in',
+      ok: locs.length > 0,
+      why:'No location on the account.',
+      fix:'Add the first location to this EPAY POS account.' },
+
+    { key:'plan', label:'Every location on a plan',
+      ok: locs.length > 0 && noPlan.length === 0,
+      why: noPlan.length ? noPlan.map(l => l.name).join(', ') + ' has no plan.' : '',
+      fix:'Put every location on a plan — nothing can be invoiced without one.' },
+
+    /*
+     * Which programme, before how much. A zero rate is correct on
+     * interchange plus and catastrophic on consumer choice, so the rate
+     * cannot be checked until the programme is known.
+     */
+    { key:'pricing_mode', label:'A pricing program chosen',
+      ok: locs.length > 0 && noMode.length === 0,
+      why: noMode.length ? noMode.map(l => l.name).join(', ') + ' has neither programme set.' : '',
+      fix:'Choose interchange plus or consumer choice. Nothing else about pricing can be checked until this is answered.' },
+
+    { key:'rate', label:'Consumer choice percentage set',
+      ok: noRate.length === 0,
+      why: noRate.length ? noRate.map(l => l.name).join(', ') + ' is on consumer choice at 0% and 0¢.' : '',
+      fix:'Set what the card price adds. On consumer choice, zero passes nothing on and the programme is off.' },
+
+    { key:'tax', label:'Sales tax set',
+      ok: locs.length > 0 && noTax.length === 0,
+      why: noTax.length ? noTax.map(l => l.name).join(', ') + ' has no tax rate.' : '',
+      fix:'Set the sales tax rate, or every receipt understates it.' },
+
+    { key:'mid', label:'MID issued',
+      ok: !!(m && m.mid),
+      why:'No MID on the account yet.',
+      fix:'Chase the MID. Until it exists the tills cannot take a card.' },
+
+    { key:'device', label:'A till paired',
+      ok: devices.some(d => d.paired_at),
+      why: devices.length === 0 ? 'No devices on the account.' : 'No device has been paired.',
+      fix: 'Add a device and pair it. An unpaired till is a box in a cupboard.' },
+
+    { key:'answers', label:'The questions that block opening',
+      ok: r.blocking.length === 0,
+      why: r.blocking.length ? r.blocking.length + ' still unanswered.' : '',
+      fix:'Finish the setup questions marked needed.' },
+  ];
+  const failing = gates.filter(g => !g.ok);
+  return { gates, failing, ok: failing.length === 0 };
+}
+
+/** Whether this account could actually trade today. */
+function posCanOpen(m){ return posGates(m).ok; }
+
+/* ---------------------------------------------------------------------------
+   THE CHECKLIST WRITES ITSELF
+
+   Boarding failed quietly when it depended on somebody remembering to write
+   the jobs down. The gates already know what is missing and say what to do
+   about it, so the tasks come from there: one task per failing gate, filed
+   under Boarding, attached to the lead so it shows on the record too.
+
+   Run again whenever - on boarding, and from the button on the sheet. It
+   never writes a second copy of a job that is already open, because a list
+   that grows a duplicate every time somebody presses it is a list people
+   stop reading.
+   --------------------------------------------------------------------------- */
+
+/** The title a gate gets as a task. Stable, because it is also the dedupe key. */
+function boardingTaskTitle(merchant, gate){
+  return `${merchant.dba}: ${gate.label}`;
+}
+
+async function makeBoardingTasks(merchantId, opts){
+  const o = opts || {};
+  const m = POS_MERCHANTS.find(x => x.id === merchantId);
+  if(!m) return 0;
+  if(typeof ensureData === 'function') await ensureData(['tasks']);
+
+  const failing = posGates(m).failing;
+  if(!failing.length){
+    if(!o.silent) showToast('Nothing outstanding — no tasks needed.', 'success');
+    return 0;
+  }
+
+  const lead = LEADS.find(l => l.pos_merchant_id === m.id) || null;
+  // Already open, by title. Completed ones do not block a new task: a job
+  // that was done and has come undone is a job again.
+  const openTitles = new Set(TASKS.filter(t => !t.completed).map(t => t.title));
+
+  const rows = failing
+    .filter(g => !openTitles.has(boardingTaskTitle(m, g)))
+    .map(g => ({
+      title: boardingTaskTitle(m, g),
+      notes: g.why ? g.fix + ' (' + g.why + ')' : g.fix,
+      category: BOARDING_CATEGORY,
+      priority: 'normal',
+      due_date: null,
+      assigned_to: currentUser.id,
+      created_by: currentUser.id,
+      linked_lead_id: lead ? lead.id : null,
+      linked_cold_lead_id: null,
+      linked_application_id: null,
+    }));
+
+  if(!rows.length){
+    if(!o.silent) showToast('Those tasks are already open.', 'success');
+    return 0;
+  }
+
+  const { data, error } = await supa.from('tasks').insert(rows).select();
+  if(error){
+    if(!o.silent) showToast('Could not make the tasks: ' + error.message, 'error');
+    return 0;
+  }
+  (data || []).forEach(t => TASKS.unshift(t));
+  if(!o.silent){
+    showToast(data.length + (data.length === 1 ? ' boarding task added.' : ' boarding tasks added.'), 'success');
+    renderPosDetail();
+  }
+  if(document.getElementById('view-tasks').style.display !== 'none') renderTasksList();
+  if(document.getElementById('view-postasks').style.display !== 'none') renderPosTasks();
+  return data.length;
+}
+
+function posGatesHtml(m){
+  const g = posGates(m);
+  return `
+    <div style="border:1px solid var(--line);border-radius:10px;padding:13px;margin-bottom:12px;">
+      <div class="row" style="justify-content:space-between;margin-bottom:8px;">
+        <strong style="font-size:13.5px;">Before they open</strong>
+        <span class="pill ${g.ok?'pill-agent-auth':'pill-commission'}">
+          ${g.ok ? 'Ready to open' : g.failing.length + ' still to do'}</span>
+      </div>
+      ${g.gates.map(x => `
+        <div class="row" style="gap:8px;padding:6px 0;border-top:1px solid var(--line);align-items:flex-start;">
+          <span style="flex:0 0 auto;width:16px;text-align:center;color:${x.ok?'var(--green)':'var(--warn-text)'};font-weight:700;">
+            ${x.ok ? '&#10003;' : '&middot;'}</span>
+          <div style="flex:1 1 auto;min-width:0;">
+            <div style="font-size:12.5px;font-weight:${x.ok?'500':'700'};">${escAttr(x.label)}</div>
+            ${x.ok ? '' : `<div style="font-size:11px;color:var(--slate-500);">${escAttr(x.why || x.fix)}</div>`}
+          </div>
+        </div>`).join('')}
+      ${g.ok ? '' : `<div class="row" style="margin-top:10px;">
+        <button class="btn btn-xs" onclick="makeBoardingTasks('${m.id}')">Make these into tasks</button>
+      </div>`}
+    </div>`;
+}
+
 function posReadinessLine(r){
   if(r.asked === 0) return 'Nothing to fill in';
   if(r.canOpen && r.got === r.asked) return 'Setup complete';
@@ -14398,11 +15347,11 @@ function posReadinessLine(r){
 function posSetupField(q, answers){
   const v = answers[q.id];
   const id = 'ps_' + q.id;
-  const needed = q.needed ? ` <span style="color:var(--warn-text);font-weight:700;">&middot; needed</span>` : '';
+  const needed = q.needed ? ` <span class="setup-needed">needed</span>` : '';
   let control;
   if(q.kind === 'yesno'){
-    control = [true,false].map(choice => `<button type="button" class="chip" aria-pressed="${v===choice}"
-      onclick="setPosAnswer('${q.id}', ${choice})">${choice?'Yes':'No'}</button>`).join(' ');
+    control = `<div class="row">` + [true,false].map(choice => `<button type="button" class="chip" aria-pressed="${v===choice}"
+      onclick="setPosAnswer('${q.id}', ${choice})">${choice?'Yes':'No'}</button>`).join('') + `</div>`;
   } else if(q.kind === 'choice'){
     control = `<select id="${id}" onchange="setPosAnswer('${q.id}', this.value)">
       <option value="">Choose&hellip;</option>
@@ -14413,14 +15362,338 @@ function posSetupField(q, answers){
       inputmode="${q.kind==='number'?'numeric':'text'}"
       onchange="setPosAnswer('${q.id}', ${q.kind==='number'?'this.value===\'\'?\'\':Number(this.value)':'this.value'})">`;
   }
-  return `<div class="field"><label>${escAttr(q.label)}${needed}</label>${control}
-    ${q.help ? `<p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">${escAttr(q.help)}</p>` : ''}</div>`;
+  return `<div class="field setup-field"><label>${escAttr(q.label)}${needed}</label>
+    ${q.help ? `<p class="setup-help">${escAttr(q.help)}</p>` : ''}${control}</div>`;
+}
+
+/* ---------------------------------------------------------------------------
+   REGISTER SETTINGS, FOR ONE ACCOUNT
+
+   A receipt footer, the tip buttons and the reasons a till offers are things
+   one merchant asks to change and the rest never hear about. A steakhouse
+   wanting 20/22/25 does not change what a coffee shop sees.
+
+   So every setting shows what this account actually uses, and says whether
+   that is their own answer or the platform default. Changing one writes an
+   override against this merchant; clearing it puts them back on the default
+   rather than freezing today's default as theirs - which is the difference
+   between "they never asked" and "they asked for exactly this", and only
+   the first should follow when the default moves.
+   --------------------------------------------------------------------------- */
+
+let POS_MERCHANT_CONFIG = [];
+
+async function loadPosMerchantConfig(merchantId){
+  const { data, error } = await supaV2.rpc('pos_config_for', { p_merchant: merchantId });
+  POS_MERCHANT_CONFIG = error ? [] : (data || []);
+  return POS_MERCHANT_CONFIG;
+}
+
+/* ---------------------------------------------------------------------------
+   WHO CAN SIGN INTO THIS MERCHANT'S PORTAL
+
+   A business has several: the owner, a manager doing the rota, a bookkeeper
+   who sees the deposits and must not change the menu. Inviting one is the
+   step that turns a boarded account into something the merchant can actually
+   open, and it had no home until now.
+
+   Creating a login needs the service role, which cannot be in a browser, so
+   this calls an edge function in V2 rather than writing the row itself. The
+   function checks the caller against pos_staff before it does anything -
+   reading the database as that person, which is the one thing a caller
+   cannot talk us out of.
+   --------------------------------------------------------------------------- */
+
+let POS_PORTAL_USERS = [];
+
+async function loadPosPortalUsers(merchantId){
+  const { data, error } = await supaV2.from('pos_portal_users')
+    .select('*').eq('merchant_id', merchantId).order('created_at');
+  POS_PORTAL_USERS = error ? [] : (data || []);
+  return POS_PORTAL_USERS;
+}
+
+const POS_PORTAL_ROLES = {
+  owner: 'Owner — everything, including banking',
+  manager: 'Manager — the floor, the rota, the menu',
+  bookkeeper: 'Bookkeeper — sales and deposits, read only',
+  staff: 'Staff — their own hours and nothing else',
+};
+
+function posDetailPortalUsers(m){
+  const rows = POS_PORTAL_USERS;
+  return `
+    <p style="font-size:12px;color:var(--slate-500);margin:0 0 14px;">
+      Who can sign into ${escAttr(m.dba)}'s own back office at
+      <strong>epayportal.epaypos.net</strong>. Not EPAY staff &mdash; this is the merchant's
+      own people.</p>
+
+    ${rows.length === 0 ? `<div class="stub-panel" style="padding:30px 16px;">
+        <h3>No logins yet</h3>
+        <p style="max-width:380px;margin:0 auto;font-size:13px;line-height:1.6;">
+          The account exists and nobody can open it. Invite the owner below.</p></div>` : `
+      <div class="table-wrap" style="margin-bottom:18px;"><table><thead><tr>
+        <th>Who</th><th>Role</th><th>Added</th><th></th></tr></thead><tbody>
+        ${rows.map(u => `<tr>
+          <td class="name-cell">${escAttr(u.name || u.email || 'Unnamed')}
+            <div class="sub">${escAttr(u.email || '')}</div></td>
+          <td class="sub">${escAttr((POS_PORTAL_ROLES[u.role] || u.role).split(' — ')[0])}</td>
+          <td class="sub">${u.invited_at
+              ? 'Invited ' + new Date(u.invited_at).toLocaleDateString()
+              : 'Signed up ' + new Date(u.created_at).toLocaleDateString()}
+            ${u.accepted_at ? '<div class="sub">Signed in</div>'
+                            : '<div class="sub" style="color:var(--warn-text);">Not signed in yet</div>'}</td>
+          <td style="text-align:right;">${u.active
+            ? `<button class="btn btn-xs" style="color:var(--red);"
+                 onclick="setPosPortalUserActive('${u.id}', false)">Suspend</button>`
+            : `<button class="btn btn-xs"
+                 onclick="setPosPortalUserActive('${u.id}', true)">Restore</button>`}</td>
+        </tr>`).join('')}
+      </tbody></table></div>`}
+
+    ${m.owner_email && !rows.some(u => (u.email||'').toLowerCase() === m.owner_email.toLowerCase())
+      ? `<div style="border:1px solid var(--blue-400);border-radius:10px;padding:13px;margin-bottom:16px;">
+           <div class="row" style="justify-content:space-between;">
+             <div style="min-width:0;">
+               <strong style="font-size:13px;">Invite the owner</strong>
+               <div class="sub">${escAttr(m.owner_name || 'The owner')} &middot; ${escAttr(m.owner_email)}</div>
+             </div>
+             <button class="btn btn-accent btn-sm" onclick="inviteOwner('${m.id}')">
+               Create their login</button>
+           </div>
+           <p style="font-size:11px;color:var(--slate-500);margin:8px 0 0;">
+             Uses the name and email already on this account. Nothing to type.</p>
+         </div>`
+      : ''}
+
+    <h3 style="font-size:13.5px;margin:0 0 4px;">Invite somebody else</h3>
+    <p style="font-size:11px;color:var(--slate-500);margin:0 0 10px;">
+      They get a temporary password to change on first sign-in. It is shown to you here rather
+      than emailed &mdash; EPAY should not know a merchant's password, and one sent by email
+      sits in an inbox for years.</p>
+    <div class="field setup-field"><label>Their email</label>
+      <input id="piEmail" type="email" value="${escAttr(m.owner_email || '')}"
+             placeholder="owner@thebusiness.com"></div>
+    <div class="field setup-field"><label>Their name</label>
+      <input id="piName" value="${escAttr(m.owner_name || '')}"
+             placeholder="As they would write it"></div>
+    <div class="field setup-field"><label>What they can do</label>
+      <select id="piRole">
+        ${Object.keys(POS_PORTAL_ROLES).map(k =>
+          `<option value="${k}">${escAttr(POS_PORTAL_ROLES[k])}</option>`).join('')}
+      </select></div>
+    <p id="piProblem" class="error-text" style="display:none;"></p>
+    <div id="piResult"></div>
+    <div class="row">
+      <button class="btn btn-accent btn-sm" onclick="invitePosPortalUser('${m.id}')">
+        Create their login</button>
+    </div>`;
+}
+
+/*
+ * The owner, in one press.
+ *
+ * Their name and email are already on the account - somebody typed them
+ * when the business was boarded - and asking for them again is a step whose
+ * only purpose is that the code was easier that way. It is also the step
+ * most likely to introduce a typo into the one address the login depends on.
+ */
+async function inviteOwner(merchantId){
+  const m = POS_MERCHANTS.find(x => x.id === merchantId);
+  if(!m || !m.owner_email){ showToast('No owner email on this account.', 'error'); return; }
+  await invitePosPortalUser(merchantId, {
+    email: m.owner_email, name: m.owner_name || '', role: 'owner',
+  });
+}
+
+async function invitePosPortalUser(merchantId, given){
+  /* Either from the form, or handed in by the owner shortcut. */
+  const val = (id) => ((document.getElementById(id) || {}).value || '').trim();
+  const say = (t) => { const el = document.getElementById('piProblem');
+    if(el){ el.textContent = t; el.style.display = t ? 'block' : 'none'; }
+    else if(t) showToast(t, 'error');
+  };
+  const email = (given && given.email) || val('piEmail');
+  const name = (given && given.name !== undefined) ? given.name : val('piName');
+  const role = (given && given.role) || val('piRole');
+  if(!email || !email.includes('@')){ say('A real email, please.'); return; }
+  say('');
+
+  const built = await v2FunctionHeaders();
+  if(built.error){ say(built.error); return; }
+
+  /* Capitalised, because that is what is deployed. The path is
+     case-sensitive and the lowercase one 404s. */
+  const res = await fetch(V2_URL + '/functions/v1/Portal-Invite', {
+    method: 'POST',
+    headers: built.headers,
+    body: JSON.stringify({ merchantId, email, name, role }),
+  });
+  const out = await res.json().catch(() => ({ error: 'The server said nothing useful.' }));
+  if(!res.ok || out.error){ say(out.error || ('Failed: ' + res.status)); return; }
+
+  /*
+   * Shown on the screen, once. Not stored and not logged: the only copy
+   * should be the one the rep reads out, and it stops working the moment
+   * the merchant changes it.
+   */
+  /* The shortcut has no form on screen to write into, so the password goes
+     where it will be seen either way. */
+  const result = document.getElementById('piResult');
+  if(result === null){
+    if(out.password){
+      showToast('Login created for ' + out.email + '. Temporary password: ' + out.password, 'success');
+    } else {
+      showToast(out.email + ' already had a login and has been added.', 'success');
+    }
+    await loadPosPortalUsers(merchantId);
+    renderPosDetail();
+    return;
+  }
+  result.innerHTML = out.password
+    ? `<div class="stat-card" style="margin:10px 0;">
+         <div class="label">Temporary password for ${escAttr(out.email)}</div>
+         <div class="value" style="font-family:ui-monospace,monospace;font-size:20px;">
+           ${escAttr(out.password)}</div>
+         <div class="delta" style="color:var(--slate-500);">
+           Read it to them. It is not saved anywhere and will not be shown again.</div>
+       </div>`
+    : `<p style="font-size:12.5px;color:var(--slate-500);margin:10px 0;">
+         ${escAttr(out.email)} already had a login, so their existing password still works.
+         They have been added to ${escAttr(out.merchant)}.</p>`;
+
+  await loadPosPortalUsers(merchantId);
+  renderPosDetail();
+}
+
+async function setPosPortalUserActive(id, active){
+  const { error } = await supaV2.from('pos_portal_users')
+    .update({ active }).eq('id', id).select();
+  if(error){ showToast('Could not change that: ' + error.message, 'error'); return; }
+  const m = posDetailMerchant();
+  if(m) await loadPosPortalUsers(m.id);
+  renderPosDetail();
+  showToast(active ? 'Restored.' : 'Suspended — they cannot sign in.', 'success');
+}
+
+function posDetailSettings(m){
+  if(POS_MERCHANT_CONFIG.length === 0){
+    return `<div class="stub-panel"><h3>No settings yet</h3>
+      <p style="max-width:420px;margin:0 auto;font-size:13px;line-height:1.6;">
+        Run migrations 106 and 107 and this account's receipt wording, tip buttons and till
+        reasons appear here &mdash; starting from the platform defaults until somebody changes
+        one for this merchant.</p></div>`;
+  }
+  const overrides = POS_MERCHANT_CONFIG.filter(r => r.is_override).length;
+  return `
+    <p style="font-size:12px;color:var(--slate-500);margin:0 0 4px;">
+      What this account's registers use. Anything not changed here follows the platform default,
+      so a change to the standard reaches them.</p>
+    <p style="font-size:11.5px;margin:0 0 14px;color:${overrides?'var(--navy-700)':'var(--slate-500)'};">
+      ${overrides ? overrides + (overrides===1?' setting is':' settings are') + ' set for this merchant only.'
+                  : 'Everything is on the platform default.'}</p>
+    ${POS_CONFIG_GROUPS.map(g => {
+      const rows = POS_MERCHANT_CONFIG.filter(r => r.scope === g.scope);
+      if(!rows.length) return '';
+      return `<div style="margin-bottom:20px;">
+        <h3 style="font-size:13.5px;margin:0 0 3px;">${escAttr(g.title)}</h3>
+        <p style="font-size:11px;color:var(--slate-500);margin:0 0 10px;">${escAttr(g.blurb)}</p>
+        ${rows.map(r => posMerchantConfigField(m, r)).join('')}
+      </div>`;
+    }).join('')}`;
+}
+
+function posMerchantConfigField(m, r){
+  const kind = POS_CONFIG_KIND(r);
+  const id = 'mcfg_' + r.scope + '_' + r.key;
+  const badge = r.is_override
+    ? `<span class="pill pill-inhouse" style="margin-left:6px;">theirs</span>`
+    : `<span class="sub" style="margin-left:6px;">default</span>`;
+  const revert = r.is_override
+    ? `<button class="btn btn-xs" onclick="clearPosMerchantConfig('${m.id}','${r.scope}','${r.key}')">
+         Back to default</button>` : '';
+  let control;
+  if(kind === 'flag'){
+    control = `<div class="row">` + [true,false].map(v =>
+      `<button type="button" class="chip" aria-pressed="${r.value===v}"
+         onclick="savePosMerchantConfig('${m.id}','${r.scope}','${r.key}', ${v})">${v?'Yes':'No'}</button>`
+      ).join('') + (revert ? revert : '') + `</div>`;
+  } else if(kind === 'list'){
+    control = `
+      <textarea id="${id}" rows="${Math.max(2, r.value.length + 1)}"
+        style="width:100%;font-size:13px;">${escAttr(r.value.join('\n'))}</textarea>
+      <div class="row" style="margin-top:7px;">
+        <button class="btn btn-xs" onclick="savePosMerchantConfigList('${m.id}','${r.scope}','${r.key}')">Save for this merchant</button>
+        ${revert}<span class="sub">One per line.</span>
+      </div>`;
+  } else {
+    control = `
+      <input id="${id}" value="${escAttr(String(r.value))}">
+      <div class="row" style="margin-top:7px;">
+        <button class="btn btn-xs" onclick="savePosMerchantConfigText('${m.id}','${r.scope}','${r.key}')">Save for this merchant</button>
+        ${revert}
+      </div>`;
+  }
+  return `<div class="field setup-field" style="margin-bottom:16px;">
+    <label>${escAttr(r.label || r.key)}${badge}</label>${control}</div>`;
+}
+
+async function savePosMerchantConfigList(merchantId, scope, key){
+  const el = document.getElementById('mcfg_' + scope + '_' + key);
+  if(!el) return;
+  const lines = el.value.split('\n').map(x => x.trim()).filter(Boolean);
+  await savePosMerchantConfig(merchantId, scope, key, posConfigListValue(scope, key, lines));
+}
+
+async function savePosMerchantConfigText(merchantId, scope, key){
+  const el = document.getElementById('mcfg_' + scope + '_' + key);
+  if(!el) return;
+  await savePosMerchantConfig(merchantId, scope, key, el.value.trim());
+}
+
+/* An override is an upsert: this merchant may already have one, and a second
+   change should move it rather than adding a second row the read would have
+   to choose between. */
+async function savePosMerchantConfig(merchantId, scope, key, value){
+  const before = POS_MERCHANT_CONFIG.find(r => r.scope === scope && r.key === key) || {};
+  const base = POS_CONFIG.find(r => r.scope === scope && r.key === key) || {};
+  const { data, error } = await supaV2.from('pos_config')
+    .upsert({ merchant_id: merchantId, scope, key, value,
+              label: base.label || before.label || key, sort: base.sort || 0, active: true,
+              updated_at: new Date().toISOString(),
+              updated_by: (currentUser && currentUser.name) || 'Unknown' },
+            { onConflict: 'scope,key,merchant_id' })
+    .select();
+  if(error){ showToast('Could not save: ' + error.message, 'error'); return; }
+  if(!data || !data.length){
+    showToast('Nothing was saved — this needs admin portal access.', 'error');
+    return;
+  }
+  await logPosChange('pos_config', scope + '.' + key, merchantId, key,
+    JSON.stringify(before.value), JSON.stringify(value),
+    before.is_override ? null : 'Changed from the platform default.');
+  await loadPosMerchantConfig(merchantId);
+  renderPosDetail();
+  showToast('Saved for this merchant. Their registers pick it up on the next sync.', 'success');
+}
+
+/* Deleting the override rather than copying today's default into it. A
+   merchant who never asked for anything should follow the standard when it
+   moves; one who asked for exactly this should not. */
+async function clearPosMerchantConfig(merchantId, scope, key){
+  const { error } = await supaV2.from('pos_config').delete()
+    .eq('merchant_id', merchantId).eq('scope', scope).eq('key', key);
+  if(error){ showToast('Could not clear it: ' + error.message, 'error'); return; }
+  await logPosChange('pos_config', scope + '.' + key, merchantId, key, 'their own', 'platform default');
+  await loadPosMerchantConfig(merchantId);
+  renderPosDetail();
+  showToast('Back on the platform default.', 'success');
 }
 
 function posDetailSetup(m){
   const answers = m.setup_answers || {};
   const r = posReadiness(answers);
-  return `
+  return posGatesHtml(m) + `
     <div class="stat-card" style="margin-bottom:14px;">
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;">
         <div class="label">${r.canOpen ? 'Everything we need' : 'Before they open'}</div>
@@ -14644,10 +15917,10 @@ async function boardLeadInPos(leadId, auto){
   }
 
   const merchant = posMerchantFromLead(l, applicationForLead(leadId));
-  const { data, error } = await supa.from('pos_merchants').insert(merchant).select().single();
+  const { data, error } = await supaV2.from('pos_merchants').insert(merchant).select().single();
   if(error){ showToast('Could not set it up: ' + error.message, 'error'); return; }
 
-  const { error: le } = await supa.from('pos_locations').insert({
+  const { error: le } = await supaV2.from('pos_locations').insert({
     merchant_id: data.id, name: merchant.dba,
     street: merchant.street, city: merchant.city, state: merchant.state, zip: merchant.zip,
     // What the lead already says they are buying, where it says. The rate is
@@ -14678,6 +15951,22 @@ async function boardLeadInPos(leadId, auto){
       : 'Set up in EPAY POS. Edition and rate still need setting.', 'success');
   }
   posMerchantsLoaded = false;
+
+  /*
+   * The jobs, written down at the moment the account exists.
+   *
+   * A freshly boarded account fails nearly every gate by definition - no
+   * MID, no device, no plan - so this is the whole boarding checklist,
+   * generated rather than remembered. It is the step that used to depend on
+   * whoever boarded the account also opening the tasks page.
+   *
+   * Reloaded first so the gates are read from what the database actually
+   * stored rather than from what was sent to it.
+   */
+  await loadPosMerchants(true);
+  const made = await makeBoardingTasks(data.id, { silent:true });
+  if(made) showToast(made + ' boarding ' + (made===1?'task':'tasks') + ' added.', 'success');
+
   // The same pair saveMid uses, so the panel redraws the way every other
   // stage action redraws it.
   refreshActiveView();
@@ -14720,7 +16009,18 @@ async function autoBoardIfEpayProducts(l){
    --------------------------------------------------------------------------- */
 
 /* Where the merchant portal lives. Set once, here, when the domain exists. */
-const POS_PORTAL_URL = '';
+/*
+ * Where the merchant portal lives.
+ *
+ * Its own subdomain rather than a path on the CRM: a different origin means
+ * a merchant's browser cannot reach the Control Center's session, which is
+ * the point. Support reaches their portal by minting a token here and
+ * handing it over, never by sharing a login.
+ *
+ * Set before this does anything — "Visit their portal" says so rather than
+ * opening a broken tab.
+ */
+const POS_PORTAL_URL = 'https://epayportal.epaypos.net';
 
 const POS_SUPPORT_MINUTES = 10;
 
@@ -14750,7 +16050,7 @@ async function visitMerchantPortal(merchantId){
 
   const token = posSupportToken();
   const expires = new Date(Date.now() + POS_SUPPORT_MINUTES * 60000).toISOString();
-  const { error } = await supa.from('pos_support_sessions').insert({
+  const { error } = await supaV2.from('pos_support_sessions').insert({
     merchant_id: merchantId, token, expires_at: expires,
     issued_to: (currentUser && currentUser.id) || null,
     issued_name: (currentUser && currentUser.name) || 'Unknown',
@@ -14766,7 +16066,7 @@ async function visitMerchantPortal(merchantId){
    * visit — refusing support because a note would not save helps nobody —
    * but it is said out loud rather than swallowed.
    */
-  const { error: ne } = await supa.from('pos_merchant_notes').insert({
+  const { error: ne } = await supaV2.from('pos_merchant_notes').insert({
     merchant_id: merchantId, kind: 'support',
     body: ((currentUser && currentUser.name) || 'EPAY staff') + ' opened this portal from the admin portal.',
     by_name: (currentUser && currentUser.name) || 'EPAY staff',
@@ -14800,30 +16100,36 @@ function posSupportActionsHtml(m){
 
 function renderPosSetupBoard(){
   const open = POS_MERCHANTS.filter(m => m.status !== 'closed');
-  const rows = open.map(m => ({ m, r: posReadiness(m.setup_answers || {}) }))
-    .sort((a,b) => (a.r.canOpen === b.r.canOpen)
-      ? b.r.percent - a.r.percent
-      : (a.r.canOpen ? 1 : -1));
+  /*
+   * Sorted by what is standing in the way, not by how much has been typed.
+   * An account one gate from trading belongs above one that has answered
+   * every question and has no MID.
+   */
+  const rows = open.map(m => ({ m, r: posReadiness(m.setup_answers || {}), g: posGates(m) }))
+    .sort((a,b) => (a.g.ok === b.g.ok)
+      ? (a.g.failing.length - b.g.failing.length) || (b.r.percent - a.r.percent)
+      : (a.g.ok ? 1 : -1));
 
-  const ready = rows.filter(x => x.r.canOpen).length;
+  const ready = rows.filter(x => x.g.ok).length;
   document.getElementById('posSetupBoard').innerHTML = rows.length === 0
     ? `<div class="stub-panel"><h3>No merchants yet</h3>
          <p style="font-size:13px;">Board one and its setup appears here.</p></div>`
     : `<p style="font-size:12px;color:var(--slate-500);margin:0 0 12px;">
-         ${ready} of ${rows.length} could open today. The rest are listed by how close they are.</p>
+         ${ready} of ${rows.length} could open today &mdash; meaning a MID, a paired till, a plan,
+         a card price difference and a tax rate, not just the questions answered.</p>
        <div class="table-wrap"><table><thead><tr>
-         <th>Merchant</th><th>Status</th><th>Answered</th><th>Still needed</th></tr></thead><tbody>` +
-      rows.map(({m,r}) => `<tr onclick="openPosMerchant('${m.id}','setup')">
+         <th>Merchant</th><th>Status</th><th>Questions</th><th>Standing in the way</th></tr></thead><tbody>` +
+      rows.map(({m,r,g}) => `<tr onclick="openPosMerchant('${m.id}','setup')">
         <td class="name-cell">${escAttr(m.dba)}<div class="sub">${escAttr(m.city||'')}</div></td>
         <td>${posStatusPill(m.status)}</td>
         <td style="min-width:140px;">
           <div style="height:6px;border-radius:999px;background:var(--surface-2);overflow:hidden;
                       box-shadow:inset 0 0 0 1px var(--line);margin-bottom:3px;">
             <div style="height:100%;width:${r.percent}%;background:var(--blue-400);"></div></div>
-          <span class="sub">${r.got} of ${r.asked}</span></td>
-        <td>${r.canOpen
+          <span class="sub">${r.got} of ${r.asked} answered</span></td>
+        <td>${g.ok
           ? `<span class="pill pill-agent-auth">Ready to open</span>`
-          : `<span class="sub">${escAttr(r.blocking[0].label)}${r.blocking.length>1?` and ${r.blocking.length-1} more`:''}</span>`}</td>
+          : `<span class="sub">${escAttr(g.failing[0].label)}${g.failing.length>1?` and ${g.failing.length-1} more`:''}</span>`}</td>
       </tr>`).join('') + `</tbody></table></div>`;
 }
 
@@ -14844,7 +16150,7 @@ const POS_REWARD_KINDS = { cash:'Cash', credit:'Statement credit', waiver:'Fee w
 
 async function renderPosReferral(){
   if(!POS_OFFER){
-    const { data, error } = await supa.from('pos_referral_offer').select('*').eq('id', true).single();
+    const { data, error } = await supaV2.from('pos_referral_offer').select('*').eq('id', true).single();
     if(error){
       document.getElementById('posReferralBox').innerHTML =
         `<p class="error-text">Could not load the offer: ${escAttr(error.message)}</p>`;
@@ -14895,7 +16201,8 @@ async function renderPosReferral(){
                 onclick="removePosTier(${i})">Remove</button>
       </div>`).join('')}
 
-    <button class="btn btn-xs" onclick="addPosTier()">+ Tier</button>`;
+    ${tiers.length ? '' : `<p style="font-size:12px;color:var(--slate-500);margin-top:10px;">
+      Add the first tier from the button at the top of this page.</p>`}`;
 }
 
 async function setPosOffer(patch){
@@ -14971,8 +16278,8 @@ function priceLabel(cents){
 async function loadPosBilling(force){
   if(posBillingLoaded && !force) return;
   const [plans, addons] = await Promise.all([
-    supa.from('pos_plans').select('*').order('sort'),
-    supa.from('pos_addons').select('*').order('sort'),
+    supaV2.from('pos_plans').select('*').order('sort'),
+    supaV2.from('pos_addons').select('*').order('sort'),
   ]);
   if(plans.error || addons.error){
     showToast('Could not load billing: ' + ((plans.error||addons.error).message), 'error');
@@ -14987,10 +16294,33 @@ function posAddon(key){ return POS_ADDONS.find(a => a.key === key) || null; }
 function posPlan(key){ return POS_PLANS.find(p => p.key === key) || null; }
 
 /* What one location costs a month: its plan, plus every add-on it is on. */
+/*
+ * What a location costs a month: the plan, its stations, and its add-ons.
+ *
+ * Three parts, in that order, because that is the order they are decided.
+ * The plan is what the location is on and is what a paywall hangs off; the
+ * stations are what the merchant put in the shop; the add-ons are what they
+ * switched on afterwards.
+ *
+ * `unpriced` counts the things that cannot be billed because nobody set a
+ * price. They are deliberately not treated as free: a figure that quietly
+ * omits them is a figure somebody reconciles against an invoice and cannot
+ * explain.
+ */
 function posLocationMonthly(l){
   let cents = 0; let unpriced = 0;
   const plan = posPlan(l.plan_key);
   if(plan){ if(plan.price_cents === null) unpriced++; else cents += plan.price_cents; }
+
+  (l.pos_devices || []).forEach(d => {
+    const t = posStationType(d.station_type);
+    // A station with no type is one added before stations were billable.
+    // Not charged for, and not counted as a missing price either - it is a
+    // thing from before the model, not an unanswered question.
+    if(!t) return;
+    if(t.price_cents === null) unpriced++; else cents += t.price_cents;
+  });
+
   (l.add_ons || []).forEach(k => {
     const a = posAddon(k);
     if(!a) return;
@@ -15018,6 +16348,279 @@ function posMerchantMonthly(m){
  * price it was made at - see migration 102 - so this is the quote, not the
  * invoice.
  */
+/* ---------------------------------------------------------------------------
+   REGISTER SETTINGS
+
+   The things a merchant rings about on a Friday: a different receipt footer,
+   a tip button somebody wants removed, a void reason their staff actually
+   use. All of it was in code, so all of it needed a release, which means in
+   practice none of it changed and the defaults quietly became the product.
+
+   Records, like pos_addons and pos_referral_offer. One table keyed by scope
+   rather than six, because these are read together and written by this one
+   screen, and six tables is six sets of policies to keep in step.
+
+   What it does NOT do is let somebody put arbitrary shapes in. Each row
+   declares its kind here, the editor matches, and what goes back to the
+   database is the same shape that came out — a list stays a list and a flag
+   stays a boolean, whatever gets typed into the box.
+   --------------------------------------------------------------------------- */
+
+let POS_CONFIG = [];
+
+const POS_CONFIG_GROUPS = [
+  { scope:'receipt', title:'Receipts',
+    blurb:'What prints at the top and bottom of every receipt from these tills.' },
+  { scope:'tips', title:'Tips',
+    blurb:'The buttons a customer sees, and whether a tip is asked for on cash.' },
+  { scope:'reasons', title:'Reasons the till asks for',
+    blurb:'A reason somebody can pick is a reason that gets recorded. A free-text box is one that gets left blank.' },
+  { scope:'language', title:'Language',
+    blurb:'What the registers and the portal come up in. A till can still be set differently where it needs to be — a screen facing a customer, a kitchen display read by somebody else.' },
+  { scope:'connectors', title:'What merchants can switch on',
+    blurb:'Anything not on this list shows as coming soon rather than being sellable.' },
+];
+
+/* Lists are edited a line at a time: a comma is a thing people put inside a
+   receipt line, so it cannot also be the separator. */
+const POS_CONFIG_KIND = (row) => Array.isArray(row.value) ? 'list'
+  : (typeof row.value === 'boolean' ? 'flag' : 'text');
+
+async function loadPosConfig(force){
+  if(POS_CONFIG.length && !force) return POS_CONFIG;
+  /* Defaults only. Overrides live in the same table against a merchant, and
+     mixing them in here would show one shop's receipt footer as if it were
+     the standard. */
+  const { data, error } = await supaV2.from('pos_config').select('*')
+    .is('merchant_id', null).order('scope').order('sort');
+  if(error){
+    POS_CONFIG = [];
+    if(!/pos_config/.test(error.message || '')) showToast('Could not load settings: ' + error.message, 'error');
+    return POS_CONFIG;
+  }
+  POS_CONFIG = data || [];
+  return POS_CONFIG;
+}
+
+async function renderPosConfig(){
+  await loadPosConfig(true);
+  const box = document.getElementById('posConfigBox');
+  if(!box) return;
+
+  if(POS_CONFIG.length === 0){
+    box.innerHTML = `<div class="stub-panel"><h3>Nothing to change yet</h3>
+      <p style="max-width:460px;margin:0 auto;font-size:13px;line-height:1.6;">
+        Run migrations 106 and 107 and these appear. Until then the registers use what they
+        ship with.</p></div>`;
+    return;
+  }
+
+  box.innerHTML = POS_CONFIG_GROUPS.map(g => {
+    const rows = POS_CONFIG.filter(r => r.scope === g.scope);
+    if(!rows.length) return '';
+    return `
+      <div style="margin-bottom:26px;">
+        <h3 style="font-size:14px;margin:0 0 3px;">${escAttr(g.title)}</h3>
+        <p style="font-size:11.5px;color:var(--slate-500);margin:0 0 12px;">${escAttr(g.blurb)}</p>
+        ${rows.map(r => posConfigField(r)).join('')}
+      </div>`;
+  }).join('');
+}
+
+function posConfigField(r){
+  const kind = POS_CONFIG_KIND(r);
+  const id = 'cfg_' + r.scope + '_' + r.key;
+  const changed = r.updated_by
+    ? `<div class="sub">Last changed by ${escAttr(r.updated_by)} on ${new Date(r.updated_at).toLocaleDateString()}</div>`
+    : '';
+  let control;
+  if(kind === 'flag'){
+    control = `<div class="row">` + [true,false].map(v =>
+      `<button type="button" class="chip" aria-pressed="${r.value===v}"
+         onclick="savePosConfig('${r.scope}','${r.key}', ${v})">${v?'Yes':'No'}</button>`).join('') + `</div>`;
+  } else if(kind === 'list'){
+    control = `
+      <textarea id="${id}" rows="${Math.max(2, r.value.length + 1)}"
+        style="width:100%;font-size:13px;">${escAttr(r.value.join('\n'))}</textarea>
+      <div class="row" style="margin-top:7px;">
+        <button class="btn btn-xs" onclick="savePosConfigList('${r.scope}','${r.key}')">Save</button>
+        <span class="sub">One per line.</span>
+      </div>`;
+  } else {
+    control = `
+      <input id="${id}" value="${escAttr(String(r.value))}">
+      <div class="row" style="margin-top:7px;">
+        <button class="btn btn-xs" onclick="savePosConfigText('${r.scope}','${r.key}')">Save</button>
+      </div>`;
+  }
+  return `<div class="field setup-field" style="margin-bottom:18px;">
+    <label>${escAttr(r.label || r.key)}</label>${control}${changed}</div>`;
+}
+
+/*
+ * Tip buttons are numbers and the reasons are not, so a list of numbers goes
+ * back as numbers. A "20" that became the string "20" is a tip button the
+ * register cannot do arithmetic with.
+ */
+function posConfigListValue(scope, key, lines){
+  const numeric = scope === 'tips' && key === 'presets';
+  if(!numeric) return lines;
+  const out = lines.map(x => Number(x)).filter(n => isFinite(n) && n >= 0);
+  return out;
+}
+
+async function savePosConfigList(scope, key){
+  const el = document.getElementById('cfg_' + scope + '_' + key);
+  if(!el) return;
+  const lines = el.value.split('\n').map(x => x.trim()).filter(Boolean);
+  await savePosConfig(scope, key, posConfigListValue(scope, key, lines));
+}
+
+async function savePosConfigText(scope, key){
+  const el = document.getElementById('cfg_' + scope + '_' + key);
+  if(!el) return;
+  await savePosConfig(scope, key, el.value.trim());
+}
+
+async function savePosConfig(scope, key, value){
+  const before = POS_CONFIG.find(r => r.scope === scope && r.key === key);
+  const { data, error } = await supaV2.from('pos_config')
+    .update({ value, updated_at: new Date().toISOString(),
+              updated_by: (currentUser && currentUser.name) || 'Unknown' })
+    .eq('scope', scope).eq('key', key).is('merchant_id', null).select();
+  /* pos_config is keyed by (scope,key) rather than id, so updateRow does not
+     fit — but the same rule does: no rows back means RLS refused it, and
+     "Saved" over a refused write is the bug updateRow exists to stop. */
+  if(error){ showToast('Could not save: ' + error.message, 'error'); return; }
+  if(!data || !data.length){
+    showToast('Nothing was saved — this needs admin portal access.', 'error');
+    return;
+  }
+  await logPosChange('pos_config', scope + '.' + key, null, key,
+    before ? JSON.stringify(before.value) : null, JSON.stringify(value));
+  showToast('Saved. Every account on the default picks this up on their next sync.', 'success');
+  await renderPosConfig();
+}
+
+/* ---------------------------------------------------------------------------
+   ADDING A SUBSCRIPTION
+
+   A new add-on, from the back office, without a migration. The key is what
+   the software gates on, so it is typed once and never edited afterwards -
+   changing a key on a row merchants are already paying for orphans their
+   agreements, which is the one mistake on this screen that costs money
+   rather than a correction.
+   --------------------------------------------------------------------------- */
+
+let posSubFormTable = 'pos_addons';
+
+function openPosSubForm(table){
+  posSubFormTable = table || 'pos_addons';
+  const isAddon = posSubFormTable === 'pos_addons';
+  document.getElementById('posSubFormDrawer').innerHTML = `
+    <div class="drawer-head">
+      <h2>${isAddon ? 'Add an add-on' : 'Add a plan'}</h2>
+      <button class="icon-btn" onclick="closePosSubForm()">&times;</button>
+    </div>
+    <div class="drawer-body">
+      <div class="field"><label>Which kind</label>
+        <select id="psfTable" onchange="openPosSubForm(this.value)">
+          <option value="pos_addons" ${isAddon?'selected':''}>Add-on — charged on top of a plan</option>
+          <option value="pos_plans" ${!isAddon?'selected':''}>Plan — the subscription itself</option>
+        </select></div>
+
+      <div class="field setup-field"><label>Name</label>
+        <p class="setup-help">What a merchant sees on their bill and on the paywall.</p>
+        <input id="psfLabel" placeholder="${isAddon ? 'Table-side ordering' : 'Food truck'}"></div>
+
+      <div class="field setup-field"><label>Key</label>
+        <p class="setup-help">Lower case, no spaces. The software gates on this and it
+          cannot be changed later without orphaning the agreements already signed against it.</p>
+        <input id="psfKey" placeholder="${isAddon ? 'table_ordering' : 'food_truck'}"></div>
+
+      <div class="grid-fields">
+        <div class="field"><label>Price a month ($)</label>
+          <input id="psfPrice" inputmode="decimal" placeholder="19.99"></div>
+        <div class="field"><label>Sort</label>
+          <input id="psfSort" inputmode="numeric" value="999"></div>
+      </div>
+      <p class="setup-help" style="margin-top:-8px;">Leave the price blank if it is not
+        settled. An add-on with no price cannot be sold or put on an account, and says so.</p>
+
+      <div class="field setup-field"><label>What it does</label>
+        <input id="psfBlurb" placeholder="One line, in the merchant's words."></div>
+
+      ${isAddon ? `
+        <div class="field setup-field"><label>Feature it switches on</label>
+          <p class="setup-help">The capability id from the software, where there is one.
+            Leave blank and it is sold by its key instead.</p>
+          <input id="psfCapability" placeholder="table-ordering"></div>
+        <div class="field setup-field"><label>Needs another add-on first</label>
+          <select id="psfRequires">
+            <option value="">Nothing</option>
+            ${POS_ADDONS.map(a => `<option value="${escAttr(a.key)}">${escAttr(a.label)}</option>`).join('')}
+          </select></div>` : `
+        <div class="field setup-field"><label>Edition</label>
+          <select id="psfEdition">
+            ${Object.keys(POS_EDITIONS).map(k =>
+              `<option value="${k}">${escAttr(POS_EDITIONS[k].label)}</option>`).join('')}
+          </select></div>`}
+
+      <p id="psfProblem" class="error-text" style="display:none;"></p>
+    </div>
+    <div class="drawer-footer">
+      <button class="btn" style="flex:1;" onclick="closePosSubForm()">Cancel</button>
+      <button class="btn btn-accent" style="flex:1;" onclick="savePosSubForm()">Add it</button>
+    </div>`;
+  document.getElementById('posSubFormOverlay').classList.add('open');
+}
+
+function closePosSubForm(){
+  document.getElementById('posSubFormOverlay').classList.remove('open');
+}
+
+async function savePosSubForm(){
+  const val = (id) => ((document.getElementById(id) || {}).value || '').trim();
+  const say = (t) => { const el=document.getElementById('psfProblem');
+    el.textContent=t; el.style.display=t?'block':'none'; };
+  const isAddon = posSubFormTable === 'pos_addons';
+
+  const label = val('psfLabel');
+  const key = val('psfKey').toLowerCase().replace(/[^a-z0-9_]/g,'_');
+  if(!label){ say('What is it called?'); return; }
+  if(!key){ say('It needs a key. Lower case, no spaces.'); return; }
+
+  const existing = (isAddon ? POS_ADDONS : POS_PLANS).some(x => x.key === key);
+  if(existing){ say('There is already one with that key.'); return; }
+
+  const priceText = val('psfPrice');
+  let price = null;
+  if(priceText !== ''){
+    const n = Number(priceText);
+    if(!isFinite(n) || n < 0){ say('The price has to be a number, or blank.'); return; }
+    // Cents, never a float. A price kept as dollars is a rounding error
+    // waiting to be billed.
+    price = Math.round(n * 100);
+  }
+  say('');
+
+  const row = isAddon
+    ? { key, label, price_cents: price, blurb: val('psfBlurb') || null,
+        capability: val('psfCapability') || null, requires: val('psfRequires') || null,
+        sort: Number(val('psfSort')) || 999, active: true, sellable: true }
+    : { key, label, price_cents: price, edition: val('psfEdition') || null,
+        note: val('psfBlurb') || null, sort: Number(val('psfSort')) || 999 };
+
+  const { error } = await supa.from(posSubFormTable).insert(row);
+  if(error){ say('Could not add it: ' + error.message); return; }
+  await logPosChange(posSubFormTable, key, null, 'added', null,
+    label + (price === null ? ' (no price)' : ' at ' + posMoney(price)));
+  closePosSubForm();
+  await loadPosBilling(true);
+  renderPosSubscriptions();
+  showToast(label + ' added.', 'success');
+}
+
 async function renderPosSubscriptions(){
   await loadPosBilling();
   const box = document.getElementById('posSubsBox');
@@ -15329,7 +16932,7 @@ async function pausePosMerchant(id){
   });
   if(error){ showToast('Could not pause it: ' + error.message, 'error'); return; }
   // On their own log too, so the reason survives whoever typed it.
-  await supa.from('pos_merchant_notes').insert({
+  await supaV2.from('pos_merchant_notes').insert({
     merchant_id: id, kind: 'system', body: 'Account paused — ' + reason,
     by_name: (currentUser && currentUser.name) || 'Unknown',
   });
@@ -15341,7 +16944,7 @@ async function unpausePosMerchant(id){
     status: 'live', pause_reason: null, paused_at: null, paused_by: null,
   });
   if(error){ showToast('Could not do that: ' + error.message, 'error'); return; }
-  await supa.from('pos_merchant_notes').insert({
+  await supaV2.from('pos_merchant_notes').insert({
     merchant_id: id, kind: 'system', body: 'Account put back live.',
     by_name: (currentUser && currentUser.name) || 'Unknown',
   });
@@ -15400,14 +17003,108 @@ async function pairPosDevice(id){
    was promised, and the first they would hear of it is an invoice.
    --------------------------------------------------------------------------- */
 
+/* ---------------------------------------------------------------------------
+   A TILL THAT HAS STOPPED TALKING
+
+   The registers already report in; the back office never looked. A shop
+   whose till last synced three days ago is a shop whose figures are three
+   days old and whose menu changes never arrived — and the first anybody
+   hears of it is usually the merchant ringing about something else.
+
+   Thresholds are deliberately short. A till in a trading shop checks in
+   constantly, so an hour of silence during the day is already a question.
+   --------------------------------------------------------------------------- */
+
+const POS_DEVICE_QUIET_MINUTES = 60;
+const POS_DEVICE_DARK_HOURS = 24;
+
+function posDeviceHealth(d){
+  if(!d) return { state:'unknown', words:'Never heard from' };
+  if(!d.paired_at) return { state:'unpaired', words:'Not paired yet' };
+  if(!d.last_seen_at) return { state:'unknown', words:'Paired, never checked in' };
+  const mins = (Date.now() - new Date(d.last_seen_at).getTime()) / 60000;
+  if(mins >= POS_DEVICE_DARK_HOURS * 60){
+    return { state:'dark', words:'Silent for ' + Math.floor(mins/60/24) + ' day' + (mins >= 48*60 ? 's' : '') };
+  }
+  if(mins >= POS_DEVICE_QUIET_MINUTES){
+    return { state:'quiet', words:'No contact for ' + Math.floor(mins/60) + 'h' };
+  }
+  return { state:'ok', words:'Checked in ' + Math.max(1, Math.round(mins)) + ' min ago' };
+}
+
+/** Every till on an account that somebody should be asking about. */
+function posUnhealthyDevices(m){
+  return ((m && m.pos_locations) || [])
+    .flatMap(l => (l.pos_devices || []).map(d => ({ d, l, h: posDeviceHealth(d) })))
+    .filter(x => x.h.state === 'quiet' || x.h.state === 'dark');
+}
+
+function posHealthPill(h){
+  const cls = h.state === 'ok' ? 'pill-agent-auth'
+    : h.state === 'dark' ? 'pill-commission'
+    : h.state === 'quiet' ? 'pill-commission' : 'pill-referral';
+  return `<span class="pill ${cls}">${escAttr(h.words)}</span>`;
+}
+
 let POS_AGREEMENTS = [];
 let POS_AGREEMENTS_ALL = [];
+let POS_CHANGES = [];
+
+/* What was changed on this account, newest first. Read when the sheet opens
+   so the Log tab can show it beside the notes: a note is what somebody said
+   happened and this is what did. */
+async function loadPosChanges(merchantId){
+  const { data, error } = await supaV2.from('pos_change_log')
+    .select('*').eq('merchant_id', merchantId)
+    .order('changed_at', { ascending:false }).limit(50);
+  POS_CHANGES = error ? [] : (data || []);
+  return POS_CHANGES;
+}
+
+/* The money fields as a person reads them. ppm is not a unit anybody
+   arguing about a rate should have to convert in their head. */
+function posChangeValue(field, raw){
+  if(raw === null || raw === undefined || raw === '') return '—';
+  if(field === 'dual_pricing_ppm' || field === 'tax_ppm') return ppmPercent(Number(raw)) + '%';
+  if(field === 'dual_pricing_fixed_cents') return Number(raw) + '¢';
+  if(field === 'pricing_mode') return (POS_PRICING_MODES[raw] || {}).label || raw;
+  return String(raw);
+}
+
+const POS_CHANGE_LABEL = {
+  pricing_mode: 'Pricing program',
+  dual_pricing_ppm: 'Card price adds',
+  dual_pricing_fixed_cents: 'Per transaction',
+  tax_ppm: 'Sales tax',
+  edition: 'Edition',
+};
+
+function posChangesHtml(){
+  if(POS_CHANGES.length === 0){
+    return `<p style="font-size:11.5px;color:var(--slate-500);margin:14px 0 0;">
+      No pricing or plan changes recorded yet. Anything changed from here on is listed with who
+      changed it.</p>`;
+  }
+  return `
+    <h3 style="font-size:13.5px;margin:18px 0 4px;">What was changed</h3>
+    <p style="font-size:11px;color:var(--slate-500);margin:0 0 8px;">
+      Pricing and plan only. A note is what somebody said happened; this is what did.</p>
+    ${POS_CHANGES.map(c => `
+      <div style="padding:7px 0;border-top:1px solid var(--line);font-size:12px;">
+        <strong>${escAttr(POS_CHANGE_LABEL[c.field] || c.field)}</strong>
+        <span style="color:var(--slate-500);">
+          ${escAttr(posChangeValue(c.field, c.old_value))} &rarr;
+          <strong style="color:var(--navy-700);">${escAttr(posChangeValue(c.field, c.new_value))}</strong></span>
+        <div class="sub">${escAttr(c.changed_by)} &middot; ${new Date(c.changed_at).toLocaleString()}
+          ${c.note ? ' &middot; ' + escAttr(c.note) : ''}</div>
+      </div>`).join('')}`;
+}
 
 /* Everything accepted, newest first, across every account. Capped: this is a
    glance at what is being agreed to, not an audit — the audit is per merchant,
    where somebody actually needs it. */
 async function loadRecentAgreements(limit){
-  const { data, error } = await supa.from('pos_addon_agreements')
+  const { data, error } = await supaV2.from('pos_addon_agreements')
     .select('*').order('accepted_at', { ascending:false }).limit(limit || 40);
   if(error){ POS_AGREEMENTS_ALL = []; return; }
   POS_AGREEMENTS_ALL = data || [];
@@ -15423,7 +17120,7 @@ function agreementsTableMissing(error){
 }
 
 async function loadPosAgreements(merchantId){
-  const { data, error } = await supa.from('pos_addon_agreements')
+  const { data, error } = await supaV2.from('pos_addon_agreements')
     .select('*').eq('merchant_id', merchantId).order('accepted_at', { ascending:false });
   if(error){
     POS_AGREEMENTS = [];
@@ -24313,6 +26010,7 @@ function taskRowHtml(t){
   </div>`;
 }
 
+/** Back to everything. One button, because four dropdowns is not an undo. */
 function renderTasksList(){
   const canSeeOthers = !!roleOf(currentUser).perms.fullDashboard;
   const visible = myTasks();
@@ -24383,6 +26081,11 @@ function renderTasksList(){
       if(taskPersonFilter === 'mine') bits.push('only yours');
       else if(taskPersonFilter !== 'all') bits.push('one person');
       if(taskPriorityFilter !== 'all') bits.push(taskPriorityFilter + ' priority');
+      /* The boarding filter arrived after this message was written, so it
+         was the one narrowing nobody was told about: the list empties and
+         the reason is not in the sentence explaining why. */
+      if(taskCategoryFilter === 'boarding') bits.push('boarding tasks only');
+      else if(taskCategoryFilter !== 'all') bits.push('one category');
       if(q) bits.push('a search');
       empty.innerHTML = `
         <div style="font-weight:700;margin-bottom:4px;">
@@ -24422,6 +26125,10 @@ function showEveryTask(){
   taskFilter = 'all';
   taskPersonFilter = 'all';
   taskPriorityFilter = 'all';
+  /* Added with the boarding filter. Without it this button cleared every
+     filter except the one most likely to be hiding the list, so it looked
+     broken: press "Show everything", see the same empty page. */
+  taskCategoryFilter = 'all';
   taskSearch = '';
   renderTasksList();
 }
