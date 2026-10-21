@@ -4564,7 +4564,13 @@ async function v2SignOut(){
    why rather than left wondering what broke. */
 /* Which pages actually read from V2. The rest of the EPAY back end runs on
    the Control Center's own database and needs nothing from here. */
-const V2_BACKED_VIEWS = ['posbilling','possubs','posreferral','posconfig','backend'];
+/* The overview is deliberately NOT in this list. Its four figures - live
+   merchants, onboarding, devices, waiting on a MID - all come from the
+   Control Center's own tables, so the only thing V2 would add there is a
+   price nobody is reading on an overview. A strip saying something is
+   missing, above a page where nothing is, reads as a fault. The pages that
+   genuinely show prices keep the notice and the sign-in. */
+const V2_BACKED_VIEWS = ['posbilling','possubs','posreferral','posconfig'];
 
 /*
  * A line at the top of a page whose figures come from V2, when nobody has
@@ -4582,7 +4588,6 @@ function showV2Notice(view){
   if(!box || box.querySelector('.v2-notice')) return;
   const what = view === 'posconfig' ? 'The settings on this page'
              : view === 'posreferral' ? 'The referral tiers'
-             : view === 'backend' ? 'Prices on this overview'
              : 'Plans, add-on prices and accepted agreements';
   const strip = document.createElement('div');
   strip.className = 'panel v2-notice';
