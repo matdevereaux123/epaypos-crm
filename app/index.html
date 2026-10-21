@@ -559,7 +559,25 @@
   .notif-item-time{font-size:10.5px;color:var(--slate-400);margin-top:3px;}
   .notif-empty{padding:20px 8px;text-align:center;font-size:12.5px;color:var(--slate-500);}
 
-  .topbar{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;flex-wrap:wrap;gap:14px;}
+  /*
+   * The page heading, and the button that acts on the page.
+   *
+   * `space-between` alone was wrong in the one case that matters. While both
+   * fit on a line it puts the button hard right, correctly. The moment the
+   * heading block is wide enough to push the button onto a second line - and
+   * the subtext on EPAY subscription editing is wide enough below about
+   * 1180px of content, which is a 1366 laptop with the nav open - the button
+   * becomes the only item on that line, and `space-between` puts a lone item
+   * at the START. So it jumped from the right edge to the left with nothing
+   * beside it.
+   *
+   * `margin-left:auto` on the actions is the fix: it pushes them right on
+   * whichever line they end up on. The heading block takes a flex basis so
+   * it gives up width to the button before wrapping, rather than claiming
+   * its full natural width and forcing the wrap early.
+   */
+  .topbar{display:flex;align-items:flex-start;margin-bottom:24px;flex-wrap:wrap;gap:14px;}
+  .topbar > :first-child{flex:1 1 320px;min-width:0;}
   .topbar h1{font-size:23px;margin:0 0 4px;}
   .topbar .subtext{color:var(--slate-500);font-size:13.5px;margin:0;}
   .btn{padding:10px 16px;border-radius:8px;border:1px solid var(--line);background:var(--card);font-size:13.5px;font-weight:600;color:var(--navy-700);}
@@ -600,9 +618,13 @@
 
   /* A number and a label do not need 385px. */
   .pos-page .cards-row{
-    display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,220px));
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,240px));
     gap:12px;justify-content:start;
   }
+  /* "Add-ons without a price" is three words of uppercase with letter
+     spacing. At 220px it wrapped to three lines beside cards using one,
+     and the row of cards went ragged. */
+  .pos-page .stat-card .label{letter-spacing:.3px;line-height:1.35;}
 
   /* Rows a third shorter, so a screen holds a dozen accounts rather than
      four. Headings stay as they were — they are what somebody scans. */
@@ -741,7 +763,7 @@
   .btn[disabled], .btn-accent[disabled]{ opacity:.55; transform:none !important; filter:none; }
   .btn-accent{background:linear-gradient(90deg,var(--brand-accent-2),var(--brand-accent));color:#fff;border:none;}
   .btn-accent:hover{filter:brightness(1.06);}
-  .topbar-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+  .topbar-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-left:auto;}
   .btn-sm{display:inline-flex;align-items:center;gap:6px;padding:8px 13px;font-size:12.5px;}
   .btn-xs{padding:5px 9px;font-size:11px;border-radius:6px;}
   .btn-sm svg{width:14px;height:14px;}
@@ -797,7 +819,12 @@
      a height estimate so the scrollbar doesn't jump around as rows resolve.
      Find-in-page still reaches this content in current browsers; printing
      does not, hence the override below. */
-  .panel tbody tr{content-visibility:auto;contain-intrinsic-size:auto 44px;}
+  /* Measured, not guessed: rows on these pages stand 52-64px, never 44.
+     The hint is what the browser reserves for a row it has not drawn yet,
+     so one that is too small makes the scrollbar lie and the page jump
+     under the pointer as rows come into view. 56px is the middle of the
+     real range. */
+  .panel tbody tr{content-visibility:auto;contain-intrinsic-size:auto 56px;}
   @media print{ .panel tbody tr{content-visibility:visible;} }
   /* The two kinds of person on the board. The left accent bar does the work
      at a glance across a full column; the pill confirms it up close. */
@@ -958,8 +985,44 @@
   tbody td{padding:13px 20px;border-bottom:1px solid var(--line);vertical-align:middle;}
   tbody tr:last-child td{border-bottom:none;}
   tbody tr:hover{background:var(--surface-3);cursor:pointer;}
+  /*
+   * The scroller around a wide table.
+   *
+   * Used in ten places and never defined, so it did nothing: a table wider
+   * than its panel was simply cut off at the panel edge with no way to
+   * reach the rest. On the billing tables that loses the right-hand
+   * columns - Monthly among them - and on Recently accepted it loses Terms
+   * and When. Nothing looked broken, which is worse; the columns were just
+   * absent.
+   */
+  .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  /* Below this the columns are unreadably narrow, so scroll instead of
+     crushing them. Above it the table fills the panel as before. */
+  .table-wrap > table{min-width:640px;}
+
   .name-cell{font-weight:600;color:var(--navy-700);}
   .name-cell .sub{font-weight:400;color:var(--slate-500);font-size:12px;}
+
+  /*
+   * Subtext, anywhere on these pages - not only under a name.
+   *
+   * `.sub` was defined once, as `.name-cell .sub`. Every other use rendered
+   * at full body size in full body colour, which is the opposite of what the
+   * class is for. On subscription editing that is why the price reads
+   * "$69.99/mo" in one weight with no space in it, and why "1 not priced"
+   * under a total looks like a second total rather than a note about it.
+   *
+   * Scoped to .pos-page rather than made global on purpose. The same bug is
+   * in roughly seventy more places across the rest of the CRM, and quietly
+   * restyling all of them is a bigger change than this one, to be done on
+   * its own and looked at.
+   */
+  .pos-page .sub{font-weight:400;color:var(--slate-500);font-size:12px;line-height:1.35;}
+  /* Inline after a figure: "$69.99 /mo" rather than "$69.99/mo". */
+  .pos-page span.sub{margin-left:3px;}
+  /* Under a figure: a note, with air above it so it is not a second line
+     of the number. */
+  .pos-page td > div.sub{margin-top:2px;}
   .pill{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.2px;}
   .pill-referral{background:var(--accent-soft);color:var(--info-text);}
   .pill-agent-auth{background:var(--ok-bg);color:var(--ok-text);}
