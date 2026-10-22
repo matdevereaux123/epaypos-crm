@@ -26,6 +26,10 @@
 -- or 'Referral link - <partner>'. That prefix is the marker; a lead typed in
 -- by hand carries whatever the rep chose and does not match.
 --
+-- Note the fullDashboard clause: an admin sees everything, which they did
+-- before only by accident - through the same too-broad unclaimed rule this
+-- file narrows.
+--
 -- Safe to run twice.
 -- =============================================================================
 
@@ -49,6 +53,11 @@ create policy "leads_select" on leads
   for select to authenticated
   using (
     current_app_has_perm('viewAllLeads')
+    -- "See all records, not just their own" is what fullDashboard means, and
+    -- the stored Admin role carries it while viewAllLeads is false there.
+    -- Without this line, narrowing the unclaimed rule takes the imported back
+    -- catalogue away from the admins too - their own accounts included.
+    or current_app_has_perm('fullDashboard')
     or linked_partner_id = current_app_linked_partner_id()
     or assigned_to       = current_app_user_id()
     or current_app_user_id() = ANY(assigned_to_ids)
@@ -65,6 +74,11 @@ create policy "leads_write" on leads
   for all to authenticated
   using (
     current_app_has_perm('viewAllLeads')
+    -- "See all records, not just their own" is what fullDashboard means, and
+    -- the stored Admin role carries it while viewAllLeads is false there.
+    -- Without this line, narrowing the unclaimed rule takes the imported back
+    -- catalogue away from the admins too - their own accounts included.
+    or current_app_has_perm('fullDashboard')
     or linked_partner_id = current_app_linked_partner_id()
     or assigned_to       = current_app_user_id()
     or current_app_user_id() = ANY(assigned_to_ids)
@@ -77,6 +91,11 @@ create policy "leads_write" on leads
   )
   with check (
     current_app_has_perm('viewAllLeads')
+    -- "See all records, not just their own" is what fullDashboard means, and
+    -- the stored Admin role carries it while viewAllLeads is false there.
+    -- Without this line, narrowing the unclaimed rule takes the imported back
+    -- catalogue away from the admins too - their own accounts included.
+    or current_app_has_perm('fullDashboard')
     or linked_partner_id = current_app_linked_partner_id()
     or assigned_to       = current_app_user_id()
     or current_app_user_id() = ANY(assigned_to_ids)

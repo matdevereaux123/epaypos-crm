@@ -10658,7 +10658,15 @@ function scopedLeads(){
   // Mirrors leads_select (migration 58). The server already refuses to send
   // anything else; this keeps "Preview as" honest, where the browser holds an
   // admin's data while pretending to be someone who may not see it all.
-  if(perms.viewAllLeads) return inPlay;
+  /* fullDashboard counts as well as viewAllLeads.
+     The stored Admin role has viewAllLeads false - whatever the default in
+     this file says, the roles table wins - so an admin's view of the
+     imported back catalogue was resting entirely on "any lead with no
+     creator is unclaimed". Narrowing that rule took an admin's own leads
+     and accounts off their screen, which is how this was found.
+     fullDashboard is defined as "see all records, not just their own", so
+     it means exactly this. */
+  if(perms.viewAllLeads || perms.fullDashboard) return inPlay;
   const pid = currentUser.linked_partner_id;
   // The team's work, by the reporting line (database/109). A manager sees
   // what their reports are assigned and what their reports entered, however
