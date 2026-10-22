@@ -10634,6 +10634,19 @@ function downlineUserIds(user){
    show. */
 function clearDownlineCache(){ _downlineCache = { forUser: null, ids: [] }; }
 
+/* An inbound lead nobody has taken: it came through a form or a partner
+   link, and it has neither a creator nor an assignee. All three conditions,
+   because any one alone is the bug - no creator catches every import, a
+   form source alone catches leads somebody is already working, and no
+   assignee alone catches anything unassigned. Mirrors database/118. */
+function leadIsUnclaimedInbound(l){
+  if(!l || l.created_by) return false;
+  if(l.assigned_to) return false;
+  if((l.assigned_to_ids || []).length) return false;
+  const src = l.lead_source || '';
+  return src.indexOf('Lead form') === 0 || src.indexOf('Referral link') === 0;
+}
+
 function scopedLeads(){
   const perms = roleOf(currentUser).perms;
   // A lead sent back to cold is out of the pipeline everywhere — the board,
@@ -10660,10 +10673,11 @@ function scopedLeads(){
     || onTeam(l.assigned_to)
     || onTeam(l.created_by)
     || (l.assigned_to_ids || []).some(onTeam)
-    // internal staff also see leads with no user behind them — the forms.
-    // staffTools, not fullDashboard: an In House Sales rep is scoped to
-    // their own records but still works the unclaimed inbound pool.
-    || (hasStaffTools() && !l.created_by));
+    // The unclaimed inbound pool, and only that. "No creator" alone meant
+    // every imported and pre-46 lead counted as unclaimed, which is how a
+    // rep scoped to his own records could read the whole back catalogue.
+    // Mirrors lead_is_unclaimed_inbound in database/118.
+    || (hasStaffTools() && leadIsUnclaimedInbound(l)));
 }
 
 function scopedColdLeads(){
