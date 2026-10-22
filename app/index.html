@@ -3834,9 +3834,14 @@
           </div>
         </div>
         <div class="phase-toggle" id="phaseToggle"></div>
-        <div class="kanban-search">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input id="leadsBoardSearch" placeholder="Search leads...">
+        <div class="row" style="gap:10px;margin-bottom:14px;">
+          <div class="kanban-search" style="margin:0;flex:1 1 260px;min-width:0;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input id="leadsBoardSearch" placeholder="Search leads...">
+          </div>
+          <select id="leadsOwnerFilter" title="Whose leads to show"
+                  style="flex:0 0 auto;min-height:40px;padding:0 12px;border-radius:8px;border:1px solid var(--line-strong);background:var(--card);font-size:13px;color:var(--navy-700);"
+                  onchange="leadsOwnerFilter = this.value; renderLeadsBoard();"></select>
         </div>
         <div id="leadsBoard"></div>
       </section>
@@ -17780,6 +17785,64 @@ function toggleStageCollapse(stageKey){
   renderLeadsBoard();
 }
 
+/* Whose leads the board is showing.
+
+   An admin sees everybody's, which is right and is also a board you cannot
+   read at a glance. The list is built from the leads actually on the board
+   rather than from the user list, so it never offers a name with nothing
+   behind it, and it carries counts so "Riley 0" is visible as an answer
+   rather than looking like a filter that broke.
+
+   Owner means assigned_to, with "entered by" as the fallback for a lead
+   nobody has been assigned - which is how most of this data arrived. */
+let leadsOwnerFilter = 'all';
+
+function leadOwnerId(l){
+  return l.assigned_to || l.created_by || null;
+}
+
+function renderLeadsOwnerFilter(pool){
+  const sel = document.getElementById('leadsOwnerFilter');
+  if(!sel) return;
+
+  /* Counted the same way the filter selects, or the numbers contradict the
+     list: a lead with Riley as an extra assignee is one of Riley's when you
+     pick him, so it has to be one of Riley's in the count beside his name. */
+  const counts = new Map();
+  const bump = id => counts.set(id, (counts.get(id) || 0) + 1);
+  pool.forEach(l => {
+    const owner = leadOwnerId(l);
+    bump(owner || '');
+    (l.assigned_to_ids || []).forEach(id => { if(id && id !== owner) bump(id); });
+  });
+
+  const named = [...counts.entries()]
+    .filter(([id]) => id)
+    .map(([id, n]) => ({ id, n, name: (USERS.find(u => u.id === id) || {}).name || 'Someone no longer here' }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const nobody = counts.get('') || 0;
+  const mine = counts.get(currentUser.id) || 0;
+
+  sel.innerHTML = `<option value="all">Everyone (${pool.length})</option>`
+    + `<option value="${currentUser.id}">Just mine (${mine})</option>`
+    + named.filter(u => u.id !== currentUser.id)
+           .map(u => `<option value="${u.id}">${escAttr(u.name)} (${u.n})</option>`).join('')
+    + (nobody ? `<option value="none">Nobody yet (${nobody})</option>` : '');
+
+  // A name can leave the board - the lead converted, the person removed.
+  if(![...sel.options].some(o => o.value === leadsOwnerFilter)) leadsOwnerFilter = 'all';
+  sel.value = leadsOwnerFilter;
+}
+
+function leadMatchesOwnerFilter(l){
+  if(leadsOwnerFilter === 'all') return true;
+  const id = leadOwnerId(l);
+  if(leadsOwnerFilter === 'none') return !id;
+  // An extra assignee counts: being one of three people on a lead is still
+  // having that lead.
+  return id === leadsOwnerFilter || (l.assigned_to_ids || []).includes(leadsOwnerFilter);
+}
+
 function renderLeadsBoard(){
   const subtext = document.getElementById('leadsSubtext');
   if(subtext){
@@ -17796,6 +17859,10 @@ function renderLeadsBoard(){
   const collapsed = loadCollapsedStages();
   const q = (document.getElementById('leadsBoardSearch') ? document.getElementById('leadsBoardSearch').value : '').trim().toLowerCase();
 
+  /* The pick list is built before the owner filter is applied, or choosing a
+     person would empty the list of every other name. */
+  renderLeadsOwnerFilter(scopedLeads().filter(l => leadInBrand(l) && !l.converted_to_account));
+
   if(currentBrand === 'atm'){
     // Envision ATM has no phases — just a flat row of stage columns, so
     // the phase toggle above the board is hidden entirely for this brand.
@@ -17803,7 +17870,7 @@ function renderLeadsBoard(){
     phaseToggleEl.innerHTML = '';
 
     const columnsHtml = ATM_LEAD_STAGES.map(stage => {
-      let leadsInStage = scopedLeads().filter(l => leadStage(l) === stage.key && leadInBrand(l, 'atm') && !l.converted_to_account);
+      let leadsInStage = scopedLeads().filter(l => leadStage(l) === stage.key && leadInBrand(l, 'atm') && !l.converted_to_account && leadMatchesOwnerFilter(l));
       if(q) leadsInStage = leadsInStage.filter(l => l.business_name.toLowerCase().includes(q) || l.contact_name.toLowerCase().includes(q));
       const isCollapsed = !!collapsed['atm_'+stage.key];
       const cardsHtml = leadsInStage.length ? leadsInStage.map(l => leadCardHtml(l, stage.color)).join('') : `<div class="kanban-empty">No leads in this stage</div>`;
@@ -17834,7 +17901,7 @@ function renderLeadsBoard(){
   const phaseStages = STAGES.filter(s => s.phase === phase.key && s.key !== 'converted_active');
 
   const columnsHtml = phaseStages.map(stage => {
-    let leadsInStage = scopedLeads().filter(l => leadStage(l) === stage.key && leadInBrand(l));
+    let leadsInStage = scopedLeads().filter(l => leadStage(l) === stage.key && leadInBrand(l) && leadMatchesOwnerFilter(l));
     if(q) leadsInStage = leadsInStage.filter(l => l.business_name.toLowerCase().includes(q) || l.contact_name.toLowerCase().includes(q));
     const isCollapsed = !!collapsed[stage.key];
     const cardsHtml = leadsInStage.length ? leadsInStage.map(l => leadCardHtml(l, phase.color)).join('') : `<div class="kanban-empty">No leads in this stage</div>`;
