@@ -23399,11 +23399,13 @@ document.getElementById('addApplicationBtn').addEventListener('click', function(
       ${applicationFormFieldsHtml(null)}
     </div>
     <div class="drawer-footer">
-      <button class="btn" style="flex:1;" onclick="closeApplicationDrawer()">Cancel</button>
+      <button class="btn" style="flex:1;" onclick="cancelApplicationDrawer()">Cancel</button>
       <button class="btn btn-accent" style="flex:1;" onclick="saveNewApplication()">Save application</button>
     </div>
   `;
   document.getElementById('applicationOverlay').classList.add('open');
+  restoreApplicationDraft();
+  watchApplicationDraft();
 });
 
 document.getElementById('addPaperApplicationBtn').addEventListener('click', function(){
@@ -23424,7 +23426,130 @@ document.getElementById('addPaperApplicationBtn').addEventListener('click', func
     </div>
   `;
   document.getElementById('applicationOverlay').classList.add('open');
+  restoreApplicationDraft();
+  watchApplicationDraft();
 });
+
+/* =========================================================================
+   A HALF-FILLED APPLICATION SURVIVES THE DRAWER CLOSING
+
+   Typing an application by hand takes a few minutes, and the drawer closes
+   on a click outside it, on Escape, and on the X. Everything typed went
+   with it. The work was never saved anywhere, so there was nothing to go
+   back to - which is the worst version of this: not a bug you can see, just
+   a form you have to do twice.
+
+   The draft is kept in this browser as you type and offered back when the
+   form is next opened.
+
+   WHAT IS DELIBERATELY NOT KEPT
+
+   Social security number, date of birth, driver's licence, tax ID and bank
+   details. Those are encrypted in the database and read back through
+   functions that check permission; copying them into localStorage - where
+   they sit in the clear, survive sign-out, and belong to the computer
+   rather than the person - would undo that for the sake of saving somebody
+   twenty seconds of typing. The draft says so when it is restored.
+   ========================================================================= */
+const APPLICATION_DRAFT_KEY = 'epay_crm_application_draft_v1';
+
+/* Everything on the form except the sensitive five. */
+const APPLICATION_DRAFT_FIELDS = [
+  'apFirst','apLast','apEmail','apPhone','apPersonalAddress',
+  'apLegalName','apDba','apBizAddress','apBizEmail','apBizPhone','apBizStart',
+  'apBizType','apBizCategory','apMonthlySales','apHighSale','apAvgSale',
+  'apPricing','apDLState'
+];
+const APPLICATION_DRAFT_SENSITIVE = ['apSSN','apDob','apDL','apTaxId','apBankName','apRouting','apAccountNum'];
+
+function applicationDraftKey(){
+  return APPLICATION_DRAFT_KEY + ':' + ((currentUser && currentUser.id) || 'anon');
+}
+
+function readApplicationDraft(){
+  try {
+    const raw = localStorage.getItem(applicationDraftKey());
+    return raw ? JSON.parse(raw) : null;
+  } catch(e){ return null; }   // private window, cleared storage, anything
+}
+
+function saveApplicationDraft(){
+  const values = {};
+  let anything = false;
+  APPLICATION_DRAFT_FIELDS.forEach(id => {
+    const el = document.getElementById(id);
+    if(!el) return;
+    const v = (el.value || '').trim();
+    if(v){ values[id] = el.value; anything = true; }
+  });
+  try {
+    if(!anything){ localStorage.removeItem(applicationDraftKey()); return; }
+    localStorage.setItem(applicationDraftKey(), JSON.stringify({ at: Date.now(), values }));
+  } catch(e){ /* storage full or blocked: the form still works */ }
+}
+
+function clearApplicationDraft(){
+  try { localStorage.removeItem(applicationDraftKey()); } catch(e){}
+}
+
+let _applicationDraftTimer = null;
+/* Typing saves, 400ms after the last keystroke rather than on every one. */
+function watchApplicationDraft(){
+  const body = document.querySelector('#applicationDrawer .drawer-body');
+  if(!body || body.dataset.draftWatched) return;
+  body.dataset.draftWatched = '1';
+  body.addEventListener('input', () => {
+    clearTimeout(_applicationDraftTimer);
+    _applicationDraftTimer = setTimeout(saveApplicationDraft, 400);
+  });
+  body.addEventListener('change', saveApplicationDraft);
+}
+
+function restoreApplicationDraft(){
+  const draft = readApplicationDraft();
+  if(!draft || !draft.values) return;
+
+  let filled = 0;
+  Object.keys(draft.values).forEach(id => {
+    const el = document.getElementById(id);
+    if(el && !el.value){ el.value = draft.values[id]; filled++; }
+  });
+  if(!filled) return;
+
+  const mins = Math.max(1, Math.round((Date.now() - (draft.at || Date.now())) / 60000));
+  const body = document.querySelector('#applicationDrawer .drawer-body');
+  if(!body) return;
+  const note = document.createElement('div');
+  note.className = 'panel';
+  note.style.cssText = 'margin:0 0 16px;padding:12px 14px;background:var(--blue-50);border-color:var(--blue-200);';
+  note.innerHTML = `
+    <strong style="font-size:13px;">Picked up where you left off.</strong>
+    <div style="font-size:12px;color:var(--slate-500);margin-top:3px;line-height:1.5;">
+      ${filled} field${filled===1?'':'s'} from ${mins} minute${mins===1?'':'s'} ago.
+      The SSN, date of birth, licence, tax ID and bank details are not kept in a draft -
+      they are encrypted when saved and do not belong in this browser - so those need typing again.
+    </div>
+    <button type="button" class="btn btn-xs" style="margin-top:10px;" onclick="startApplicationFresh()">Start fresh</button>`;
+  body.insertBefore(note, body.firstChild);
+}
+
+function startApplicationFresh(){
+  clearApplicationDraft();
+  APPLICATION_DRAFT_FIELDS.concat(APPLICATION_DRAFT_SENSITIVE).forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.value = '';
+  });
+  const note = document.querySelector('#applicationDrawer .drawer-body .panel');
+  if(note) note.remove();
+}
+
+/* Cancel is a decision; the X and a click outside are not. */
+function cancelApplicationDrawer(){
+  const draft = readApplicationDraft();
+  if(draft && !confirm('Discard this application? What you have typed will not be kept.')) return;
+  clearApplicationDraft();
+  closeApplicationDrawer();
+}
 
 function closeApplicationDrawer(){
   document.getElementById('applicationOverlay').classList.remove('open');
@@ -23497,6 +23622,8 @@ async function saveNewApplication(source){
 
   const { data: saved, error } = await supa.from('applications').insert(app).select().single();
   if(error){ alert('Could not save application: ' + error.message); return; }
+  // It is in the database now; the draft has done its job.
+  clearApplicationDraft();
 
   const apDobValue = (document.getElementById('apDob') || {}).value || '';
   if(apDobValue) await supa.rpc('set_application_dob', { p_application_id: saved.id, p_value: apDobValue });
