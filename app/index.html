@@ -14641,6 +14641,8 @@ function pctToPpm(raw){
 }
 
 async function savePosMerchant(id){
+  /* The id of an account created by this save, if it created one. */
+  let justBoarded = null;
   const get = (k) => (document.getElementById(k).value || '').trim();
   const dba = get('pmDba');
   if(!dba){ posProblem('What is the business called?'); return; }
@@ -14678,8 +14680,11 @@ async function savePosMerchant(id){
     showToast('Saved.', 'success');
   } else {
     merchant.created_by = currentUser && currentUser.id ? currentUser.id : null;
+    /* Only set on a new account. Editing an existing one must not re-offer
+       a welcome to somebody who has been signing in for months. */
     const { data, error } = await supaV2.from('pos_merchants').insert(merchant).select().single();
     if(error){ posProblem('Could not board this merchant: ' + error.message); return; }
+    justBoarded = data.id;
     /*
      * The location is a second write, so it can fail on its own. Said
      * plainly rather than swallowed: a merchant with no location is an
@@ -14696,6 +14701,11 @@ async function savePosMerchant(id){
   closePosMerchantDrawer();
   await loadPosMerchants(true);
   renderPosMerchants();
+
+  /* A business was just boarded and somebody owns it. Offering the welcome
+     here is the difference between a rep remembering to do it and a merchant
+     waiting a week for a login nobody sent. */
+  if(justBoarded) await offerPortalWelcome(justBoarded);
 }
 
 /* ---------------------------------------------------------------------------
@@ -15729,6 +15739,52 @@ function posDetailPortalUsers(m){
  * only purpose is that the code was easier that way. It is also the step
  * most likely to introduce a typo into the one address the login depends on.
  */
+/* -------------------------------------------------------------------------
+   THE WELCOME A MERCHANT GETS
+
+   Sent from the Control Center rather than from the POS platform, on
+   purpose: the templates, the sending account and the record of what went
+   out all live here. Portal-Invite makes the login and hands back a
+   one-time link; this puts that link in EPAY's own envelope.
+
+   The link is what the button goes to. Not a password - the merchant sets
+   their own on the other end, and EPAY never sees it.
+   ------------------------------------------------------------------------- */
+async function sendPortalWelcome(opts){
+  const dba = opts.merchant || 'your business';
+  const greeting = opts.name ? (opts.name.split(' ')[0] + ',') : 'Hello,';
+  return await sendOutboundEmail({
+    kind: 'portal_welcome',
+    to: opts.email,
+    subject: 'Your EPAY back office is ready',
+    heading: 'Your back office is ready',
+    body:
+      greeting + '\n\n' +
+      dba + ' is set up on EPAY POS. Choose a password and your back office opens: '
+      + 'sales and reports, your menu or item file, staff, devices, and what prints '
+      + 'on a receipt.\n\n'
+      + 'The link below works once and expires. If it has run out by the time you '
+      + 'get to it, use "Forgot your password" on the sign-in page and a new one '
+      + 'arrives in a minute.',
+    buttonLabel: 'Set your password',
+    buttonUrl: opts.link,
+  });
+}
+
+/* Offered after boarding, where there is somebody to send it to. Asked
+   rather than sent: boarding a merchant and emailing their owner are two
+   decisions, and a rep setting up a record at 9pm may not want the second
+   one to happen yet. */
+async function offerPortalWelcome(merchantId){
+  const m = POS_MERCHANTS.find(x => x.id === merchantId);
+  if(!m || !m.owner_email) return;
+  const ok = confirm('Send ' + m.owner_email + ' their welcome email now?\n\n'
+    + 'It creates their back office login and emails a link to set a password. '
+    + 'You can also do this later from the account.');
+  if(!ok) return;
+  await inviteOwner(merchantId);
+}
+
 async function inviteOwner(merchantId){
   const m = POS_MERCHANTS.find(x => x.id === merchantId);
   if(!m || !m.owner_email){ showToast('No owner email on this account.', 'error'); return; }
@@ -15764,34 +15820,44 @@ async function invitePosPortalUser(merchantId, given){
   if(!res.ok || out.error){ say(out.error || ('Failed: ' + res.status)); return; }
 
   /*
-   * Shown on the screen, once. Not stored and not logged: the only copy
-   * should be the one the rep reads out, and it stops working the moment
-   * the merchant changes it.
+   * The login exists by now. What is left is telling them about it, which
+   * is a separate thing that can fail on its own - so it is reported on its
+   * own rather than turning a successful invite into a failure.
    */
-  /* The shortcut has no form on screen to write into, so the password goes
-     where it will be seen either way. */
+  let sent = false;
+  if(out.actionLink){
+    sent = await sendPortalWelcome({
+      email: out.email, name, merchant: out.merchant, link: out.actionLink,
+    });
+  }
+
+  const said = sent
+    ? 'Welcome email sent to ' + out.email + '.'
+    : out.actionLink
+      ? 'Login created for ' + out.email + ', but the email did not go out.'
+      : 'Login created for ' + out.email + '. ' + (out.linkProblem || 'No link was generated.');
+
   const result = document.getElementById('piResult');
   if(result === null){
-    if(out.password){
-      showToast('Login created for ' + out.email + '. Temporary password: ' + out.password, 'success');
-    } else {
-      showToast(out.email + ' already had a login and has been added.', 'success');
-    }
+    showToast(said, sent ? 'success' : 'error');
     await loadPosPortalUsers(merchantId);
     renderPosDetail();
     return;
   }
-  result.innerHTML = out.password
-    ? `<div class="stat-card" style="margin:10px 0;">
-         <div class="label">Temporary password for ${escAttr(out.email)}</div>
-         <div class="value" style="font-family:ui-monospace,monospace;font-size:20px;">
-           ${escAttr(out.password)}</div>
-         <div class="delta" style="color:var(--slate-500);">
-           Read it to them. It is not saved anywhere and will not be shown again.</div>
-       </div>`
-    : `<p style="font-size:12.5px;color:var(--slate-500);margin:10px 0;">
-         ${escAttr(out.email)} already had a login, so their existing password still works.
-         They have been added to ${escAttr(out.merchant)}.</p>`;
+  result.innerHTML = sent
+    ? `<p style="font-size:12.5px;color:var(--slate-500);margin:10px 0;">
+         ${escAttr(said)} They set their own password from the link &mdash; it works once and
+         expires, and "Forgot your password" on the portal sends another.</p>`
+    /*
+     * The link is shown only where the email did not go. It is a key to that
+     * back office, so it belongs on a screen for as long as it takes to
+     * paste it somewhere, and nowhere else. Not logged, not saved.
+     */
+    : `<div class="stat-card attention" style="margin:10px 0;">
+         <div class="label">${escAttr(said)}</div>
+         ${out.actionLink ? `<div class="delta" style="color:var(--slate-500);word-break:break-all;">
+           Send them this link yourself:<br>${escAttr(out.actionLink)}</div>` : ''}
+       </div>`;
 
   await loadPosPortalUsers(merchantId);
   renderPosDetail();

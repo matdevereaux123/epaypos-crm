@@ -47,6 +47,10 @@ const ALLOWED_KINDS = [
   // for anyone who can create one — it's just a URL, no lead or account
   // data — so this one kind is exempt from the fullDashboard check below.
   'booking_link_share',
+  // The welcome a merchant gets when their back office is created. Carries a
+  // one-time link to set their own password, which is why it stays under the
+  // fullDashboard check: whoever holds that link gets into that back office.
+  'portal_welcome',
   // The "please sign this" email and its reminder (database/69_esignature.sql).
   // Left under the fullDashboard check below rather than exempted: it carries
   // a link that lets whoever holds it sign a contract in our name.
