@@ -343,8 +343,8 @@ function calendarAddLinksHtml(title: string, dateStr: string, timeStr: string, d
 
   return `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:4px 0 2px;">
     <tr>
-      <td style="padding-right:8px;padding-bottom:8px;"><a href="${google}" target="_blank" style="display:inline-block;padding:9px 16px;border-radius:7px;background:#0558D6;color:#ffffff;text-decoration:none;font-size:12.5px;font-weight:bold;">Add to Google Calendar</a></td>
-      <td style="padding-bottom:8px;"><a href="${outlook}" target="_blank" style="display:inline-block;padding:9px 16px;border-radius:7px;border:1px solid #0558D6;color:#0558D6;text-decoration:none;font-size:12.5px;font-weight:bold;">Add to Outlook</a></td>
+      <td style="padding-right:8px;padding-bottom:8px;"><a href="${google}" target="_blank" style="display:inline-block;padding:9px 16px;border-radius:7px;background:#2A3FE0;color:#ffffff;text-decoration:none;font-size:12.5px;font-weight:bold;">Add to Google Calendar</a></td>
+      <td style="padding-bottom:8px;"><a href="${outlook}" target="_blank" style="display:inline-block;padding:9px 16px;border-radius:7px;border:1px solid #2A3FE0;color:#2A3FE0;text-decoration:none;font-size:12.5px;font-weight:bold;">Add to Outlook</a></td>
     </tr>
   </table>
   <p style="margin:0 0 4px;font-size:11.5px;color:#5B6B8C;">Using Apple Calendar or something else? The attached .ics file works with any calendar app.</p>`;
