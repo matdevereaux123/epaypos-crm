@@ -4687,7 +4687,10 @@ async function v2SignOut(){
    no users table, so the admin test those policies are written against
    cannot exist there, and the settings now live in the Control Center
    beside the catalogue. */
-const V2_BACKED_VIEWS = ['posbilling','posreferral'];
+/* Merchants joins the list: the records are in V2, so without a session
+   there the page has nothing real to show. It read from the Control
+   Center's stale copy until now, which is why it looked fine. */
+const V2_BACKED_VIEWS = ['posbilling','posreferral','posmerchants','backend','possetup'];
 
 /*
  * A line at the top of a page whose figures come from V2, when nobody has
@@ -4704,6 +4707,9 @@ function showV2Notice(view){
   const box = posViewBox(view);
   if(!box || box.querySelector('.v2-notice')) return;
   const what = view === 'posreferral' ? 'The referral tiers'
+             : view === 'posmerchants' ? 'The merchant records'
+             : view === 'possetup' ? 'The setup boards'
+             : view === 'backend' ? 'The figures on this overview'
              : 'Plans, add-on prices and accepted agreements';
   const strip = document.createElement('div');
   strip.className = 'panel v2-notice';
@@ -10432,8 +10438,8 @@ function showView(view, fromHistory){
        * price list is a note on a price list, not a locked door in front of
        * the merchant records.
        */
-      const loads = [loadPosMerchants()];
-      if(ok) loads.push(loadPosStationTypes(), loadPosBilling());
+      const loads = [];
+      if(ok) loads.push(loadPosMerchants(), loadPosStationTypes(), loadPosBilling());
       return Promise.all(loads).then(() => {
         if(view === 'backend') renderBackendOverview();
         else if(view === 'possetup') renderPosSetupBoard();
@@ -14294,7 +14300,19 @@ function ppmLabel(ppm, fixedCents){
 
 async function loadPosMerchants(force){
   if(posMerchantsLoaded && !force) return POS_MERCHANTS;
-  const { data, error } = await supa
+  /*
+   * supaV2, not supa.
+   *
+   * This read was left on the Control Center's project when the merchant
+   * records moved to V2, and nothing pointed at it because both projects
+   * have a pos_merchants: the list came back populated, from the old copy.
+   * Meanwhile every write - boarding, locations, devices, portal users,
+   * agreements - went to V2. The list and the records had quietly stopped
+   * being the same thing, and a merchant boarded successfully would never
+   * appear in it.
+   */
+  if(!await v2Ready()) return POS_MERCHANTS;
+  const { data, error } = await supaV2
     .from('pos_merchants')
     .select('*, pos_locations(*, pos_devices(id, kind, label, last_seen_at))')
     .order('created_at', { ascending:false });
