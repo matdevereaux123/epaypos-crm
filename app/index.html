@@ -2474,6 +2474,31 @@
   .pos-sell-toggle{ display:inline-flex; align-items:center; gap:7px; cursor:pointer; }
   .pos-sell-toggle input{ accent-color:var(--blue-600); }
 
+  /* ---------- THE BRAND SWITCH ON A PHONE ----------
+     Segments on a wide screen, a dropdown on a narrow one. Both are built
+     every time the switch renders, and only one is ever shown. */
+  .brand-switch-select{ display:none; }
+  @media (max-width:768px){
+    .topnav .brand-switch{
+      background:transparent; border:0; padding:0; flex:1 1 auto; min-width:0;
+    }
+    .topnav .brand-switch button{ display:none; }
+    .topnav .brand-switch .brand-switch-select{
+      display:block; width:100%; max-width:220px; min-height:40px;
+      padding:0 32px 0 12px; border:1px solid var(--blue-200); border-radius:10px;
+      background:var(--card); color:var(--navy-700);
+      font:inherit; font-size:13.5px; font-weight:700;
+      /* The native arrow, drawn rather than left to the platform, so the
+         control reads as ours on both iOS and Android. */
+      appearance:none; -webkit-appearance:none;
+      background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23006a85' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+      background-repeat:no-repeat; background-position:right 10px center; background-size:16px;
+    }
+    /* The bar has three things on it at this width: the menu button, this,
+       and the profile. Nothing else needs to compete for the room. */
+    .topnav-brand{ flex:1 1 auto; min-width:0; }
+  }
+
 </style>
 </head><body data-brand="epay">
 
@@ -6278,6 +6303,20 @@ function renderBrandSwitch(){
              stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"></path></svg>
       </span>
     </button>`).join('');
+  /* The same switch as a dropdown, for a phone.
+     Three segments with icons need about 380px and a phone's top bar does
+     not have it - they wrapped onto a second line and pushed the page down.
+     One control, built from the same positions, so there is nothing to keep
+     in step: CSS shows the segments on a wide screen and this on a narrow
+     one. */
+  const picker = document.createElement('select');
+  picker.className = 'brand-switch-select';
+  picker.setAttribute('aria-label', 'Which part of the business');
+  picker.innerHTML = positions.map(b =>
+    `<option value="${b}" ${b === currentBrand ? 'selected' : ''}>${brandSwitchLabel(b)}</option>`).join('');
+  picker.addEventListener('change', () => setBrand(picker.value));
+  switchEl.appendChild(picker);
+
   switchEl.querySelectorAll('button').forEach(btn=>{
     btn.classList.toggle('active', btn.dataset.brand === currentBrand);
     btn.addEventListener('click', ()=> setBrand(btn.dataset.brand));
