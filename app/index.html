@@ -2193,7 +2193,41 @@
   .topnav-right{margin-left:auto;}
 
   /* ---------- TOP BAR ---------- */
-  .topnav{height:60px;border-bottom:1px solid var(--line);}
+  /* ---------- THE TOP BAR, AT EVERY WIDTH ----------
+     A fixed 60px row with space-between and no gap holds its shape right up
+     until it cannot, and then the pieces meet in the middle. These rules
+     mean they never have to: the bar grows rather than crushes, the two
+     ends keep their size, and the only thing that gives is the brand
+     control in the middle - which has a dropdown to fall back to. */
+  .topnav{
+    min-height:64px; height:auto; gap:16px; flex-wrap:nowrap;
+    border-bottom:1px solid var(--line);
+  }
+  /* The ends: never shrink, never wrap. */
+  .topnav > .sidebar-toggle-btn{ flex:0 0 auto; }
+  .topnav-right{ flex:0 0 auto; gap:12px; flex-wrap:nowrap; }
+  /* The middle: shrinks first, and is allowed to, because min-width:0 is
+     what lets a flex child go narrower than its content. */
+  .topnav-brand{ flex:0 1 auto; min-width:0; overflow:hidden; }
+  .topnav .brand-switch{ flex-wrap:nowrap; }
+  /* A long name is the thing most likely to push the profile into the bell.
+     It ellipses instead. */
+  .profile-btn{ max-width:230px; }
+  .profile-btn .profile-btn-info{ min-width:0; overflow:hidden; }
+  .profile-btn-name, .profile-btn-role{
+    display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .profile-btn .preview-as-avatar, .profile-btn .chevron{ flex:0 0 auto; }
+  @media (max-width:768px){
+    .topnav{ min-height:60px; gap:10px; }
+    .profile-btn{ max-width:150px; }
+  }
+  @media (max-width:420px){
+    /* At this width the name is three pixels of ellipsis. The avatar says
+       who is signed in and the menu still opens. */
+    .profile-btn .profile-btn-info{ display:none; }
+    .topnav{ gap:8px; }
+  }
   .sidebar-toggle-btn{width:40px;height:40px;border-radius:10px;border-color:var(--blue-200);color:var(--ink);}
   .sidebar-toggle-btn:hover{border-color:var(--blue-400);background:var(--blue-50);color:var(--ink);}
   .sidebar-toggle-btn.active{background:var(--blue-100);border-color:var(--blue-400);color:var(--ink);}
