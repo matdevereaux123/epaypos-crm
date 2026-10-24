@@ -14702,6 +14702,35 @@ function closePosMerchantDrawer(){
   document.getElementById('posMerchantOverlay').classList.remove('open');
 }
 
+/*
+ * What an RLS refusal from V2 actually means, said once.
+ *
+ * Postgres reports both of these in the same words - "new row violates
+ * row-level security policy" - and neither of them is something a person
+ * can act on. There are only two ways to get it:
+ *
+ *   No V2 session, so the request arrives as `anon`. Every policy on these
+ *   tables is `to authenticated`, so none applies, and an insert with no
+ *   policy to permit it is refused exactly like a failed check.
+ *
+ *   A session, but no active row in pos_staff. The write policies reduce to
+ *   pos_is_staff(), and for somebody never added the answer is no.
+ *
+ * The first the person can fix themselves in ten seconds. The second needs
+ * somebody to run migration 011. Telling them which is the whole point.
+ */
+function v2WriteProblem(message){
+  const raw = String(message || '');
+  if(!/row-level security|violates row-level/i.test(raw)) return raw;
+  return v2Session
+    ? 'Your EPAY POS sign-in is not marked as EPAY staff, so it cannot create records '
+      + 'in the POS platform. Someone with database access needs to run migration 011 '
+      + '(database/v2/011_epay_staff.sql) to add you.'
+    : 'You are not signed into the POS platform in this browser, so this write was '
+      + 'refused. Sign in there and try again \u2014 the button is on the billing or '
+      + 'subscription pages.';
+}
+
 function posProblem(text){
   const el = document.getElementById('pmProblem');
   el.textContent = text; el.style.display = text ? 'block' : 'none';
@@ -14744,11 +14773,11 @@ async function savePosMerchant(id){
 
   if(id){
     const { error } = await updateRow('pos_merchants', id, merchant);
-    if(error){ posProblem('Could not save: ' + error.message); return; }
+    if(error){ posProblem('Could not save: ' + v2WriteProblem(error.message)); return; }
     const existing = posPrimaryLocation(POS_MERCHANTS.find(x => x.id === id));
     if(existing){
       const { error: le } = await updateRow('pos_locations', existing.id, location);
-      if(le){ posProblem('Saved the business, but not the location: ' + le.message); return; }
+      if(le){ posProblem('Saved the business, but not the location: ' + v2WriteProblem(le.message)); return; }
     }
     showToast('Saved.', 'success');
   } else {
@@ -14756,7 +14785,7 @@ async function savePosMerchant(id){
     /* Only set on a new account. Editing an existing one must not re-offer
        a welcome to somebody who has been signing in for months. */
     const { data, error } = await supaV2.from('pos_merchants').insert(merchant).select().single();
-    if(error){ posProblem('Could not board this merchant: ' + error.message); return; }
+    if(error){ posProblem('Could not board this merchant: ' + v2WriteProblem(error.message)); return; }
     justBoarded = data.id;
     /*
      * The location is a second write, so it can fail on its own. Said
@@ -14765,7 +14794,7 @@ async function savePosMerchant(id){
      */
     const { error: le } = await supaV2.from('pos_locations').insert({ ...location, merchant_id: data.id });
     if(le){
-      showToast('Boarded, but the location did not save: ' + le.message, 'error');
+      showToast('Boarded, but the location did not save: ' + v2WriteProblem(le.message), 'error');
     } else {
       showToast('Boarded ' + dba + '.', 'success');
     }
