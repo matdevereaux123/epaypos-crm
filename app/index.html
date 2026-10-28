@@ -10745,9 +10745,14 @@ function downlineUserIds(user){
   const seen = new Set([me]);
   const out = [];
   let frontier = [me];
+  /* The directory, not USERS. users_select only serves your own row without
+     manageUsers, so a manager without it drew an empty reporting line and
+     109's grant looked broken in the browser while the database was serving
+     the rows all along (database/119). */
+  const people = companyPeople();
   while(frontier.length){
     const next = [];
-    USERS.forEach(u => {
+    people.forEach(u => {
       if(!u.manager_id || seen.has(u.id)) return;
       if(frontier.includes(u.manager_id)){ seen.add(u.id); out.push(u.id); next.push(u.id); }
     });
@@ -10802,6 +10807,8 @@ function scopedLeads(){
   const onTeam = id => !!id && team.indexOf(id) !== -1;
   return inPlay.filter(l =>
     (pid && l.linked_partner_id === pid)
+    // An ISO's sub-agents: their leads are the ISO's to see (database/120).
+    || (pid && l.linked_partner_id && partnerDownlineIds(pid).has(l.linked_partner_id))
     || l.assigned_to === currentUser.id
     || l.created_by === currentUser.id
     || (l.assigned_to_ids || []).includes(currentUser.id)
@@ -10818,7 +10825,13 @@ function scopedLeads(){
 function scopedColdLeads(){
   const perms = roleOf(currentUser).perms;
   if(perms.fullDashboard) return COLD_LEADS;
-  return COLD_LEADS.filter(c => c.assigned_to === currentUser.id);
+  /* Yours, and your people's. Mirrors cold_leads_select in database/120:
+     before it, a manager or an ISO saw only what was assigned to them
+     personally, which is not what either job is. */
+  const team = downlineUserIds(currentUser);
+  const mine = id => id === currentUser.id || (id && team.indexOf(id) !== -1);
+  return COLD_LEADS.filter(c =>
+    mine(c.assigned_to) || mine(c.created_by) || (c.assigned_to_ids || []).some(mine));
 }
 
 function scopedApplications(){
