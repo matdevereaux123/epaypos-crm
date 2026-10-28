@@ -6958,6 +6958,7 @@ async function fetchCurrentAppUser(authUser){
 const DATASETS = {
   users:               { load: loadUsersFromSupabase,              apply: d => { USERS = d; clearDownlineCache(); } },
   planCatalogue:       { load: loadPlanCatalogue,                  apply: d => PLAN_CATALOGUE = d },
+  directory:           { load: loadUserDirectory,                   apply: d => USER_DIRECTORY = d },
   partners:            { load: loadPartnersFromSupabase,           apply: d => PARTNERS = d },
   leads:               { load: loadLeadsFromSupabase,              apply: d => LEADS = d },
   allNotes:            { load: loadAllNotesFromSupabase,           apply: d => ALL_NOTES = d },
@@ -7010,7 +7011,7 @@ const DATASETS = {
 
 // Loaded before the app is shown: the shell, the notification bell, and
 // everything the dashboard draws.
-const CORE_DATASETS = ['users','partners','leads','coldLeads','applications','tasks','planCatalogue',
+const CORE_DATASETS = ['users','partners','leads','coldLeads','applications','tasks','planCatalogue','directory',
                        'notifications','allNotes','calendarEvents','integrations'];
 
 // What each tab needs on top of the core.
@@ -10635,6 +10636,48 @@ function partnerDownlineIds(partnerId){
 // gets themselves plus their downline, matching the trigger in
 // database/27_assignment_scope.sql. Offering more than that would just
 // produce a refusal from the database.
+/* Everyone who works here, as names rather than as permissions.
+
+   USERS is the users table, and users_select only serves your own row
+   unless you hold manageUsers - so in an agent's portal it has exactly one
+   person in it. That is correct for a table carrying extra_perms and
+   auth_id, and useless for "invite a colleague" or "who reports to me".
+   database/119 adds a view with four harmless facts, readable by anyone
+   signed in. */
+let USER_DIRECTORY = [];
+
+async function loadUserDirectory(){
+  const { data, error } = await supa.from('user_directory').select('*').order('name');
+  if(error) return [];          // falls back to USERS, as before
+  return data || [];
+}
+
+/* The company, as far as any screen that lists people is concerned. USERS
+   first where it is fuller - it carries brands and linked_partner_id, which
+   the directory deliberately does not. */
+/* Twenty names in a 200px box is a scroll; a search box is how you find one
+   person in it. Ticked people are never hidden - a filter that hides a
+   choice already made is how somebody uninvites a colleague without
+   noticing. */
+function filterMeetingAttendees(q){
+  const needle = (q || '').trim().toLowerCase();
+  const rows = document.querySelectorAll('#mtAttendees label');
+  let shown = 0;
+  rows.forEach(row => {
+    const checked = row.querySelector('input') && row.querySelector('input').checked;
+    const hit = !needle || checked || (row.dataset.person || '').includes(needle);
+    row.style.display = hit ? 'flex' : 'none';
+    if(hit) shown++;
+  });
+  const none = document.getElementById('mtAttendeeNone');
+  if(none) none.style.display = shown ? 'none' : 'block';
+}
+
+function companyPeople(){
+  if(USERS.length > 1 || !USER_DIRECTORY.length) return USERS;
+  return USER_DIRECTORY;
+}
+
 function assignableUsers(){
   const perms = roleOf(currentUser).perms;
   // staffTools, not fullDashboard: handing work to a colleague is something
@@ -28645,13 +28688,18 @@ function meetingFormHtml(ev, prefillDate, prefillColdLead, prefillLead){
     </div>
     <div class="field">
       <label>Also invite <span style="color:var(--slate-300);font-weight:400;">(optional — you're on it either way)</span></label>
-      <div id="mtAttendees" style="display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;padding:8px 10px;">
-        ${assignableUsers().filter(u => u.id !== currentUser.id).sort((a,b)=>a.name.localeCompare(b.name)).map(u => `
-          <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:400;cursor:pointer;">
+      <input id="mtAttendeeSearch" placeholder="Search by name, email or job title"
+             oninput="filterMeetingAttendees(this.value)"
+             style="margin-bottom:8px;">
+      <div id="mtAttendees" style="display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;padding:8px 10px;">
+        ${companyPeople().filter(u => u.id !== currentUser.id).sort((a,b)=>(a.name||'').localeCompare(b.name||'')).map(u => `
+          <label data-person="${escAttr(((u.name||'') + ' ' + (u.email||'') + ' ' + (u.job_title||'')).toLowerCase())}"
+                 style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:400;cursor:pointer;">
             <input type="checkbox" value="${u.id}" ${(ev.attendee_user_ids||[]).includes(u.id) ? 'checked' : ''} style="width:auto;">
-            ${u.name}${u.email ? ` <span style="color:var(--slate-400);font-size:11.5px;">${u.email}</span>` : ''}
+            <span>${u.name}${u.job_title ? ` <span style="color:var(--slate-500);font-size:11.5px;">${escAttr(u.job_title)}</span>` : ''}${u.email ? ` <span style="color:var(--slate-400);font-size:11.5px;">${u.email}</span>` : ''}</span>
           </label>`).join('') || '<span style="font-size:12.5px;color:var(--slate-400);">Nobody else to invite yet.</span>'}
       </div>
+      <p id="mtAttendeeNone" style="display:none;font-size:12px;color:var(--slate-500);margin:6px 0 0;">Nobody matches that.</p>
     </div>
     <div class="field">
       <label>Linked Cold Lead (optional)</label>
