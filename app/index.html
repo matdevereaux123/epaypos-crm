@@ -3777,7 +3777,7 @@
             </div>
           </div>
           <table>
-            <thead><tr><th>Name</th><th>Reseller tier</th><th>Activity</th><th>Custom link</th><th>Leads</th><th>Last deal</th><th style="width:34px;"></th></tr></thead>
+            <thead><tr><th>Name</th><th>Reseller tier</th><th>Pay</th><th>Performance</th><th>Activity</th><th>Custom link</th><th>Last deal</th><th style="width:34px;"></th></tr></thead>
             <tbody id="agentsTableBody"></tbody>
           </table>
           <div id="agentsEmptyState" class="empty-state" style="display:none;">Nobody matches your search.</div>
@@ -13071,6 +13071,21 @@ function setResellersActivityFilter(key){
  *
  * The gate stays in the database. This is the version of it people can see.
  */
+/* What an agent is paid, in the column Internal Sales calls Pay.
+ *
+ * Not a second comp table. An employee's pay is a salary and a commission
+ * basis (internal_sales_comp); an agent's is the residual split already on
+ * their record, and inventing a parallel structure for the same fact is how
+ * two numbers end up disagreeing about what somebody earns.
+ *
+ * "Not set" is said out loud rather than left blank, because a split nobody
+ * has agreed is a conversation waiting to happen, not a tidy empty cell. */
+function partnerPaySummary(p){
+  const split = (p.residual_percentage || '').trim();
+  if(!split) return '<span style="color:var(--slate-300);">Not set</span>';
+  return `<b>${escAttr(split)}</b><div class="sub">residual split</div>`;
+}
+
 function partnerInviteBtnHtml(p){
   const hasEmail = p.email && p.email !== '\u2014';
   const status = p.onboarding_status || 'active';
@@ -13121,10 +13136,10 @@ function renderAgentsTable(filterText){
     <tr onclick="openReferralDetail('${p.id}')">
       <td class="name-cell">${p.name}<div class="sub">${p.contact} · ${p.city}, ${p.state}</div></td>
       <td>${p.reseller_type === 'authorized_reseller' ? '<span class="pill pill-agent-auth">Authorized Reseller</span>' : '<span class="pill pill-agent-basic">Basic Payments</span>'}</td>
-      <td><span class="pill" style="background:${activity.color}22;color:${activity.color};">${activity.label}</span>
-        ${p.standing ? `<div style="margin-top:4px;display:flex;align-items:center;gap:5px;">${standingBadge(p.standing)}</div>` : ''}</td>
+      <td>${partnerPaySummary(p)}</td>
+      <td>${performanceCellHtml('partner', p)}</td>
+      <td><span class="pill" style="background:${activity.color}22;color:${activity.color};">${activity.label}</span></td>
       <td><span class="link-chip mono">${baseUrl}${p.link_slug}<button onclick="event.stopPropagation(); copyLink('${baseUrl}${p.link_slug}')">Copy</button></span></td>
-      <td>${p.leads_submitted} leads<div class="sub">${p.deals_closed} closed</div></td>
       <td>${p.last_deal_date ? formatDate(p.last_deal_date) : '—'}</td>
       <td style="text-align:right;white-space:nowrap;">${partnerInviteBtnHtml(p)}${recordMenuBtn('partner', p.id, p.name)}</td>
     </tr>`;
