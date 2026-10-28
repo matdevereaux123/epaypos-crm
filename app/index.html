@@ -5686,7 +5686,8 @@ async function loadLeadsFromSupabase(){
      column) falls back to the columns that have always been there. The app
      then behaves as it did before the migration: the waiver reads as unset,
      and running the migration turns it on with no further deploy. */
-  const OPTIONAL = 'application_waived_at, application_waived_by, pos_merchant_id';
+  const OPTIONAL = 'application_waived_at, application_waived_by, pos_merchant_id, '
+                 + 'install_call_waived_at, install_call_waived_by';
 
   const undefinedColumn = e => !!e && (e.code === '42703' || /does not exist/i.test(e.message || ''));
 
@@ -18439,6 +18440,9 @@ function getStageRequirementError(lead, stageKey){
       if(!lead.in_person_install && !lead.tracking_email_sent) return "Email the tracking number to the client before moving on.";
       return null;
     case 'install_training':
+      // Waived the same way as the application gate, and recorded the same
+      // way - see stageFixWaiveInstallCall (database/128).
+      if(lead.install_call_waived_at) return null;
       if(!CALENDAR_EVENTS.some(e => e.linked_lead_id === lead.id)) return "Schedule the installation/training call before converting this account.";
       return null;
     case 'one_month_followup':
@@ -18503,6 +18507,17 @@ function requirementsBetween(lead, targetStageKey){
 // off to the drawer and back. Only the ones where a single action genuinely
 // completes it — anything needing real data entry stays a trip to the record.
 function stageFixActionsHtml(lead, stageKey){
+  if(stageKey === 'install_training'){
+    // An install that was done on the phone, or booked outside the CRM, still
+    // has to be able to convert. Same shape as the application waiver: asked
+    // for, recorded, reversible.
+    return `
+      <div class="smm-fix">
+        <button type="button" class="btn btn-xs" onclick="stageFixWaiveInstallCall('${lead.id}')">
+          ${lead.install_call_waived_at ? 'Require a scheduled call again' : 'Convert without scheduling one'}
+        </button>
+      </div>`;
+  }
   if(stageKey !== 'application') return '';
 
   const unattached = APPLICATIONS.filter(a => !a.linked_account_id);
@@ -18567,6 +18582,51 @@ async function stageFixWaiveApplication(leadId){
     (actingUser().name || actingUser().email || 'a user') + '.');
 
   showToast('Application requirement waived. The move can go ahead.', 'success');
+  stageFixBackToChecklist();
+}
+
+/* Converting without a scheduled install/training call.
+
+   The call is often done on the phone the same day, or booked in somebody's
+   own calendar outside the CRM, and the gate had no way past it - so the
+   account could not convert at all. Same shape as the application waiver
+   above: it asks, writes who and when onto the lead (database/128), leaves a
+   note, and comes off again from the same button. */
+async function stageFixWaiveInstallCall(leadId){
+  const lead = LEADS.find(l => l.id === leadId);
+  if(!lead) return;
+
+  if(lead.install_call_waived_at){
+    if(!confirm('Require a scheduled install/training call on ' + (lead.business_name || 'this lead') + ' again?')) return;
+    const res = await updateRow('leads', leadId, { install_call_waived_at: null, install_call_waived_by: null });
+    if(res.error){ showToast('Could not change that: ' + res.error.message, 'error'); return; }
+    lead.install_call_waived_at = null;
+    lead.install_call_waived_by = null;
+    showToast('A scheduled call is required on this lead again.', 'success');
+    stageFixBackToChecklist();
+    return;
+  }
+
+  const ok = confirm(
+    'Convert ' + (lead.business_name || 'this lead') + ' without a scheduled install/training call?\n\n' +
+    'Your name and the time are recorded on the lead, and a note is added.'
+  );
+  if(!ok) return;
+
+  const stamp = new Date().toISOString();
+  const res = await updateRow('leads', leadId, {
+    install_call_waived_at: stamp,
+    install_call_waived_by: actingUser().id
+  });
+  if(res.error){ showToast('Could not save that: ' + res.error.message, 'error'); return; }
+
+  lead.install_call_waived_at = stamp;
+  lead.install_call_waived_by = actingUser().id;
+  await noteOnCreate('lead', leadId,
+    'Converted without a scheduled install/training call, by ' +
+    (actingUser().name || actingUser().email || 'a user') + '.');
+
+  showToast('Scheduled call no longer required. The move can go ahead.', 'success');
   stageFixBackToChecklist();
 }
 
@@ -19996,6 +20056,8 @@ function stagePanelHtml(l){
         <h3>Install &amp; Training Call</h3>
         <p class="stage-panel-desc">Schedule the follow-up call for installation and training — phone, Zoom, or in-person.</p>
         <div class="detail-row"><span class="k">Call scheduled?</span><span class="v">${meetings.length ? 'Yes — '+formatDate(meetings[0].date)+' ('+meetingType(meetings[0].type).label+')' : 'Not yet'}</span></div>
+        ${l.install_call_waived_at ? `
+          <div class="detail-row"><span class="k">Scheduling waived</span><span class="v">${formatDateFull(l.install_call_waived_at.slice(0,10))}${l.install_call_waived_by ? ' · ' + ((USERS.find(u => u.id === l.install_call_waived_by) || {}).name || 'someone no longer here') : ''}</span></div>` : ''}
         <button class="btn btn-accent" style="width:100%;margin-top:8px;margin-bottom:8px;" onclick="${detailRenderMode==='drawer'?"closeLeadDrawer(); ":""}openMeetingDrawer(null, todayISO(), null, '${l.id}');">Schedule Install/Training Call</button>
         <button class="btn" style="width:100%;" onclick="convertToActiveAccount('${l.id}')">Convert to Active Account →</button>
         <p style="font-size:10.5px;color:var(--slate-300);margin-top:8px;">Once converted, this record moves out of the Leads pipeline entirely and lives only in Accounts from here on.</p>
@@ -28736,12 +28798,42 @@ function defaultCalendarFilter(){
   return mine ? mine.id : 'all';
 }
 
+/* calFilter is one of three things: 'all', a connected calendar's id, or
+   'user:<id>' for one person's diary. The chips only ever listed CONNECTED
+   calendars - Google connections - and 108 made connected_calendars
+   owner-only, so an admin with the right to see every calendar had nothing
+   to pick from and saw only their own. The events were being served all
+   along; there was no way to ask for them. */
+function calEventMatchesFilter(e){
+  if(calFilter === 'all') return true;
+  if(String(calFilter).startsWith('user:')) return e.owner_id === String(calFilter).slice(5);
+  return e.calendar_id === calFilter;
+}
+
+/* Only for whoever holds viewAllCalendars - everybody else sees their own
+   diary and no picker, which is the point of 108. A dropdown rather than
+   chips: seventeen names in a chip row wraps into three lines, and this sits
+   in a toolbar. */
+function calendarPeopleFilterHtml(){
+  if(!roleOf(currentUser).perms.viewAllCalendars) return '';
+  const chosen = String(calFilter).startsWith('user:') ? String(calFilter).slice(5) : '';
+  const people = companyPeople().slice().sort((a,b) => (a.name||'').localeCompare(b.name||''));
+  const counts = {};
+  CALENDAR_EVENTS.forEach(e => { if(e.owner_id) counts[e.owner_id] = (counts[e.owner_id] || 0) + 1; });
+  return `
+    <select id="calPersonFilter" onchange="setCalFilter(this.value ? 'user:' + this.value : 'all')"
+            style="margin-left:10px;padding:7px 10px;border:1px solid var(--line);border-radius:7px;font-size:12.5px;max-width:230px;">
+      <option value="">Everyone&rsquo;s calendar</option>
+      ${people.map(u => `<option value="${u.id}" ${chosen === u.id ? 'selected' : ''}>${escAttr(u.name || u.email || 'Unnamed')}${u.id === currentUser.id ? ' (me)' : ''}${counts[u.id] ? ' \u00b7 ' + counts[u.id] : ' \u00b7 none'}</option>`).join('')}
+    </select>`;
+}
+
 function renderCalendarFilter(){
   const connected = CONNECTED_CALENDARS.filter(c => c.connected);
   const chips = [{ id:'all', name:'All calendars' }].concat(connected);
   document.getElementById('calCalendarFilter').innerHTML = chips.map(c => `
     <button type="button" class="${calFilter===c.id?'active':''}" onclick="setCalFilter('${c.id}')">${(c.user_id && c.user_id === currentUser.id) ? 'My calendar' : c.name}</button>
-  `).join('');
+  `).join('') + calendarPeopleFilterHtml();
 }
 function setCalFilter(id){
   calFilter = id;
@@ -28863,7 +28955,7 @@ function renderCalendar(){
   const rows = cells.length / 7;
   const maxChips = gridHeight ? chipsPerCell(gridHeight / rows) : 3;
 
-  const scoped = scopedCalendarEvents().filter(e => calFilter === 'all' || e.calendar_id === calFilter);
+  const scoped = scopedCalendarEvents().filter(calEventMatchesFilter);
 
   document.getElementById('calGrid').innerHTML = cells.map(c => {
     if(c.outside){
@@ -29061,7 +29153,7 @@ function compareEventTime(a, b){
 
 function eventsOnDay(dateStr){
   return CALENDAR_EVENTS
-    .filter(e => e.date === dateStr && (calFilter === 'all' || e.calendar_id === calFilter))
+    .filter(e => e.date === dateStr && calEventMatchesFilter(e))
     .sort(compareEventTime);
 }
 
