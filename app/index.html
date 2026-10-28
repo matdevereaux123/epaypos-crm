@@ -4838,12 +4838,18 @@ const DEFAULT_ROLES = {
   admin: {
     label:'Admin', portal_scope:'internal',
     description:'Full control — every tab, every record, both brands, banking info, user management, and settings.',
-    perms:{ manageUsers:true, manageSettings:true, viewAllPartners:true, editPartners:true, viewBanking:true, editBanking:true, manageAutomation:true, fullDashboard:true, viewAllLeads:true, viewAllCalendars:true },
+    perms:{ manageUsers:true, manageSettings:true, viewAllPartners:true, editPartners:true, viewBanking:true, editBanking:true, manageAutomation:true, fullDashboard:true, viewAllLeads:true, viewAllCalendars:true, staffTools:true },
   },
   in_house_sales: {
     label:'In House Sales', portal_scope:'internal',
-    description:'Internal reps — see leads that come in through the public forms plus anything they created or are assigned, not leads other users created. Full access to partners and follow-ups; can view but not edit payout banking. No user or settings management.',
-    perms:{ manageUsers:false, manageSettings:false, viewAllPartners:true, editPartners:true, viewBanking:true, editBanking:false, manageAutomation:true, fullDashboard:true, viewAllLeads:false },
+    description:'Internal reps — their own records plus their team’s, and the inbound leads that arrive through the public forms. Not other users’ leads and not the imported back catalogue. Can send applications, contracts and emails. No partner pages, no payout banking, no user or settings management.',
+    perms:{ manageUsers:false, manageSettings:false, viewAllPartners:false, editPartners:false, viewBanking:false, editBanking:false, manageAutomation:true, fullDashboard:false, viewAllLeads:false, staffTools:true },
+    // Deliberately narrower than this role's description used to claim, and
+    // matched to the stored row in Supabase (database/123). These defaults are
+    // only the fallback shown before login resolves, and a fallback that is
+    // WIDER than the database flashes up tabs the server will then refuse -
+    // fullDashboard especially, which is a see-every-lead permission
+    // (scopedLeads, below). Keep this at or below what the roles table holds.
   },
   iso: {
     label:'ISO', portal_scope:'own',
