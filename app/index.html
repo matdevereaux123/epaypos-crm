@@ -10689,23 +10689,44 @@ function filterMeetingAttendees(q){
   if(none) none.style.display = shown ? 'none' : 'block';
 }
 
-function companyPeople(){
+/* Somebody who has left keeps their rows and their name on the lead they
+   created in March - created_by and assigned_to point at them from years of
+   records, and deleting the row would turn all of that into "Unknown". They
+   stop being OFFERED instead (database/127). A row written before the column
+   existed carries no `active` at all, which counts as still here. */
+function userIsActive(u){ return !u || u.active !== false; }
+
+/* Everyone on file, people who have left included. For resolving a name on an
+   old record, and for working out a reporting line - a manager must still see
+   the leads of a rep who has since gone. */
+function companyPeopleAll(){
   if(USERS.length > 1 || !USER_DIRECTORY.length) return USERS;
   return USER_DIRECTORY;
 }
 
-function assignableUsers(){
+/* The people you can PICK: still here, plus anyone already chosen on the
+   record in front of you. The second half is not politeness - a picker built
+   from current staff alone drops a departed person's tick, and the save reads
+   the ticks back, so re-saving a meeting would quietly uninvite them. */
+function companyPeople(keepIds){
+  const keep = new Set((keepIds || []).filter(Boolean));
+  return companyPeopleAll().filter(u => userIsActive(u) || keep.has(u.id));
+}
+
+function assignableUsers(keepIds){
+  const keep = new Set((keepIds || []).filter(Boolean));
+  const live = u => userIsActive(u) || keep.has(u.id);
   const perms = roleOf(currentUser).perms;
   // staffTools, not fullDashboard: handing work to a colleague is something
   // staff do, and scoping what a rep can SEE must not stop them passing a
   // lead to the person who should have it.
-  if(hasStaffTools()) return USERS.slice();
+  if(hasStaffTools()) return USERS.filter(live);
 
   const ownPartner = currentUser.linked_partner_id;
   const downline = ownPartner ? partnerDownlineIds(ownPartner) : new Set();
-  return USERS.filter(u =>
+  return USERS.filter(u => live(u) && (
     u.id === currentUser.id ||
-    (u.linked_partner_id && downline.has(u.linked_partner_id)));
+    (u.linked_partner_id && downline.has(u.linked_partner_id))));
 }
 
 /* -------------------------------------------------------------------------
@@ -10765,7 +10786,7 @@ function downlineUserIds(user){
      manageUsers, so a manager without it drew an empty reporting line and
      109's grant looked broken in the browser while the database was serving
      the rows all along (database/119). */
-  const people = companyPeople();
+  const people = companyPeopleAll();
   while(frontier.length){
     const next = [];
     people.forEach(u => {
@@ -17757,6 +17778,21 @@ function posAgreementsHtml(m){
            <tbody>${live.map(row).join('')}${past.map(row).join('')}</tbody></table></div>`}`;
 }
 
+/* Settings -> Users is where you go to put this right, so a departed person
+   is shown here rather than hidden - greyed, labelled, and sorted to the
+   bottom. Hiding them from the one screen that can bring them back would be
+   the wrong kind of tidy. */
+function departedBadge(u){
+  return userIsActive(u) ? ''
+    : ' <span class="pill" style="background:var(--surface-3);color:var(--slate-500);">No longer here</span>';
+}
+function usersForSettingsList(){
+  return USERS.slice().sort((a, b) =>
+    (userIsActive(a) === userIsActive(b))
+      ? (a.name || '').localeCompare(b.name || '')
+      : (userIsActive(a) ? -1 : 1));
+}
+
 function renderUsersTable(){
   const toggleBtn = document.getElementById('usersViewToggleBtn');
   if(toggleBtn) toggleBtn.textContent = usersViewMode === 'flat' ? 'View as hierarchy' : 'View as list';
@@ -17767,7 +17803,9 @@ function renderUsersTable(){
 
   if(usersViewMode === 'hierarchy'){
     const byManager = {};
-    USERS.forEach(u => {
+    // The chart is the company as it stands. Someone who has left is still on
+    // the flat list above, which is where you go to change it.
+    USERS.filter(userIsActive).forEach(u => {
       const key = u.manager_id || '__root__';
       if(!byManager[key]) byManager[key] = [];
       byManager[key].push(u);
@@ -17794,9 +17832,9 @@ function renderUsersTable(){
     return;
   }
 
-  document.getElementById('usersTableBody').innerHTML = USERS.map(u => `
-    <tr onclick="openUserForm('${u.id}')">
-      <td class="name-cell">${u.name}${duplicateUserBadge(u)}${epayAdminBadge(u)}<div class="sub">${u.email}</div></td>
+  document.getElementById('usersTableBody').innerHTML = usersForSettingsList().map(u => `
+    <tr onclick="openUserForm('${u.id}')" style="${userIsActive(u) ? '' : 'opacity:.6;'}">
+      <td class="name-cell">${u.name}${duplicateUserBadge(u)}${epayAdminBadge(u)}${departedBadge(u)}<div class="sub">${u.email}</div></td>
       <td><span class="pill ${rolePillClass(u.role)}">${roleOf(u).label}</span></td>
       <td><span class="pill ${u.brands.length>1 ? 'pill-agent-auth' : (u.brands[0]==='atm' ? 'pill-referral' : 'pill-agent-basic')}">${brandAccessLabel(u.brands)}</span></td>
       <td>${loginStateHtml(u)}</td>
@@ -17846,6 +17884,22 @@ function openUserForm(userId){
         </select>
         <p style="font-size:10.5px;color:var(--slate-300);margin:5px 0 0;">Builds the reporting structure shown in the hierarchy view below.</p>
       </div>
+      ${editing ? `
+      <div class="field">
+        <label style="display:flex;gap:9px;align-items:flex-start;cursor:pointer;font-weight:400;">
+          <input type="checkbox" id="uInactive" ${userIsActive(editing) ? '' : 'checked'}
+                 style="width:16px;height:16px;margin-top:1px;flex:0 0 auto;">
+          <span style="flex:1;">
+            <span style="font-size:12.5px;font-weight:500;">No longer with the company</span>
+            <div style="font-size:10.5px;color:var(--slate-300);margin-top:2px;line-height:1.45;">
+              Takes them out of the staff directory, the assign-to lists and the meeting
+              invite search, so nobody is offered a name that has gone. Keeps every lead,
+              note and meeting they created, with their name still on it &mdash; which is why
+              this is not Delete. Tick it back off and they return.
+            </div>
+          </span>
+        </label>
+      </div>` : ''}
 
       ${roleOf(currentUser).perms.manageUsers ? extraPermsFieldHtml(editing) : ''}
       ${roleOf(currentUser).perms.manageUsers ? epayAdminFieldHtml(editing) : ''}
@@ -17882,6 +17936,11 @@ function readUserFormFields(){
   // because the tick that would have said so was never rendered.
   const epayBox = document.getElementById('uEpayAdmin');
   if(epayBox) fields.epay_admin = epayBox.checked;
+  // Only on the edit form, and absent on Add - a new person is here by
+  // definition, and writing the column when the box was never rendered would
+  // be writing a default over somebody's actual state.
+  const goneBox = document.getElementById('uInactive');
+  if(goneBox) fields.active = !goneBox.checked;
   return fields;
 }
 
@@ -19042,8 +19101,10 @@ function addHandoffButton(head){
   if(!root) return;
   // Only where there is a record to copy. A form drawer - send a lead form,
   // upload a list, edit a template - is all empty inputs, and a button that
-  // copies a blank shell is worse than no button at all.
-  if(root.querySelectorAll('.detail-row, .note-item').length < 2) return;
+  // copies a blank shell is worse than no button at all. One row is enough:
+  // some record drawers are mostly controls with a single label/value pair,
+  // and they are exactly the ones worth handing to a rep.
+  if(!root.querySelector('.detail-row, .note-item')) return;
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'btn btn-xs handoff-btn';
@@ -20720,7 +20781,9 @@ async function openLeadDetail(id){
   }).join('');
 
   const relevantPartners = PARTNERS.filter(p => partnerMatchesBrand(p, l.brand || 'epay')).slice().sort((a,b)=> a.name.localeCompare(b.name));
-  const assignable = assignableUsers();
+  // Whoever is on it already stays in the list even if they have left, so
+  // opening and saving the record cannot silently hand it to somebody else.
+  const assignable = assignableUsers([l.assigned_to].concat(l.assigned_to_ids || []));
   const internalUsers = assignable.filter(u => roleOf(u).portal_scope === 'internal').slice().sort((a,b)=> a.name.localeCompare(b.name));
   // Portal logins (agents, referral partners, resellers) are assignable too.
   // The RLS policy already grants access on assigned_to regardless of role —
@@ -23897,7 +23960,7 @@ function applicationFormFieldsHtml(a){
   // This form is staff-only (portal users cannot reach "New application" or
   // "Upload paper application" at all), so every assignable user is a fair
   // option here — no downline-only narrowing like the portal-facing dropdowns.
-  const assignable = assignableUsers().slice().sort((x, y) => x.name.localeCompare(y.name));
+  const assignable = assignableUsers([a.assigned_to]).slice().sort((x, y) => x.name.localeCompare(y.name));
   const internalAssignees = assignable.filter(u => roleOf(u).portal_scope === 'internal');
   const portalAssignees = assignable.filter(u => roleOf(u).portal_scope === 'own');
   return `
@@ -24263,7 +24326,7 @@ async function openApplicationDetail(id){
   }
   const linkedAccount = a.linked_account_id ? LEADS.find(l => l.id === a.linked_account_id) : null;
   const accounts = scopedLeads().filter(l => l.converted_to_account);
-  const assignable = assignableUsers().slice().sort((x, y) => x.name.localeCompare(y.name));
+  const assignable = assignableUsers([a.assigned_to]).slice().sort((x, y) => x.name.localeCompare(y.name));
   const internalAssignees = assignable.filter(u => roleOf(u).portal_scope === 'internal');
   const portalAssignees = assignable.filter(u => roleOf(u).portal_scope === 'own');
 
@@ -24846,7 +24909,7 @@ function openColdLeadDetail(id){
   resetRowEdits();
   const temp = temperatureInfo(c.temperature);
   const fu = coldLeadFollowupStatus(c);
-  const assignable = assignableUsers();
+  const assignable = assignableUsers([c.assigned_to].concat(c.assigned_to_ids || []));
   const internalAssignees = assignable.filter(u => roleOf(u).portal_scope === 'internal').slice().sort((a,b)=> a.name.localeCompare(b.name));
   const portalAssignees = assignable.filter(u => roleOf(u).portal_scope === 'own').slice().sort((a,b)=> a.name.localeCompare(b.name));
   const detailHtml = `
@@ -27555,7 +27618,7 @@ function multiAssignHtml(fieldId, selectedIds, o){
   o = o || {};
   selectedIds = selectedIds || [];
   const onChangeAttr = o.onChange ? ` onchange="${o.onChange}"` : '';
-  const assignable = assignableUsers().slice().sort((a, b) => a.name.localeCompare(b.name));
+  const assignable = assignableUsers(selectedIds).slice().sort((a, b) => a.name.localeCompare(b.name));
   const internal = assignable.filter(u => roleOf(u).portal_scope === 'internal');
   const portal   = assignable.filter(u => roleOf(u).portal_scope === 'own');
   const row = u => `
@@ -28940,7 +29003,7 @@ function meetingFormHtml(ev, prefillDate, prefillColdLead, prefillLead){
              oninput="filterMeetingAttendees(this.value)"
              style="margin-bottom:8px;">
       <div id="mtAttendees" style="display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;padding:8px 10px;">
-        ${companyPeople().filter(u => u.id !== currentUser.id).sort((a,b)=>(a.name||'').localeCompare(b.name||'')).map(u => `
+        ${companyPeople(ev.attendee_user_ids).filter(u => u.id !== currentUser.id).sort((a,b)=>(a.name||'').localeCompare(b.name||'')).map(u => `
           <label data-person="${escAttr(((u.name||'') + ' ' + (u.email||'') + ' ' + (u.job_title||'')).toLowerCase())}"
                  style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:400;cursor:pointer;">
             <input type="checkbox" value="${u.id}" ${(ev.attendee_user_ids||[]).includes(u.id) ? 'checked' : ''} style="width:auto;">
