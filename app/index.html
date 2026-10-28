@@ -11232,7 +11232,7 @@ function renderReferralTable(filterText){
       <td>${p.link_clicks ? `${p.link_clicks} clicks → ${p.leads_submitted} leads<div class="sub">${rate}% conversion</div>` : `${p.leads_submitted} leads<div class="sub">${p.deals_closed} closed</div>`}</td>
       <td>${p.last_deal_date ? formatDate(p.last_deal_date) : '—'}</td>
       <td>${followupCell}</td>
-      <td style="text-align:right;white-space:nowrap;">${currentBrand === 'atm' ? `<button class="btn btn-xs" onclick="event.stopPropagation(); createEpayLeadFromPartner('${p.id}');">Create as EPAY Lead</button>` : ''}${recordMenuBtn('partner', p.id, p.name)}</td>
+      <td style="text-align:right;white-space:nowrap;">${currentBrand === 'atm' ? `<button class="btn btn-xs" onclick="event.stopPropagation(); createEpayLeadFromPartner('${p.id}');">Create as EPAY Lead</button>` : ''}${partnerInviteBtnHtml(p)}${recordMenuBtn('partner', p.id, p.name)}</td>
     </tr>`;
   }).join('');
 }
@@ -13051,6 +13051,43 @@ function setResellersActivityFilter(key){
   renderResellersTable();
 }
 
+/* The invite button, on the partner lists rather than only inside a record.
+ *
+ * Internal Sales has had "Send invite / Resend invite" in its table since it
+ * was built. Agents, ISOs and resellers did not, so inviting one meant
+ * opening their record and finding the Onboarding section - the same job,
+ * three clicks further away.
+ *
+ * It is not the same button, though, and copying it exactly would have been
+ * wrong. A partner cannot be invited until the signed admit packet is on
+ * file: mark_partner_invited raises without one (database/16), so a plain
+ * Send invite here would be a button whose only outcome is an error message.
+ * What each state offers instead:
+ *
+ *   no email          nothing to send to - opens the record to add one
+ *   pending_packet    the packet is the next step, not the invite
+ *   packet_on_file    Send invite
+ *   invited and after Resend invite
+ *
+ * The gate stays in the database. This is the version of it people can see.
+ */
+function partnerInviteBtnHtml(p){
+  const hasEmail = p.email && p.email !== '\u2014';
+  const status = p.onboarding_status || 'active';
+
+  if(!hasEmail){
+    return `<button class="btn btn-xs" title="No email address on file - add one on their record"
+      onclick="event.stopPropagation(); openReferralDetail('${p.id}')">Add email</button>`;
+  }
+  if(status === 'pending_packet'){
+    return `<button class="btn btn-xs" title="The signed admit packet has to be on file before an invite can go out"
+      onclick="event.stopPropagation(); openReferralDetail('${p.id}')">Awaiting packet</button>`;
+  }
+  const again = status !== 'packet_on_file';
+  return `<button class="btn btn-xs" title="${again ? 'Send the portal invite again' : 'Send their portal invite'}"
+    onclick="event.stopPropagation(); sendPartnerInvite('${p.id}')">${again ? 'Resend invite' : 'Send invite'}</button>`;
+}
+
 function renderAgentsTable(filterText){
   const q = (filterText || (document.getElementById('agentsSearch') ? document.getElementById('agentsSearch').value : '') || '').toLowerCase();
   const baseUrl = referralLinkBase();
@@ -13089,7 +13126,7 @@ function renderAgentsTable(filterText){
       <td><span class="link-chip mono">${baseUrl}${p.link_slug}<button onclick="event.stopPropagation(); copyLink('${baseUrl}${p.link_slug}')">Copy</button></span></td>
       <td>${p.leads_submitted} leads<div class="sub">${p.deals_closed} closed</div></td>
       <td>${p.last_deal_date ? formatDate(p.last_deal_date) : '—'}</td>
-      <td style="text-align:right;">${recordMenuBtn('partner', p.id, p.name)}</td>
+      <td style="text-align:right;white-space:nowrap;">${partnerInviteBtnHtml(p)}${recordMenuBtn('partner', p.id, p.name)}</td>
     </tr>`;
   }).join('');
 }
@@ -13131,7 +13168,7 @@ function renderResellersTable(filterText){
       <td><span class="link-chip mono">${baseUrl}${p.link_slug}<button onclick="event.stopPropagation(); copyLink('${baseUrl}${p.link_slug}')">Copy</button></span></td>
       <td>${p.leads_submitted} leads<div class="sub">${p.deals_closed} closed</div></td>
       <td>${p.last_deal_date ? formatDate(p.last_deal_date) : '—'}</td>
-      <td style="text-align:right;">${recordMenuBtn('partner', p.id, p.name)}</td>
+      <td style="text-align:right;white-space:nowrap;">${partnerInviteBtnHtml(p)}${recordMenuBtn('partner', p.id, p.name)}</td>
     </tr>`;
   }).join('');
 }
