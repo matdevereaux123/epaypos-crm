@@ -30,7 +30,9 @@
 -- =============================================================================
 
 update users u
-   set extra_perms = nullif(u.extra_perms - 'staffTools', '{}'::jsonb)
+   -- Not nullif(..., '{}') - extra_perms is NOT NULL, and an empty object is
+   -- the right resting state for "no exceptions" anyway.
+   set extra_perms = u.extra_perms - 'staffTools'
   from roles r
  where r.key = u.role
    and u.extra_perms ? 'staffTools'
