@@ -4645,34 +4645,12 @@ async function v2FunctionHeaders(){
   } };
 }
 
-/* -------------------------------------------------------------------------
-   ONE SIGN-IN, TWO DATABASES
-
-   V2 has been told to trust tokens issued by this project (migration 012),
-   so the Control Center session is an EPAY staff session over there too.
-   `accessToken` is how supabase-js is told to use somebody else's token
-   instead of managing its own: it is asked on every request, so a token
-   refreshed here is the token used there, with nothing to keep in step.
-
-   The V2 sign-in underneath has not been deleted. Until the provider is
-   added in the V2 dashboard this returns a token V2 does not recognise, and
-   the fallback is the thing that keeps the back end working in the window
-   between deploying this and finishing that. It also covers the case the
-   trust is ever removed.
-   ------------------------------------------------------------------------- */
 const supaV2 = supabase.createClient(V2_URL, V2_ANON_KEY, {
   auth: {
     // Its own key, or signing into one project signs you out of the other.
     storageKey: 'epay.v2.auth',
     persistSession: true,
     autoRefreshToken: true,
-  },
-  accessToken: async () => {
-    /* A V2 session, where somebody signed in there by hand, wins: it is the
-       more specific answer and the one they chose. */
-    if(v2Session && v2Session.access_token) return v2Session.access_token;
-    const { data } = await supa.auth.getSession();
-    return (data && data.session && data.session.access_token) || null;
   },
 });
 
@@ -4681,37 +4659,8 @@ let v2Session = null;
 /* Whether this browser has a V2 session. Asked before any POS read, because
    without one every query comes back empty rather than failing - and an
    empty merchant list reads as "we have no merchants". */
-/* Whether V2 accepts this browser's Control Center token. Asked once and
-   remembered: it is a property of how the two projects are configured, not
-   of the moment. */
-let v2TrustsCrm = null;
-
 async function v2Ready(){
-  /* Somebody who signed into V2 by hand: the more specific answer, and the
-     one they chose. */
   if(v2Session) return true;
-
-  if(v2TrustsCrm === null){
-    const crm = await supa.auth.getSession();
-    if(crm.data && crm.data.session){
-      /*
-       * Asked, not assumed.
-       *
-       * Returning true because a Control Center session exists would be a
-       * guess about the V2 dashboard, and a wrong guess looks exactly like
-       * the thing this function was written to prevent: pages that load,
-       * query, and come back empty, so a back end with merchants on it
-       * reads as a back end with none. So V2 is asked the actual question
-       * every policy asks - am I staff - and the answer settles it.
-       */
-      const { data, error } = await supaV2.rpc('pos_is_staff');
-      v2TrustsCrm = !error && data === true;
-    } else {
-      v2TrustsCrm = false;
-    }
-  }
-  if(v2TrustsCrm) return true;
-
   const { data } = await supaV2.auth.getSession();
   v2Session = (data && data.session) || null;
   return !!v2Session;
@@ -4727,9 +4676,6 @@ async function v2SignIn(email, password){
 async function v2SignOut(){
   await supaV2.auth.signOut();
   v2Session = null;
-  /* Asked again next time. The answer depends on who is signed into the
-     Control Center, and that may be nobody a moment from now. */
-  v2TrustsCrm = null;
 }
 
 /* The panel shown in place of a POS page when nobody has signed into V2.
