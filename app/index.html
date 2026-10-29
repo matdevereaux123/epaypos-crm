@@ -4632,8 +4632,10 @@ const V2_FUNCTIONS_KEY = 'sb_publishable_0usUSJD488AsVOVG89cmAw_BxAJw2UV';
 /* Everything that reaches an edge function goes through here, so the key and
    the session are assembled in one place rather than at each call site. */
 async function v2FunctionHeaders(){
-  const { data: { session } } = await supaV2.auth.getSession();
-  if(!session) return { error: 'Sign in to the POS platform first.' };
+  /* The Control Center session, which V2 accepts as EPAY staff. supaV2 has
+     no session of its own to ask for - see the client below. */
+  const { data: { session } } = await supa.auth.getSession();
+  if(!session) return { error: 'Sign in to the Control Center first.' };
   if(!V2_FUNCTIONS_KEY){
     return { error: 'The POS platform functions key is not set yet. ' +
       'Project Settings > API Keys in the EPAY V2 project, the publishable one.' };
@@ -4646,36 +4648,50 @@ async function v2FunctionHeaders(){
 }
 
 const supaV2 = supabase.createClient(V2_URL, V2_ANON_KEY, {
-  auth: {
-    // Its own key, or signing into one project signs you out of the other.
-    storageKey: 'epay.v2.auth',
-    persistSession: true,
-    autoRefreshToken: true,
+  /*
+   * One session, this project's, handed over on every request.
+   *
+   * There is deliberately no `auth` block. A client given `accessToken`
+   * does not manage sessions at all, and every supaV2.auth.* call on it
+   * throws "Supabase Client is configured with the accessToken option".
+   * Leaving the old storageKey and persistSession beside it is what
+   * emptied every back end page once: v2Ready asked supaV2.auth
+   * .getSession(), that threw, and the throw landed mid-render.
+   *
+   * So there is no V2 sign-in to fall back to, and there does not need to
+   * be: V2 trusts tokens issued here (step 12), and pos_is_staff() matches
+   * the person by the address both projects know them by.
+   */
+  accessToken: async () => {
+    const { data } = await supa.auth.getSession();
+    return (data && data.session && data.session.access_token) || null;
   },
 });
 
-let v2Session = null;
+/* Whether V2 accepts this browser's Control Center token. Asked once and
+   kept: it is a property of how the two projects are configured, not of
+   the moment. */
+let v2TrustsCrm = null;
 
-/* Whether this browser has a V2 session. Asked before any POS read, because
-   without one every query comes back empty rather than failing - and an
-   empty merchant list reads as "we have no merchants". */
 async function v2Ready(){
-  if(v2Session) return true;
-  const { data } = await supaV2.auth.getSession();
-  v2Session = (data && data.session) || null;
-  return !!v2Session;
-}
-
-async function v2SignIn(email, password){
-  const { data, error } = await supaV2.auth.signInWithPassword({ email, password });
-  if(error) return { error };
-  v2Session = data.session;
-  return { data };
-}
-
-async function v2SignOut(){
-  await supaV2.auth.signOut();
-  v2Session = null;
+  if(v2TrustsCrm !== null) return v2TrustsCrm;
+  const crm = await supa.auth.getSession();
+  if(!(crm.data && crm.data.session)){ v2TrustsCrm = false; return false; }
+  /*
+   * Asked, not assumed. Taking a Control Center session as proof would be
+   * a guess about a setting in another project's dashboard, and a wrong
+   * guess looks exactly like what this function exists to prevent: pages
+   * that load, query, and come back empty, so a back end with merchants on
+   * it reads as a back end with none. So V2 is asked the question every
+   * policy over there reduces to.
+   */
+  try {
+    const { data, error } = await supaV2.rpc('pos_is_staff');
+    v2TrustsCrm = !error && data === true;
+  } catch(e) {
+    v2TrustsCrm = false;
+  }
+  return v2TrustsCrm;
 }
 
 /* The panel shown in place of a POS page when nobody has signed into V2.
@@ -4728,56 +4744,11 @@ function showV2Notice(view){
     <div style="flex:1 1 auto;min-width:0;">
       <strong style="font-size:13px;">${what} are not loaded.</strong>
       <div style="font-size:12px;color:var(--slate-500);margin-top:2px;">
-        They live in the POS platform's own database, which keeps a separate sign-in so that a
-        merchant signing in there can never reach anything in the Control Center. Everything else
-        on this page is current.</div>
-    </div>
-    <button class="btn btn-sm btn-accent" style="flex:0 0 auto;" onclick="openV2SignIn('${view}')">Sign in to the POS platform</button>`;
-  box.insertBefore(strip, box.firstChild);
-}
-
-/* The sign-in, on request rather than in the way. */
-function openV2SignIn(view){
-  const box = posViewBox(view);
-  if(box) box.innerHTML = v2GatePanel();
-}
-
-function v2GatePanel(){
-  return `
-    <div class="stub-panel" style="max-width:520px;margin:0 auto;text-align:left;">
-      <h3 style="text-align:center;">Sign in to the POS platform</h3>
-      <p style="font-size:13px;line-height:1.6;">
-        The merchant portal and the registers live in their own database, separate from the
-        Control Center, so that merchants signing in there can never reach anything in here.
-        That means a second sign-in. Supabase keeps it, so this is once on this computer.</p>
-      <div class="field"><label>Email</label>
-        <input id="v2Email" type="email" value="${escAttr((currentUser && currentUser.email) || '')}"
-               autocomplete="username"></div>
-      <div class="field"><label>Password</label>
-        <input id="v2Password" type="password" autocomplete="current-password"
-               onkeydown="if(event.key==='Enter')doV2SignIn()"></div>
-      <p id="v2Problem" class="error-text" style="display:none;"></p>
-      <button class="btn btn-accent" style="width:100%;" onclick="doV2SignIn()">Sign in</button>
-      <p style="font-size:11.5px;color:var(--slate-500);margin:12px 0 0;">
-        Not the same account as the Control Center unless you made it so. If you have no login
-        there yet, an admin adds you under Authentication in the EPAY V2 project.</p>
+        They live in the POS platform's own database, which should accept your Control Center
+        sign-in. If this keeps saying so, your EPAY POS staff record may be missing or under a
+        different email &mdash; that is migration 011. Everything else on this page is current.</div>
     </div>`;
-}
-
-async function doV2SignIn(){
-  const email = (document.getElementById('v2Email').value || '').trim();
-  const password = document.getElementById('v2Password').value || '';
-  const say = (t) => { const el = document.getElementById('v2Problem');
-    el.textContent = t; el.style.display = t ? 'block' : 'none'; };
-  if(!email || !password){ say('Both, please.'); return; }
-  say('');
-  const { error } = await v2SignIn(email, password);
-  if(error){ say(error.message); return; }
-  showToast('Signed in to the POS platform.', 'success');
-  // Nothing was loadable before this, so everything is stale by definition.
-  posMerchantsLoaded = false;
-  posBillingLoaded = false;
-  refreshActiveView();
+  box.insertBefore(strip, box.firstChild);
 }
 
 /* =========================================================================
@@ -14886,13 +14857,11 @@ function closePosMerchantDrawer(){
 function v2WriteProblem(message){
   const raw = String(message || '');
   if(!/row-level security|violates row-level/i.test(raw)) return raw;
-  return v2Session
-    ? 'Your EPAY POS sign-in is not marked as EPAY staff, so it cannot create records '
-      + 'in the POS platform. Someone with database access needs to run migration 011 '
-      + '(database/v2/011_epay_staff.sql) to add you.'
-    : 'You are not signed into the POS platform in this browser, so this write was '
-      + 'refused. Sign in there and try again \u2014 the button is on the billing or '
-      + 'subscription pages.';
+  /* There is one sign-in now, and whoever is reading this has it. So the
+     remaining cause is the staff record, not the session. */
+  return 'Your Control Center login is not marked as EPAY staff in the POS platform, so it '
+    + 'cannot create records there. Someone with database access needs to run migration 011 '
+    + '(database/v2/011_epay_staff.sql) to add you \u2014 matched on the email you sign in with.';
 }
 
 function posProblem(text){
