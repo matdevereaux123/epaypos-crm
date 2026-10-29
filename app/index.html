@@ -4629,6 +4629,10 @@ const V2_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS
  */
 const V2_FUNCTIONS_KEY = 'sb_publishable_0usUSJD488AsVOVG89cmAw_BxAJw2UV';
 
+/* Where a reset or welcome link lands. The merchant portal, which carries
+   the screen that catches the token and takes a new password. */
+const EPAY_PORTAL_URL = 'https://epayportal.epaypos.net/';
+
 /* Everything that reaches an edge function goes through here, so the key and
    the session are assembled in one place rather than at each call site. */
 async function v2FunctionHeaders(){
@@ -15919,7 +15923,12 @@ function posDetailPortalUsers(m){
               : 'Signed up ' + new Date(u.created_at).toLocaleDateString()}
             ${u.accepted_at ? '<div class="sub">Signed in</div>'
                             : '<div class="sub" style="color:var(--warn-text);">Not signed in yet</div>'}</td>
-          <td style="text-align:right;">${u.active
+          <td style="text-align:right;white-space:nowrap;">
+            ${u.email ? `<button class="btn btn-xs"
+                 onclick="sendPosPortalReset('${escAttr(u.email)}', '${escAttr(u.name || '')}')"
+                 >Send reset</button> <button class="btn btn-xs"
+                 onclick="setPosPortalPassword('${u.id}', '${m.id}', '${escAttr(u.email)}', '${escAttr(u.name || '')}')"
+                 >Set password</button> ` : ''}${u.active
             ? `<button class="btn btn-xs" style="color:var(--red);"
                  onclick="setPosPortalUserActive('${u.id}', false)">Suspend</button>`
             : `<button class="btn btn-xs"
@@ -16096,6 +16105,105 @@ async function invitePosPortalUser(merchantId, given){
 
   await loadPosPortalUsers(merchantId);
   renderPosDetail();
+}
+
+/*
+ * Send a portal user a reset link.
+ *
+ * No service role and no edge function: /auth/v1/recover takes the anon key
+ * and an address, which is the same call the portal's own "forgot your
+ * password" makes. Doing it from here is only a convenience - a rep on the
+ * phone with somebody who cannot find the first email.
+ *
+ * What lands in their inbox is EPAY's template, because Supabase sends it
+ * from the V2 project's own Reset Password template (emails/v2). Nothing
+ * about the password passes through here, which is the point: the link is
+ * one-time and expires, and whatever they choose is theirs.
+ */
+async function sendPosPortalReset(email, name){
+  const who = name ? (name + ' (' + email + ')') : email;
+  if(!confirm('Email ' + who + ' a link to set a new password?\n\n'
+    + 'The link works once and expires. Nobody at EPAY sees the password they choose.')) return;
+
+  try {
+    const res = await fetch(V2_URL + '/auth/v1/recover', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: V2_ANON_KEY },
+      body: JSON.stringify({ email: email.trim().toLowerCase(), redirect_to: EPAY_PORTAL_URL }),
+    });
+    /*
+     * A 429 is the one worth naming. Supabase rate-limits recovery mail per
+     * address, and a rep who presses this twice should be told to wait
+     * rather than left thinking it failed and pressing it again.
+     */
+    if(res.status === 429){
+      showToast('Too soon since the last one. Supabase limits reset emails \u2014 give it a few minutes.', 'error');
+      return;
+    }
+    if(!res.ok){
+      const body = await res.text();
+      showToast('Could not send that: ' + body.slice(0, 120), 'error');
+      return;
+    }
+    showToast('Reset link sent to ' + email + '.', 'success');
+  } catch(e) {
+    showToast('Could not reach the POS platform: ' + (e.message || ''), 'error');
+  }
+}
+
+/*
+ * Set a password for somebody and show it once.
+ *
+ * The fallback to the welcome email, for when a link cannot reach them —
+ * wrong address, full mailbox, standing at the counter. Everything about
+ * the password happens in the edge function: generated there, set there,
+ * returned once, stored nowhere. This only puts it on screen.
+ *
+ * Shown in a prompt-style panel rather than a toast, because a toast
+ * disappears while somebody is still reading a password down a phone.
+ */
+async function setPosPortalPassword(portalUserId, merchantId, email, name){
+  const who = name ? (name + ' (' + email + ')') : email;
+  if(!confirm('Set a new password for ' + who + '?\n\n'
+    + 'Their current one stops working immediately. The new one is shown here once and is '
+    + 'not saved anywhere \u2014 if you lose it before they use it, set another.')) return;
+
+  const built = await v2FunctionHeaders();
+  if(built.error){ showToast(built.error, 'error'); return; }
+
+  let out;
+  try {
+    const res = await fetch(V2_URL + '/functions/v1/portal-password', {
+      method: 'POST',
+      headers: built.headers,
+      body: JSON.stringify({ portalUserId, merchantId }),
+    });
+    out = await res.json().catch(() => ({ error: 'The server said nothing useful.' }));
+    if(!res.ok || out.error){
+      /* 404 on the function itself, rather than on the user, means it has
+         not been deployed. Said plainly: the rest of this screen works. */
+      showToast(res.status === 404
+        ? 'The portal-password function is not deployed in EPAY V2 yet.'
+        : (out.error || ('Failed: ' + res.status)), 'error');
+      return;
+    }
+  } catch(e) {
+    showToast('Could not reach the POS platform: ' + (e.message || ''), 'error');
+    return;
+  }
+
+  const box = document.getElementById('piResult');
+  const panel = `<div class="stat-card attention" style="margin:10px 0;">
+      <div class="label">New password for ${escAttr(out.email || email)}</div>
+      <div class="value" style="font-family:ui-monospace,monospace;font-size:20px;word-break:break-all;">
+        ${escAttr(out.password)}</div>
+      <div class="delta" style="color:var(--slate-500);">
+        Read it to them now. It is not saved anywhere and will not be shown again.
+        They can change it from the portal.</div>
+    </div>`;
+  if(box) box.innerHTML = panel;
+  else alert('New password for ' + (out.email || email) + ':\n\n' + out.password
+    + '\n\nRead it to them now. It is not saved anywhere.');
 }
 
 async function setPosPortalUserActive(id, active){
