@@ -15975,9 +15975,9 @@ function posDetailPortalUsers(m){
 
     <h3 style="font-size:13.5px;margin:0 0 4px;">Invite somebody else</h3>
     <p style="font-size:11px;color:var(--slate-500);margin:0 0 10px;">
-      They get a temporary password to change on first sign-in. It is shown to you here rather
-      than emailed &mdash; EPAY should not know a merchant's password, and one sent by email
-      sits in an inbox for years.</p>
+      They get a welcome email with a one-time link to choose their own password, in EPAY's own
+      template. Nobody here ever sees it &mdash; a password EPAY knows is a password EPAY is
+      answerable for, and one sent by email sits in an inbox for years.</p>
     <div class="field setup-field"><label>Their email</label>
       <input id="piEmail" type="email" value="${escAttr(m.owner_email || '')}"
              placeholder="owner@thebusiness.com"></div>
