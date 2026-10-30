@@ -16625,6 +16625,16 @@ async function visitMerchantPortal(merchantId){
     merchant_id: merchantId, token, expires_at: expires,
     issued_to: (currentUser && currentUser.id) || null,
     issued_name: (currentUser && currentUser.name) || 'Unknown',
+    /*
+     * The address, as well as the id.
+     *
+     * issued_to is this project's id for the person, and V2 cannot look
+     * anything up by it - the two projects know the same people by
+     * different ids with no mapping between them, which is the whole
+     * reason step 13 exists. Redeeming has to find their staff record to
+     * sign them in as themselves, and the email is what it matches on.
+     */
+    issued_email: (currentUser && currentUser.email) || null,
   });
   if(error){ showToast('Could not open their portal: ' + error.message, 'error'); return; }
 
