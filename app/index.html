@@ -6346,12 +6346,12 @@ function renderBrandSwitch(){
   picker.setAttribute('aria-label', 'Which part of the business');
   picker.innerHTML = positions.map(b =>
     `<option value="${b}" ${b === currentBrand ? 'selected' : ''}>${brandSwitchLabel(b)}</option>`).join('');
-  picker.addEventListener('change', () => setBrand(picker.value));
+  picker.addEventListener('change', () => setBrand(picker.value, true));
   switchEl.appendChild(picker);
 
   switchEl.querySelectorAll('button').forEach(btn=>{
     btn.classList.toggle('active', btn.dataset.brand === currentBrand);
-    btn.addEventListener('click', ()=> setBrand(btn.dataset.brand));
+    btn.addEventListener('click', ()=> setBrand(btn.dataset.brand, true));
   });
   /* Written in the sidebar, shown in the top bar. Moving the element rather
      than rebuilding it up there keeps its id, so every caller of
@@ -6374,8 +6374,23 @@ function recordBrand(){
   return currentBrand === 'backend' ? 'epay' : currentBrand;
 }
 
-function setBrand(brand){
+/** Where each toggle lands. The first page of that side of the business. */
+const BRAND_HOME = { epay: 'dashboard', atm: 'dashboard', backend: 'backend' };
+
+/*
+ * `fromToggle` is true only when somebody pressed the thing.
+ *
+ * Because this also runs at sign-in, to paint the brand the user belongs
+ * to, and navigating there would throw away whatever view they arrived on
+ * — a link to a lead, a page they were on when the tab reloaded. The
+ * toggle moving is a decision; the brand being set up is not.
+ */
+function setBrand(brand, fromToggle){
   const leavingBackend = currentBrand === 'backend' && brand !== 'backend';
+  /* Only a real change goes home. Pressing the side you are already on
+     should not throw away the page you are reading. */
+  const changed = currentBrand !== brand;
+  const goHome = fromToggle === true && changed;
   currentBrand = brand;
   if(leavingBackend){
     // Undo the blanket hide, then let the usual per-role and per-brand
@@ -6412,7 +6427,12 @@ function setBrand(brand){
       if(inBackend) el.style.display = 'none';
     });
   if(inBackend){
-    if(!document.getElementById('view-backend').style.display || document.getElementById('view-backend').style.display === 'none') showView('backend');
+    /* Pressed: straight to the overview. Otherwise only if nothing in this
+       area is on screen, which is the old behaviour and still right for a
+       brand being set up rather than chosen. */
+    const backendHidden = !document.getElementById('view-backend').style.display
+      || document.getElementById('view-backend').style.display === 'none';
+    if(goHome || backendHidden) showView(BRAND_HOME.backend);
     return;
   }
 
@@ -6472,6 +6492,22 @@ function setBrand(brand){
   if(document.getElementById('view-newsletter').style.display !== 'none') renderNewsletterView();
   const epayOnlyViews = ['view-applications','view-aiscraper','view-coldemail','view-reportsubs','view-calendar','view-authresellers','view-lendingleads'];
   const onEpayOnlyView = epayOnlyViews.some(id => document.getElementById(id).style.display !== 'none');
+  /*
+   * Pressed the toggle: go to that side's first page.
+   *
+   * Before this, switching to EPAY POS or Envision ATM left you on
+   * whatever you had open — so moving between the two sides of the
+   * business landed you mid-pipeline on records belonging to the side you
+   * just left, which reads as the toggle not having worked.
+   *
+   * Ahead of the fallbacks below, because they exist to re-render whatever
+   * was on screen, and nothing that was on screen is staying.
+   */
+  if(goHome){
+    showView(BRAND_HOME[brand] || 'dashboard');
+    return;
+  }
+
   if(brand !== 'epay' && onEpayOnlyView){
     showView('referrals');
   } else if(document.getElementById('view-coldleads').style.display !== 'none'){
