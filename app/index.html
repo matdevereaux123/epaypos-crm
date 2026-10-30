@@ -15110,7 +15110,8 @@ function posDetailPlan(m){
     ${locs.length === 0 ? `<div class="stub-panel"><h3>No locations</h3>
         <p style="font-size:13px;">Nothing can be set up until there is one.</p></div>`
       : locs.map(l => posLocationCard(l, m)).join('')}
-    ${posAgreementsHtml(m)}`;
+    ${posAgreementsHtml(m)}
+    ${posDeleteZoneHtml(m)}`;
 }
 
 /* ---------------------------------------------------------------------------
@@ -16675,16 +16676,14 @@ function posSupportActionsHtml(m){
     return `
       ${posPauseHtml(m)}
       <div class="row" style="gap:10px;margin-bottom:6px;flex-wrap:wrap;">${portalBtn}</div>
-      ${note}
-      ${posDeleteZoneHtml(m)}`;
+      ${note}`;
   }
   return `
     <div class="row" style="gap:10px;margin-bottom:6px;flex-wrap:wrap;">
       ${posPauseHtml(m)}
       ${portalBtn}
     </div>
-    ${note}
-    ${posDeleteZoneHtml(m)}`;
+    ${note}`;
 }
 
 /* ---------------------------------------------------------------------------
@@ -16703,20 +16702,22 @@ function posSupportActionsHtml(m){
    --------------------------------------------------------------------------- */
 
 function posDeleteZoneHtml(m){
-  const locs = (m.pos_locations || []).length;
-  const devices = (m.pos_locations || []).reduce((n,l) => n + ((l.pos_devices || []).length), 0);
+  /*
+   * Deliberately quiet, and last.
+   *
+   * A red panel the size of a card put the rarest thing on the page among
+   * the things somebody does every day. The guard is not the styling - it
+   * is the name that has to be typed - so this can be a line of text and a
+   * small button, which is what a thing used twice a year should look like.
+   */
   return `
-    <div style="margin-top:26px;padding:14px 16px;border:1px solid var(--err-border);
-                background:var(--err-bg);border-radius:10px;">
-      <strong style="font-size:13px;color:var(--err-text);">Delete this account</strong>
-      <p style="font-size:12px;color:var(--slate-500);margin:6px 0 10px;line-height:1.55;">
-        For a test, a duplicate, or a row made by mistake. To end a real relationship,
-        pause or close it instead &mdash; that keeps what was agreed.<br><br>
-        This removes ${locs} location${locs === 1 ? '' : 's'},
-        ${devices} device${devices === 1 ? '' : 's'}, every portal login, every accepted
-        add-on agreement, and the whole history of the account. It cannot be undone.</p>
-      <button class="btn btn-sm" style="border-color:var(--err-border);color:var(--err-text);"
-        onclick="deletePosMerchant('${m.id}')">Delete ${escAttr(m.dba)}</button>
+    <div style="margin-top:24px;padding-top:14px;border-top:1px solid var(--line);
+                display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <span style="flex:1 1 240px;min-width:0;font-size:11.5px;color:var(--slate-500);line-height:1.5;">
+        Delete removes this account and everything on it &mdash; locations, logins,
+        agreements, history. To end a real relationship, pause or close it instead.</span>
+      <button class="btn btn-xs" style="flex:0 0 auto;color:var(--red);border-color:var(--err-border);"
+        onclick="deletePosMerchant('${m.id}')">Delete account</button>
     </div>`;
 }
 
