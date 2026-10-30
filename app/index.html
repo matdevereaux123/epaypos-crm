@@ -27569,6 +27569,22 @@ function formatDateTime(ts){
 const NOTE_AUTOSAVE_MS = 1100;
 let noteDraft = { key: null, id: null, timer: null, saving: false, pending: false };
 
+// PGRST116: the statement came back with no row. On an update that means the
+// row is gone or not editable; on an insert, that the policy refused it.
+function noteRowGone(e){
+  return !!e && (e.code === 'PGRST116' || /coerce the result/i.test(e.message || ''));
+}
+
+/* Supabase's own wording turns up in a box a salesperson is typing into, and
+   "Cannot coerce the result to a single JSON object" tells them nothing about
+   what to do. These two are the ones that actually happen. */
+function noteErrorText(e){
+  if(noteRowGone(e)) return 'the database would not take it. Copy your text before leaving this page.';
+  if(e && (e.code === '42501' || /row-level security/i.test(e.message || '')))
+    return 'you do not have permission to add a note to this record.';
+  return (e && e.message) || 'unknown error';
+}
+
 function noteAutosaveStatus(statusId, text, tone){
   const el = document.getElementById(statusId);
   if(!el) return;
@@ -27604,11 +27620,25 @@ async function runNoteAutosave(cfg, close){
   if(noteDraft.saving){ noteDraft.pending = true; return; }
   noteDraft.saving = true;
 
-  const res = noteDraft.id ? await cfg.update(noteDraft.id, text) : await cfg.insert(text);
+  let res = noteDraft.id ? await cfg.update(noteDraft.id, text) : await cfg.insert(text);
+
+  /* The draft row could not be written back: past the hour that
+     database/129 allows, or somebody deleted it while this box was open.
+     PostgREST reports that as PGRST116 - the statement returned no row and
+     .single() wanted one - and the old code called it "Not saved", which was
+     both unreadable and untrue: the first pause had already inserted the
+     opening fragment, so the start of the note was kept and the rest thrown
+     away. Start a fresh entry with what is in the box instead. Whatever was
+     typed lands somewhere, which is the only acceptable outcome for a notes
+     field. */
+  if(res.error && noteDraft.id && noteRowGone(res.error)){
+    noteDraft.id = null;
+    res = await cfg.insert(text);
+  }
   noteDraft.saving = false;
 
   if(res.error){
-    noteAutosaveStatus(cfg.statusId, 'Not saved — ' + res.error.message, 'bad');
+    noteAutosaveStatus(cfg.statusId, 'Not saved — ' + noteErrorText(res.error), 'bad');
     return;
   }
   noteDraft.id = res.data.id;
