@@ -5076,14 +5076,20 @@ function startRowEdit(uid){
   if(!cfg || !cell) return;
 
   const val = cfg.value == null ? '' : String(cfg.value);
+  /* A detail row labels itself with a span, not a <label>, so anything
+     looking at this control from the outside cannot tell what it is for.
+     The row already knows - it is in cfg.label - so say so on the element.
+     That is what lets the address picker offer a list when you click the
+     pencil on "Business address", the same as in a form. */
+  const labelAttr = ` data-field-label="${escAttr(cfg.label || '')}"`;
   let control;
   if(cfg.type === 'select'){
-    control = `<select id="${uid}_i">${(cfg.options || []).map(o =>
+    control = `<select id="${uid}_i"${labelAttr}>${(cfg.options || []).map(o =>
       `<option value="${escAttr(o.value)}" ${String(o.value) === val ? 'selected' : ''}>${o.label}</option>`).join('')}</select>`;
   } else if(cfg.type === 'textarea'){
-    control = `<textarea id="${uid}_i">${escAttr(val)}</textarea>`;
+    control = `<textarea id="${uid}_i"${labelAttr}>${escAttr(val)}</textarea>`;
   } else {
-    control = `<input id="${uid}_i" type="${cfg.type || 'text'}" value="${escAttr(val)}">`;
+    control = `<input id="${uid}_i" type="${cfg.type || 'text'}"${labelAttr} value="${escAttr(val)}">`;
   }
 
   cell.innerHTML = `<span class="row-editing">
@@ -19513,8 +19519,11 @@ function isAddressField(el){
   if(el.dataset && el.dataset.addressPicker === 'off') return false;
   const id = (el.id || '');
   if(/email|mail/i.test(id)) return false;
-  const labelEl = el.closest('.field, .landing-field, .detail-row');
-  const labelText = labelEl ? (labelEl.querySelector('label') || {}).textContent || '' : '';
+  const wrap = el.closest('.field, .landing-field, .detail-row');
+  const labelText =
+       (el.dataset && el.dataset.fieldLabel)                                  // row edit
+    || (wrap ? ((wrap.querySelector('label') || {}).textContent || '') : '')  // a form field
+    || (wrap ? ((wrap.querySelector('.k') || {}).textContent || '') : '');    // a detail row
   if(/email/i.test(labelText)) return false;
   const hay = id + ' ' + labelText + ' ' + (el.placeholder || '');
   if(/ip address|email address/i.test(hay)) return false;
