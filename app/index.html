@@ -1384,6 +1384,29 @@
   .drawer-close{border:none;background:none;font-size:20px;color:var(--slate-500);line-height:1;}
   /* Sits between the drawer title and the close cross, hugging the cross. */
   .handoff-btn{margin-left:auto;margin-right:12px;flex:0 0 auto;white-space:nowrap;}
+
+  /* Address picker. Fixed, on the body, because these boxes sit inside
+     drawers that scroll and clip. */
+  /* --card and --navy-500, the pair the profile dropdown uses. The first
+     draft mixed a light surface with a token that goes white in dark mode,
+     which is white text on a white box - invisible, and only visible as a
+     bug in a screenshot. Use a background and a foreground that are defined
+     against each other in BOTH themes. */
+  .addr-list{
+    position:fixed;z-index:9999;background:var(--card);
+    border:1px solid var(--line);border-radius:9px;
+    box-shadow:0 14px 32px -10px rgba(20,40,80,0.24);
+    max-height:260px;overflow-y:auto;padding:4px;
+  }
+  .addr-item{
+    display:block;width:100%;text-align:left;border:none;background:none;
+    padding:8px 10px;border-radius:6px;cursor:pointer;
+  }
+  .addr-item:hover, .addr-item.on{background:var(--hover,#f1f6fa);}
+  .addr-line1{display:block;font-size:13px;font-weight:500;color:var(--navy-500);}
+  .addr-rest{display:block;font-size:11.5px;color:var(--slate-500);margin-top:1px;}
+  .addr-msg{padding:9px 11px;font-size:12.5px;color:var(--slate-500);}
+  .addr-credit{padding:6px 10px 4px;font-size:10px;color:var(--slate-300);border-top:1px solid var(--line);margin-top:4px;}
   .drawer-body{padding:20px 24px;}
   .drawer-body .field{margin-bottom:14px;}
   .drawer-body label{display:block;font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--slate-500);margin-bottom:5px;}
@@ -19396,6 +19419,241 @@ function addHandoffButton(head){
 // them and missing the next one somebody writes, so watch for them arriving
 // instead. Inserting the button does not re-trigger this - a button is not a
 // drawer-head and contains none.
+/* =========================================================================
+   ADDRESS PICKER
+
+   Type three or more characters into any address field and pick the real
+   address from a list, which fills the line and, where the form has them,
+   the city, state and ZIP boxes beside it.
+
+   ONE LISTENER, NOT ONE CALL PER FORM. Address boxes are rendered from a
+   dozen places - the lead and account drawers, the application, cold leads,
+   the loader form, the public lead form, the EPAY back end, and the inline
+   pencil edit on a detail row, which builds its input the moment you click
+   it. Wiring each one by hand means finding them all and then missing
+   whichever gets added next, so this listens on the document instead and
+   decides from the field itself. A field opted in by having "address" in
+   its id or its label - and NOT by being an email box, which is the one
+   place the word shows up meaning something else entirely.
+
+   THE PROVIDER. Photon, which is OpenStreetMap data: no API key, no
+   billing, and it works from the browser today. Good enough to stop
+   anybody typing out a city and ZIP by hand, but it is OSM - a brand new
+   build or a rural route can be missing, and it is looser on US street
+   addresses than Google. Everything below goes through addressSearch(), so
+   putting a Google Places key behind that one function is the whole
+   upgrade - the fields, the dropdown and the filling do not change. Worth
+   doing when there is a key; the Local Business Grader needs the same one.
+   ========================================================================= */
+
+const ADDR_MIN_CHARS = 3;
+const ADDR_DEBOUNCE_MS = 320;
+let addrTimer = null, addrAbort = null, addrBox = null, addrFor = null, addrItems = [], addrCursor = -1;
+
+// Photon gives the state's full name; a form wants MI. Anything not in here
+// falls through as typed, which is better than blanking the field.
+const US_STATE_ABBR = {
+  'alabama':'AL','alaska':'AK','arizona':'AZ','arkansas':'AR','california':'CA',
+  'colorado':'CO','connecticut':'CT','delaware':'DE','district of columbia':'DC',
+  'florida':'FL','georgia':'GA','hawaii':'HI','idaho':'ID','illinois':'IL',
+  'indiana':'IN','iowa':'IA','kansas':'KS','kentucky':'KY','louisiana':'LA',
+  'maine':'ME','maryland':'MD','massachusetts':'MA','michigan':'MI','minnesota':'MN',
+  'mississippi':'MS','missouri':'MO','montana':'MT','nebraska':'NE','nevada':'NV',
+  'new hampshire':'NH','new jersey':'NJ','new mexico':'NM','new york':'NY',
+  'north carolina':'NC','north dakota':'ND','ohio':'OH','oklahoma':'OK','oregon':'OR',
+  'pennsylvania':'PA','puerto rico':'PR','rhode island':'RI','south carolina':'SC',
+  'south dakota':'SD','tennessee':'TN','texas':'TX','utah':'UT','vermont':'VT',
+  'virginia':'VA','washington':'WA','west virginia':'WV','wisconsin':'WI','wyoming':'WY'
+};
+function stateAbbr(name){
+  if(!name) return '';
+  const k = String(name).trim().toLowerCase();
+  if(US_STATE_ABBR[k]) return US_STATE_ABBR[k];
+  return name.length === 2 ? name.toUpperCase() : name;
+}
+
+/* The one place a different provider would be swapped in. Returns a plain
+   shape the rest of this code understands, so nothing else knows or cares
+   where the addresses came from. */
+async function addressSearch(query, signal){
+  const url = 'https://photon.komoot.io/api/?limit=6&lang=en&q=' + encodeURIComponent(query);
+  const res = await fetch(url, { signal });
+  if(!res.ok) throw new Error('Address lookup failed (' + res.status + ')');
+  const json = await res.json();
+  return (json.features || [])
+    .map(f => f.properties || {})
+    // US only. The CRM has never had a customer anywhere else, and a list
+    // with three Washingtons in different countries is worse than none.
+    .filter(pr => !pr.countrycode || pr.countrycode === 'US')
+    .map(pr => {
+      const line1 = [pr.housenumber, pr.street || (pr.type === 'street' ? pr.name : '')]
+        .filter(Boolean).join(' ').trim() || pr.name || '';
+      const city = pr.city || pr.town || pr.village || pr.locality || pr.county || '';
+      const state = stateAbbr(pr.state);
+      const zip = pr.postcode || '';
+      return {
+        line1, city, state, zip,
+        // What goes into a one-line field: the whole thing, which is what
+        // those boxes already hold ("Street, city, state, ZIP").
+        formatted: [line1, city, [state, zip].filter(Boolean).join(' ')]
+          .filter(Boolean).join(', '),
+        // Shown in the list. The name is there when it is a business or a
+        // landmark rather than a plain street address.
+        label: (pr.name && pr.name !== line1) ? pr.name : '',
+      };
+    })
+    .filter(a => a.formatted);
+}
+
+/* Is this box one somebody types an address into? Email is the trap - "Email
+   address" matches on the word and must never get a street list. */
+function isAddressField(el){
+  if(!el || (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA')) return false;
+  if(el.type === 'email' || el.type === 'password' || el.type === 'checkbox') return false;
+  if(el.dataset && el.dataset.addressPicker === 'off') return false;
+  const id = (el.id || '');
+  if(/email|mail/i.test(id)) return false;
+  const labelEl = el.closest('.field, .landing-field, .detail-row');
+  const labelText = labelEl ? (labelEl.querySelector('label') || {}).textContent || '' : '';
+  if(/email/i.test(labelText)) return false;
+  const hay = id + ' ' + labelText + ' ' + (el.placeholder || '');
+  if(/ip address|email address/i.test(hay)) return false;
+  // "Street" as well as "Address": the EPAY back end's merchant form labels
+  // its line Street, with City, State and ZIP beside it, and that is exactly
+  // the shape this helps most.
+  return /address|street/i.test(hay);
+}
+
+/* City, state and ZIP boxes belonging to the same form, found by the id
+   convention this file already uses - ldAddress sits beside ldCity, ldState
+   and ldZip. A form without them (most of them hold the whole address on one
+   line) simply gets nothing filled, which is correct rather than a failure. */
+function addressTargetsFor(input){
+  const stem = (input.id || '').replace(/(Addr(ess)?|Street)$/i, '');
+  if(!stem) return {};
+  const shorter = stem.replace(/[A-Z][a-z]+$/, '');
+  const find = suffix => document.getElementById(stem + suffix)
+                      || (shorter && shorter !== stem ? document.getElementById(shorter + suffix) : null);
+  return { city: find('City'), state: find('State'), zip: find('Zip') };
+}
+
+function closeAddressList(){
+  if(addrBox){ addrBox.remove(); addrBox = null; }
+  addrFor = null; addrItems = []; addrCursor = -1;
+}
+
+function renderAddressList(input, items, message){
+  if(!addrBox){
+    addrBox = document.createElement('div');
+    addrBox.className = 'addr-list';
+    // On the body with fixed positioning: these boxes live inside drawers
+    // that scroll and clip, and a list anchored inside one gets cut off.
+    document.body.appendChild(addrBox);
+  }
+  addrFor = input; addrItems = items || []; addrCursor = -1;
+  const r = input.getBoundingClientRect();
+  addrBox.style.left = r.left + 'px';
+  addrBox.style.top = (r.bottom + 4) + 'px';
+  addrBox.style.width = Math.max(r.width, 260) + 'px';
+
+  if(message){
+    addrBox.innerHTML = '<div class="addr-msg">' + escAttr(message) + '</div>';
+    return;
+  }
+  addrBox.innerHTML = addrItems.map((a, i) => `
+    <button type="button" class="addr-item" data-i="${i}">
+      <span class="addr-line1">${escAttr(a.label || a.line1 || a.formatted)}</span>
+      <span class="addr-rest">${escAttr([a.label ? a.line1 : '', a.city, [a.state, a.zip].filter(Boolean).join(' ')].filter(Boolean).join(' · '))}</span>
+    </button>`).join('')
+    + '<div class="addr-credit">Addresses from OpenStreetMap</div>';
+
+  addrBox.querySelectorAll('.addr-item').forEach(btn => {
+    // mousedown, not click: the input's blur would close this list first.
+    btn.addEventListener('mousedown', ev => {
+      ev.preventDefault();
+      chooseAddress(input, addrItems[Number(btn.dataset.i)]);
+    });
+  });
+}
+
+function chooseAddress(input, a){
+  if(!a) return;
+  const t = addressTargetsFor(input);
+  // A form with its own city/state/ZIP boxes gets the street on the address
+  // line and the rest in their own fields. A one-line form gets all of it.
+  input.value = (t.city || t.zip) ? (a.line1 || a.formatted) : a.formatted;
+  const set = (el, val) => {
+    if(!el || !val) return;
+    if(el.tagName === 'SELECT'){
+      const hit = Array.from(el.options).find(o =>
+        o.value.toUpperCase() === val.toUpperCase() ||
+        (o.textContent || '').trim().toUpperCase() === val.toUpperCase());
+      if(hit) el.value = hit.value;
+    } else {
+      el.value = val;
+    }
+    el.dispatchEvent(new Event('change', { bubbles:true }));
+  };
+  set(t.city, a.city);
+  set(t.state, a.state);
+  set(t.zip, a.zip);
+  // So anything listening to this field - an autosave, a row edit - sees it.
+  input.dispatchEvent(new Event('input', { bubbles:true }));
+  input.dispatchEvent(new Event('change', { bubbles:true }));
+  closeAddressList();
+  input.focus();
+}
+
+async function runAddressLookup(input){
+  const q = (input.value || '').trim();
+  if(q.length < ADDR_MIN_CHARS){ closeAddressList(); return; }
+  if(addrAbort) addrAbort.abort();
+  addrAbort = new AbortController();
+  try {
+    const items = await addressSearch(q, addrAbort.signal);
+    if(document.activeElement !== input) return;      // moved on while waiting
+    if(!items.length){ renderAddressList(input, [], 'No match — type it in as normal.'); return; }
+    renderAddressList(input, items);
+  } catch(e){
+    if(e.name === 'AbortError') return;
+    // A lookup that cannot reach the service must never block typing.
+    renderAddressList(input, [], 'Address lookup unavailable — type it in as normal.');
+  }
+}
+
+document.addEventListener('input', ev => {
+  const el = ev.target;
+  if(!isAddressField(el)){ return; }
+  clearTimeout(addrTimer);
+  addrTimer = setTimeout(() => runAddressLookup(el), ADDR_DEBOUNCE_MS);
+}, true);
+
+document.addEventListener('keydown', ev => {
+  if(!addrBox || ev.target !== addrFor) return;
+  const items = addrBox.querySelectorAll('.addr-item');
+  if(!items.length) return;
+  if(ev.key === 'ArrowDown' || ev.key === 'ArrowUp'){
+    ev.preventDefault();
+    addrCursor += (ev.key === 'ArrowDown' ? 1 : -1);
+    if(addrCursor < 0) addrCursor = items.length - 1;
+    if(addrCursor >= items.length) addrCursor = 0;
+    items.forEach((b, i) => b.classList.toggle('on', i === addrCursor));
+    items[addrCursor].scrollIntoView({ block:'nearest' });
+  } else if(ev.key === 'Enter' && addrCursor > -1){
+    ev.preventDefault();
+    chooseAddress(addrFor, addrItems[addrCursor]);
+  } else if(ev.key === 'Escape'){
+    closeAddressList();
+  }
+}, true);
+
+document.addEventListener('focusout', ev => {
+  if(ev.target === addrFor) setTimeout(closeAddressList, 120);
+}, true);
+window.addEventListener('scroll', () => { if(addrFor) closeAddressList(); }, true);
+window.addEventListener('resize', closeAddressList);
+
+
 (function watchForDrawers(){
   const start = () => {
     document.querySelectorAll('.drawer-head').forEach(addHandoffButton);
