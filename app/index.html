@@ -15067,6 +15067,7 @@ function renderPosDetail(){
         : posDetailTab === 'devices' ? posDetailDevices(m)
         : posDetailLog(m)}
     </div>
+    ${posDeleteZoneHtml(m)}
     <div class="drawer-footer">
       <button class="btn" style="flex:1;" onclick="openPosMerchantForm('${m.id}')">Edit the business</button>
       <button class="btn btn-accent" style="flex:1;" onclick="closePosMerchantDrawer()">Done</button>
@@ -15110,8 +15111,7 @@ function posDetailPlan(m){
     ${locs.length === 0 ? `<div class="stub-panel"><h3>No locations</h3>
         <p style="font-size:13px;">Nothing can be set up until there is one.</p></div>`
       : locs.map(l => posLocationCard(l, m)).join('')}
-    ${posAgreementsHtml(m)}
-    ${posDeleteZoneHtml(m)}`;
+    ${posAgreementsHtml(m)}`;
 }
 
 /* ---------------------------------------------------------------------------
@@ -16703,19 +16703,24 @@ function posSupportActionsHtml(m){
 
 function posDeleteZoneHtml(m){
   /*
-   * Deliberately quiet, and last.
+   * At the bottom of the sheet, not inside a tab.
    *
-   * A red panel the size of a card put the rarest thing on the page among
-   * the things somebody does every day. The guard is not the styling - it
-   * is the name that has to be typed - so this can be a line of text and a
-   * small button, which is what a thing used twice a year should look like.
+   * It lived under the Overview tab, which meant it existed only if you
+   * happened to be on that tab - somebody on Plan or Devices looking for
+   * it would reasonably conclude it had gone. Deleting is a thing you do
+   * to the account, not to one view of it, so it belongs with Edit and
+   * Done rather than among the account's own details.
+   *
+   * Quiet on purpose. The guard is the business name somebody has to type,
+   * not the colour of the button, and a thing used twice a year should not
+   * look like the things used every day.
    */
   return `
-    <div style="margin-top:24px;padding-top:14px;border-top:1px solid var(--line);
+    <div style="padding:12px 20px;border-top:1px solid var(--line);
                 display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-      <span style="flex:1 1 240px;min-width:0;font-size:11.5px;color:var(--slate-500);line-height:1.5;">
-        Delete removes this account and everything on it &mdash; locations, logins,
-        agreements, history. To end a real relationship, pause or close it instead.</span>
+      <span style="flex:1 1 220px;min-width:0;font-size:11px;color:var(--slate-500);line-height:1.5;">
+        Deleting removes this account and everything on it. To end a real
+        relationship, pause or close it instead.</span>
       <button class="btn btn-xs" style="flex:0 0 auto;color:var(--red);border-color:var(--err-border);"
         onclick="deletePosMerchant('${m.id}')">Delete account</button>
     </div>`;
