@@ -23,9 +23,13 @@
       return;
     }
 
+    /* Light unless somebody chose otherwise.
+       Following the machine sounds respectful and is not: this is a tool
+       with a look of its own, and whether a laptop happens to be in night
+       mode at four o'clock says nothing about how the Control Center
+       should appear. Dark is one press away and stays chosen once chosen. */
     var saved = localStorage.getItem('epay-theme');
-    var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-    var theme = saved || (prefersDark ? 'dark' : 'light');
+    var theme = saved || 'light';
     document.documentElement.setAttribute('data-theme', theme);
   } catch(e){
     document.documentElement.setAttribute('data-theme', 'light');
@@ -94,6 +98,28 @@
      no component rule is duplicated, which is the whole reason the
      literals above were named first.
      ===================================================================== */
+  /* ---------------------------------------------------------------------
+     THE MARK, IN EITHER MODE
+
+     The artwork is a blue gradient triangle beside navy lettering. On a
+     dark ground the lettering is close to the colour behind it and the
+     whole thing reads as a smudge.
+
+     brightness(0) crushes every pixel to black while keeping the alpha,
+     invert(1) flips that to white: the shape survives exactly, the colour
+     does not. The gradient is lost and on a dark screen that is worth it,
+     because a legible mark in one colour beats a gradient nobody can see.
+
+     Not the email previews. Those show what a recipient will get in their
+     own mail client, which is white whatever this tool is set to - the
+     palette has --email-* tokens for the same reason.
+     --------------------------------------------------------------------- */
+  html[data-theme="dark"] .full-logo,
+  html[data-theme="dark"] .login-mark img{
+    filter:brightness(0) invert(1);
+  }
+  html[data-theme="dark"] .email-preview-header img{ filter:none; }
+
   html[data-theme="dark"]{
     /* Every text tier is white in dark mode, by request. This is a working
        tool people read all day, and the usual dark-theme habit of fading
@@ -129,14 +155,19 @@
     /* Surfaces are lifted away from the page background so each panel reads
        as a distinct box rather than dissolving into it, and the borders are
        raised to match. */
-    --bg:#101827;
-    --card:#1C2739;
-    --line:#34425C;
-    --surface-2:#161F30;
-    --surface-3:#212C40;
-    --hover:#27334B;
-    --accent-soft:#1D3157;
-    --line-strong:#465675;
+    /* Dark grey rather than near-black. #101827 behind a tool somebody
+       reads all day is a hole with light in it: the contrast against white
+       type is enormous and the panels stop reading as panels. Lifted far
+       enough that a card sits on a ground and a rule can be seen against
+       it, while staying unmistakably dark. */
+    --bg:#1E2735;
+    --card:#273246;
+    --line:#3E4C66;
+    --surface-2:#232D3E;
+    --surface-3:#2C3850;
+    --hover:#333F59;
+    --accent-soft:#2A3F68;
+    --line-strong:#52617F;
 
     --ok-text:#4ADE9E;   --ok-bg:#10301F;   --ok-border:#1E5238;
     --warn-text:#F1B94D; --warn-bg:#2E2412; --warn-border:#57411A;
